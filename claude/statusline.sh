@@ -180,7 +180,9 @@ if git rev-parse --git-dir > /dev/null 2>&1; then
     else
         branch=$(git branch --show-current 2>/dev/null)
         [ -z "$branch" ] && branch="detached"
-        status_output=$(git status --porcelain 2>/dev/null)
+        git_root=$(git rev-parse --show-toplevel 2>/dev/null)
+        git_root_short="${git_root/#$HOME/~}"
+        status_output=$(git status --porcelain 2>/dev/null | grep -v '\.hora/' )
         modified=$(echo "$status_output" | grep -c '^.[MDRC]' 2>/dev/null) || modified=0
         staged=$(echo "$status_output" | grep -c '^[MADRC]' 2>/dev/null) || staged=0
         untracked=$(echo "$status_output" | grep -c '^??' 2>/dev/null) || untracked=0
@@ -189,6 +191,7 @@ if git rev-parse --git-dir > /dev/null 2>&1; then
         mkdir -p "$HORA_STATE_DIR" 2>/dev/null
         cat > "$GIT_CACHE" << GITEOF
 branch='$branch'
+git_root_short='$git_root_short'
 modified=${modified:-0}
 staged=${staged:-0}
 untracked=${untracked:-0}
@@ -584,6 +587,7 @@ case "$MODE" in
         # Ligne 3 : Git
         if [ "$is_git_repo" = true ]; then
             printf "${HORA_PRIMARY}◈${RST} ${SLATE_500}GIT :${RST} ${GIT_BRANCH}${branch}${RST}"
+            [ -n "$git_root_short" ] && printf " ${SLATE_600}|${RST} ${SLATE_400}${git_root_short}${RST}"
             if [ "${total_changed:-0}" -gt 0 ] || [ "${untracked:-0}" -gt 0 ]; then
                 printf " ${SLATE_600}|${RST} ${GIT_DIRTY}Modif:${total_changed}${RST}"
                 [ "${untracked:-0}" -gt 0 ] && printf " ${SLATE_400}Nouv:${untracked}${RST}"
