@@ -141,7 +141,7 @@ if [ -n "$usage_5h_reset" ] && [ "$usage_5h_reset" != "null" ] && [ "$usage_5h_r
     reset_5h_str=$(python3 -c "
 from datetime import datetime, timezone
 try:
-    ts = $usage_5h_reset if isinstance($usage_5h_reset, str) else str($usage_5h_reset)
+    ts = '${usage_5h_reset}'
     if not ts: raise ValueError
     if ts.endswith('Z'):
         dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
@@ -181,9 +181,9 @@ if git rev-parse --git-dir > /dev/null 2>&1; then
         branch=$(git branch --show-current 2>/dev/null)
         [ -z "$branch" ] && branch="detached"
         status_output=$(git status --porcelain 2>/dev/null)
-        modified=$(echo "$status_output" | grep -c '^.[MDRC]' 2>/dev/null || echo 0)
-        staged=$(echo "$status_output" | grep -c '^[MADRC]' 2>/dev/null || echo 0)
-        untracked=$(echo "$status_output" | grep -c '^??' 2>/dev/null || echo 0)
+        modified=$(echo "$status_output" | grep -c '^.[MDRC]' 2>/dev/null) || modified=0
+        staged=$(echo "$status_output" | grep -c '^[MADRC]' 2>/dev/null) || staged=0
+        untracked=$(echo "$status_output" | grep -c '^??' 2>/dev/null) || untracked=0
         total_changed=$((modified + staged))
 
         mkdir -p "$HORA_STATE_DIR" 2>/dev/null
@@ -194,6 +194,26 @@ staged=${staged:-0}
 untracked=${untracked:-0}
 total_changed=${total_changed:-0}
 GITEOF
+
+        # Last 3 commits + push status
+        if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+            unpushed_count=$(git log "origin/${branch}..HEAD" --oneline 2>/dev/null | wc -l | tr -d ' ')
+        else
+            unpushed_count=999
+        fi
+        [ -z "$unpushed_count" ] && unpushed_count=0
+        printf 'unpushed_count=%d\n' "${unpushed_count:-0}" >> "$GIT_CACHE"
+
+        for _ci in 1 2 3; do
+            _ch=$(git log -1 --skip=$((_ci-1)) --format='%h' 2>/dev/null)
+            _cs=$(git log -1 --skip=$((_ci-1)) --format='%s' 2>/dev/null | cut -c1-80)
+            if [ -n "$_ch" ]; then
+                printf -v "c${_ci}_hash" '%s' "$_ch"
+                printf -v "c${_ci}_subj" '%s' "$_cs"
+                printf 'c%d_hash=%q\n' "$_ci" "$_ch" >> "$GIT_CACHE"
+                printf 'c%d_subj=%q\n' "$_ci" "$_cs" >> "$GIT_CACHE"
+            fi
+        done
     fi
 fi
 
@@ -363,7 +383,9 @@ render_context_bar() {
 # Largeur optimale de barre selon le mode
 calc_bar_width() {
     local mode=$1
-    local content_width=72
+    local content_width=$((term_width - 10))
+    [ "$content_width" -gt 70 ] && content_width=70
+    [ "$content_width" -lt 40 ] && content_width=40
     local prefix_len suffix_len bucket_size available
 
     case "$mode" in
@@ -434,7 +456,7 @@ if [ -f "$USAGE_CACHE" ]; then
         reset_5h_str=$(python3 -c "
 from datetime import datetime, timezone
 try:
-    ts = $usage_5h_reset if isinstance($usage_5h_reset, str) else str($usage_5h_reset)
+    ts = '${usage_5h_reset}'
     if not ts: raise ValueError
     if ts.endswith('Z'):
         dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
@@ -517,6 +539,23 @@ case "$MODE" in
             printf "${HORA_DIM}snap:${snap_count}${RST}\n"
         fi
 
+        # Ligne commits
+        if [ "$is_git_repo" = true ] && [ -n "$c1_hash" ]; then
+            printf "${SLATE_500}log:${RST}"
+            for _ci in 1 2 3; do
+                _vn="c${_ci}_hash"; _ch="${!_vn}"
+                _vn="c${_ci}_subj"; _cs="${!_vn}"
+                [ -z "$_ch" ] && continue
+                _cs_short=$(echo "$_cs" | cut -c1-18)
+                if [ "${unpushed_count:-0}" -ge "$_ci" ]; then
+                    printf " ${ORANGE}●${RST}${SLATE_400}${_ch}${RST} ${SLATE_300}${_cs_short}${RST}"
+                else
+                    printf " ${EMERALD}✓${RST}${SLATE_400}${_ch}${RST} ${SLATE_300}${_cs_short}${RST}"
+                fi
+            done
+            printf "\n"
+        fi
+
         # Ligne 3 : Usage (si data disponible)
         if [ "$usage_5h_int" -gt 0 ] || [ "$usage_7d_int" -gt 0 ]; then
             u5_c=$(get_usage_color "$usage_5h_int")
@@ -526,8 +565,8 @@ case "$MODE" in
         ;;
 
     full)
-        # Separateur header
-        printf "${SLATE_600}── |${RST} ${HORA_PRIMARY}H${HORA_ACCENT}O${HORA_LIGHT}R${HORA_PRIMARY}A${RST} ${SLATE_600}| ────────────────────────────────────────────────────────────${RST}\n"
+        # Separateur header (fixe 80 cols)
+        printf "${SLATE_600}── |${RST} ${HORA_PRIMARY}H${HORA_ACCENT}O${HORA_LIGHT}R${HORA_PRIMARY}A${RST} ${SLATE_600}| ──────────────────────────────────────────────────────────────────────${RST}\n"
 
         # Ligne 1 : Barre de contexte
         bar=$(render_context_bar "$bar_width" "$ctx_pct_int")
@@ -539,7 +578,7 @@ case "$MODE" in
         if [ "$usage_5h_int" -gt 0 ] || [ "$usage_7d_int" -gt 0 ]; then
             u5_c=$(get_usage_color "$usage_5h_int")
             u7_c=$(get_usage_color "$usage_7d_int")
-            printf "${HORA_PRIMARY}◈${RST} ${USAGE_LABEL}USAGE :${RST} ${USAGE_RESET_CLR}5H:${RST} ${u5_c}${usage_5h_int}%%${RST} ${USAGE_RESET_CLR}↻${SLATE_500}${reset_5h_str}${RST} ${SLATE_600}|${RST} ${USAGE_RESET_CLR}WK:${RST} ${u7_c}${usage_7d_int}%%${RST}\n"
+            printf "${HORA_PRIMARY}◈${RST} ${USAGE_LABEL}USAGE :${RST} ${USAGE_RESET_CLR}5H:${RST} ${u5_c}${usage_5h_int}%%${RST} ${SLATE_400}(reset ${reset_5h_str})${RST} ${SLATE_600}|${RST} ${USAGE_RESET_CLR}WK:${RST} ${u7_c}${usage_7d_int}%%${RST}\n"
         fi
 
         # Ligne 3 : Git
@@ -556,6 +595,30 @@ case "$MODE" in
                 [ -n "$b_warn" ] && printf " ${ROSE}${b_warn}${RST}"
             fi
             printf "\n"
+
+            # Derniers commits (texte responsive)
+            if [ -n "$c1_hash" ]; then
+                # Largeur dispo pour le sujet : terminal - prefix(14) - mark(2) - hash(8) - spaces(3)
+                _subj_max=$((term_width - 27))
+                [ "$_subj_max" -lt 10 ] && _subj_max=10
+                [ "$_subj_max" -gt 60 ] && _subj_max=60
+                for _ci in 1 2 3; do
+                    _vn="c${_ci}_hash"; _ch="${!_vn}"
+                    _vn="c${_ci}_subj"; _cs="${!_vn}"
+                    [ -z "$_ch" ] && continue
+                    _cs_trunc=$(echo "$_cs" | cut -c1-${_subj_max})
+                    if [ "${unpushed_count:-0}" -ge "$_ci" ]; then
+                        _mark="${ORANGE}●${RST}"
+                    else
+                        _mark="${EMERALD}✓${RST}"
+                    fi
+                    if [ "$_ci" -eq 1 ]; then
+                        printf "${HORA_PRIMARY}◈${RST} ${SLATE_500}COMMITS :${RST} ${_mark} ${SLATE_400}${_ch}${RST} ${SLATE_300}${_cs_trunc}${RST}\n"
+                    else
+                        printf "${HORA_PRIMARY}◈${RST}           ${_mark} ${SLATE_400}${_ch}${RST} ${SLATE_300}${_cs_trunc}${RST}\n"
+                    fi
+                done
+            fi
         fi
 
         # Ligne 4 : Snap + Modele
@@ -563,7 +626,7 @@ case "$MODE" in
         [ "$snap_count" -gt 0 ] && printf "${HORA_DIM}SNAP:${RST} ${SLATE_400}${snap_count} proteges${RST} ${SLATE_600}|${RST} "
         printf "${SLATE_500}MODELE :${RST} ${HORA_ACCENT}${model_name}${RST}\n"
 
-        # Separateur footer
-        printf "${SLATE_600}────────────────────────────────────────────────────────────────────────${RST}\n"
+        # Separateur footer (fixe 80 cols)
+        printf "${SLATE_600}──────────────────────────────────────────────────────────────────────────────────${RST}\n"
         ;;
 esac
