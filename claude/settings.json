@@ -1,0 +1,140 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/snapshot.ts"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write|Read|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/hora-security.ts"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/tool-use.ts"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/backup-monitor.ts"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/prompt-submit.ts"
+          },
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/hora-session-name.ts"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/session-end.ts"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/session-end.ts --subagent"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "$HOME/.claude/statusline.sh"
+  },
+  "spinnerVerbs": {
+    "mode": "replace",
+    "verbs": [
+      "Analyse en cours",
+      "Reflexion profonde",
+      "Exploration du code",
+      "Lecture des fichiers",
+      "Compilation mentale",
+      "Decortiquage",
+      "Verification des dependances",
+      "Planification",
+      "Orchestration",
+      "Mise en forme",
+      "Recherche de patterns",
+      "Inspection du schema",
+      "Evaluation des options",
+      "Connexion des idees",
+      "Cartographie du code",
+      "Resolution en cours",
+      "Assemblage de la solution",
+      "Navigation dans le code",
+      "Structuration",
+      "Validation des contraintes",
+      "Preparation du plan",
+      "Ecriture du code",
+      "Optimisation",
+      "Raisonnement",
+      "Diagnostic",
+      "Recoupement des sources",
+      "Synthese en cours",
+      "Iteration",
+      "Calibrage",
+      "Generation",
+      "Verification croisee",
+      "Decomposition",
+      "Reconstruction",
+      "Alignement",
+      "Prototypage mental",
+      "Traitement en parallele",
+      "Consultation de la memoire",
+      "Integration",
+      "Affinement",
+      "Consolidation",
+      "Conception",
+      "Tissage des liens",
+      "Extraction des patterns",
+      "Simulation",
+      "Anticipation des cas limites",
+      "Audit de coherence",
+      "Branchement logique",
+      "Delegation aux agents",
+      "Triangulation",
+      "Convergence"
+    ]
+  }
+}

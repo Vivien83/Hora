@@ -1,0 +1,203 @@
+# HORA — Patterns de securite
+# Source unique de verite pour la validation de securite
+# Utilise par hora-security.ts (PreToolUse)
+#
+# LOGGING: Toutes les operations bloquees, confirmees et alertees sont loguees dans :
+#   MEMORY/SECURITY/YYYY/MM/security-{resume}-{timestamp}.jsonl
+#
+# DEFENSE EN COUCHES :
+#   1. L'IA utilise AskUserQuestion pour les ops dangereuses (proactif, contextuel)
+#   2. Ce hook valide et bloque si l'IA oublie (filet de securite)
+#   3. Tous les evenements de securite sont logues pour audit
+---
+version: "1.0"
+last_updated: "2026-02-19"
+
+# Philosophie : securise mais fonctionnel par defaut
+# Bloquer les catastrophes, confirmer les operations dangereuses, autoriser le reste
+philosophy:
+  mode: safe_functional
+  principle: "Protection reelle sans friction qui pousse a desactiver la securite"
+
+# ========================================
+# COMMANDES BASH
+# ========================================
+bash:
+  # BLOQUE — Catastrophique/irreversible (exit 2, LOGUE)
+  # Ces operations ne sont JAMAIS autorisees
+  blocked:
+    # Destruction du systeme de fichiers
+    - pattern: "rm -rf /$"
+      reason: "Destruction du systeme de fichiers"
+    - pattern: "rm -rf / "
+      reason: "Destruction du systeme de fichiers"
+
+    # Repertoire home — uniquement le home entier
+    - pattern: "rm -rf ~$"
+      reason: "Destruction du repertoire home"
+    - pattern: "rm -rf ~ "
+      reason: "Destruction du repertoire home"
+    - pattern: "rm -rf ~/$"
+      reason: "Destruction du repertoire home"
+    - pattern: "rm -rf ~/ "
+      reason: "Destruction du repertoire home"
+
+    # Infrastructure HORA — uniquement .claude entier
+    - pattern: "rm -rf ~/.claude$"
+      reason: "Destruction de l'infrastructure HORA"
+    - pattern: "rm -rf ~/.claude "
+      reason: "Destruction de l'infrastructure HORA"
+    - pattern: "rm -rf ~/.claude/$"
+      reason: "Destruction de l'infrastructure HORA"
+    - pattern: "rm -rf ~/.claude/ "
+      reason: "Destruction de l'infrastructure HORA"
+
+    # Repertoire Documents — uniquement entier
+    - pattern: "rm -rf ~/Documents$"
+      reason: "Destruction du repertoire Documents"
+    - pattern: "rm -rf ~/Documents "
+      reason: "Destruction du repertoire Documents"
+    - pattern: "rm -rf ~/Documents/$"
+      reason: "Destruction du repertoire Documents"
+    - pattern: "rm -rf ~/Documents/ "
+      reason: "Destruction du repertoire Documents"
+
+    # Variantes sudo
+    - pattern: "sudo rm -rf /$"
+      reason: "Destruction filesystem avec sudo"
+    - pattern: "sudo rm -rf / "
+      reason: "Destruction filesystem avec sudo"
+    - pattern: "sudo rm -rf ~$"
+      reason: "Destruction home avec sudo"
+    - pattern: "sudo rm -rf ~ "
+      reason: "Destruction home avec sudo"
+
+    # Disque
+    - pattern: "diskutil eraseDisk"
+      reason: "Effacement de disque"
+    - pattern: "diskutil zeroDisk"
+      reason: "Effacement de disque"
+    - pattern: "diskutil partitionDisk"
+      reason: "Partitionnement de disque"
+    - pattern: "dd if=/dev/zero"
+      reason: "Ecrasement de disque"
+    - pattern: "mkfs"
+      reason: "Formatage de systeme de fichiers"
+
+    # GitHub destructif
+    - pattern: "gh repo delete"
+      reason: "Suppression de repository"
+    - pattern: "gh repo edit --visibility public"
+      reason: "Exposition publique du repository"
+
+  # CONFIRMER — Dangereux mais parfois legitime (LOGUE + prompt)
+  confirm:
+    # Git destructif
+    - pattern: "git push --force"
+      reason: "Force push peut perdre des commits"
+    - pattern: "git push -f"
+      reason: "Force push peut perdre des commits"
+    - pattern: "git push origin --force"
+      reason: "Force push peut perdre des commits"
+    - pattern: "git push origin -f"
+      reason: "Force push peut perdre des commits"
+    - pattern: "git reset --hard"
+      reason: "Perd les modifications non commitees"
+    - pattern: "git clean -fd"
+      reason: "Supprime les fichiers non suivis"
+    - pattern: "git checkout \\."
+      reason: "Annule toutes les modifications locales"
+
+    # Cloud AWS
+    - pattern: "aws s3 rm.*--recursive"
+      reason: "Suppression S3 en masse"
+    - pattern: "aws ec2 terminate"
+      reason: "Arret d'instance EC2"
+    - pattern: "aws rds delete"
+      reason: "Suppression de base RDS"
+
+    # Cloud GCP
+    - pattern: "gcloud.*delete"
+      reason: "Suppression de ressource GCP"
+
+    # Infrastructure
+    - pattern: "terraform destroy"
+      reason: "Destruction d'infrastructure"
+    - pattern: "terraform apply.*-auto-approve"
+      reason: "Auto-approve contourne la revue"
+    - pattern: "pulumi destroy"
+      reason: "Destruction d'infrastructure"
+
+    # Containers
+    - pattern: "docker system prune"
+      reason: "Nettoyage containers/images"
+    - pattern: "docker volume rm"
+      reason: "Suppression de volume Docker"
+    - pattern: "kubectl delete namespace"
+      reason: "Suppression de namespace"
+
+    # Base de donnees
+    - pattern: "DROP DATABASE"
+      reason: "Destruction de base de donnees"
+    - pattern: "DROP TABLE"
+      reason: "Destruction de table"
+    - pattern: "TRUNCATE"
+      reason: "Destruction de donnees de table"
+
+    # npm dangereux
+    - pattern: "npm publish"
+      reason: "Publication de package npm"
+    - pattern: "npx wrangler delete"
+      reason: "Suppression de worker Cloudflare"
+
+  # ALERTE — Suspect mais autorise (LOGUE, pas de blocage)
+  alert:
+    - pattern: "curl.*\\|.*sh"
+      reason: "Pipe curl vers shell"
+    - pattern: "curl.*\\|.*bash"
+      reason: "Pipe curl vers bash"
+    - pattern: "wget.*\\|.*sh"
+      reason: "Pipe wget vers shell"
+    - pattern: "wget.*\\|.*bash"
+      reason: "Pipe wget vers bash"
+    - pattern: "sudo "
+      reason: "Utilisation de sudo"
+    - pattern: "chmod 777"
+      reason: "Permissions trop ouvertes"
+
+# ========================================
+# PROTECTION DES CHEMINS (toutes violations LOGUEES)
+# ========================================
+paths:
+  # ACCES ZERO — Interdiction totale (lecture/ecriture/suppression)
+  zeroAccess:
+    - "~/.ssh/id_*"
+    - "~/.ssh/*.pem"
+    - "~/.aws/credentials"
+    - "~/.gnupg/private*"
+    - "**/credentials.json"
+    - "**/service-account*.json"
+    - "**/.env.production"
+
+  # LECTURE SEULE — Peut lire, ne peut pas modifier ou supprimer
+  readOnly:
+    - "/etc/**"
+
+  # CONFIRMATION ECRITURE — Lecture libre, ecriture demande confirmation
+  confirmWrite:
+    - "~/.claude/settings.json"
+    - "**/.env"
+    - "**/.env.*"
+    - "~/.ssh/*"
+    - "~/.zshrc"
+    - "~/.bashrc"
+
+  # SUPPRESSION INTERDITE — Peut lire et modifier mais pas supprimer
+  noDelete:
+    - "~/.claude/hooks/**"
+    - "~/.claude/skills/**"
+    - "~/.claude/.hora/**"
+    - "~/.claude/CLAUDE.md"
+    - ".git/**"
+    - "LICENSE*"
+    - "README.md"

@@ -1,0 +1,31 @@
+# Sessions et données personnelles
+claude/MEMORY/SESSIONS/
+claude/MEMORY/LEARNING/FAILURES/
+claude/MEMORY/LEARNING/ALGORITHM/
+claude/MEMORY/LEARNING/SYSTEM/
+claude/MEMORY/SECURITY/
+claude/MEMORY/STATE/
+claude/MEMORY/WORK/
+claude/MEMORY/.session-state.json
+claude/MEMORY/.tool-usage.jsonl
+claude/MEMORY/.extraction-done*
+
+# Profil (données personnelles)
+claude/MEMORY/PROFILE/identity.md
+claude/MEMORY/PROFILE/projects.md
+claude/MEMORY/PROFILE/preferences.md
+claude/MEMORY/PROFILE/vocabulary.md
+
+# Snapshots et backups runtime
+.hora/snapshots/
+.hora/backups/
+.hora/.last-check
+.hora/session-backup-state.json
+.hora/backup-state.json
+.hora/backup-log.md
+
+# Backup fichiers
+*.bak
+
+# Node
+node_modules/
