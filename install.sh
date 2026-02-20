@@ -51,7 +51,7 @@ HORA_MANAGED=(
 )
 
 # Patterns legacy (PAI et predecesseurs) pour nettoyage
-LEGACY_PATTERNS=("PAI_DIR" "pai-" "PAI —" "pai_")
+LEGACY_PATTERNS=("PAI_DIR" "pai-" "PAI -" "pai_")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # WRAPPERS DRY-RUN
@@ -619,10 +619,17 @@ echo "[OK] .hora/patterns.yaml"
 # ─── MEMORY (ne pas ecraser si deja rempli) ───────────────────────────────
 
 INSTALLED=0
+PROFILE_TEMPLATE="<!-- vide - sera complete automatiquement a l'usage -->"
 for f in identity projects preferences vocabulary; do
   TARGET="$CLAUDE_DIR/MEMORY/PROFILE/$f.md"
   if [ ! -f "$TARGET" ] || [ ! -s "$TARGET" ]; then
-    _cp "$HORA_DIR/MEMORY/PROFILE/$f.md" "$TARGET"
+    if [ -f "$HORA_DIR/MEMORY/PROFILE/$f.md" ]; then
+      _cp "$HORA_DIR/MEMORY/PROFILE/$f.md" "$TARGET"
+    elif $DRY_RUN; then
+      echo "   [DRY-RUN] create $TARGET"
+    else
+      echo "$PROFILE_TEMPLATE" > "$TARGET"
+    fi
     INSTALLED=1
   fi
 done

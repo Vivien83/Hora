@@ -1,4 +1,4 @@
-# HORA — Windows Installation (PowerShell entry point)
+# HORA - Windows Installation (PowerShell entry point)
 # Finds Git Bash and delegates to install.sh
 #
 # Usage:
@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 
 Write-Host ""
 Write-Host "+===========================================+"
-Write-Host "|       HORA — Windows Installation          |"
+Write-Host "|       HORA - Windows Installation          |"
 Write-Host "+===========================================+"
 Write-Host ""
 
@@ -76,7 +76,7 @@ if (-not $bashPath) {
 
 Write-Host "[OK] Git Bash : $bashPath"
 
-# 3. Node.js (pour npx tsx — hooks TypeScript)
+# 3. Node.js (pour npx tsx - hooks TypeScript)
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     Write-Host "[ERREUR] Node.js introuvable (requis pour les hooks TypeScript)." -ForegroundColor Red
     Write-Host "   Installe : https://nodejs.org/"
@@ -103,7 +103,7 @@ if (-not $env:CLAUDE_CODE_GIT_BASH_PATH) {
     Write-Host ""
     Write-Host "   [System.Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', '$bashPath', 'User')" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "   (Requis pour eviter le bug #22700 — Claude Code utilise 'bash' nu sans le chemin complet)"
+    Write-Host "   (Requis pour eviter le bug #22700 - Claude Code utilise 'bash' nu sans le chemin complet)"
     Write-Host ""
 
     # Set for current session
