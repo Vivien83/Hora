@@ -1,25 +1,57 @@
-# HORA
-### Hybrid Orchestrated Reasoning Architecture
+<p align="center">
+  <img src="https://img.shields.io/badge/Claude_Code-Native-blueviolet?style=for-the-badge&logo=anthropic" alt="Claude Code Native">
+  <img src="https://img.shields.io/badge/Platform-macOS_|_Linux_|_Windows-blue?style=for-the-badge" alt="Platform">
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
+  <img src="https://img.shields.io/badge/Dependencies-tsx_only-orange?style=for-the-badge" alt="Dependencies">
+  <img src="https://img.shields.io/badge/Config-Zero-brightgreen?style=for-the-badge" alt="Zero Config">
+</p>
 
-> Systeme d'IA personnel auto-apprenant pour Claude Code.
-> Vierge au depart. Se construit a l'usage. Aucun template a remplir.
+<h1 align="center">HORA</h1>
+<h3 align="center">Hybrid Orchestrated Reasoning Architecture</h3>
+
+<p align="center">
+  <strong>A self-learning AI system for Claude Code.</strong><br>
+  Starts empty. Builds itself through usage. No templates. No config. Just start.
+</p>
+
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> &bull;
+  <a href="#-features">Features</a> &bull;
+  <a href="#-how-it-works">How It Works</a> &bull;
+  <a href="#-skills--agents">Skills & Agents</a> &bull;
+  <a href="#%EF%B8%8F-architecture">Architecture</a> &bull;
+  <a href="#-what-hora-provides">Overview</a> &bull;
+  <a href="#-customization">Customization</a>
+</p>
 
 ---
 
-## Philosophie
+## Why HORA?
 
-**HORA** fusionne le meilleur de [PAI](https://github.com/danielmiessler/Personal_AI_Infrastructure) et [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) en un systeme natif Claude Code, sans dependances runtime externes.
+Claude Code is powerful out of the box. But it forgets everything between sessions. It doesn't learn your preferences. It can't protect you from destructive commands. And when context compacts, you lose your train of thought.
 
-| Inspiration PAI | Inspiration OMC | Apport Hora |
+**HORA fixes all of that** — silently, automatically, with zero configuration.
+
+```
+Session 1:  Empty      --> 3 questions --> MEMORY/PROFILE/ starts filling
+Session 2:  Reloaded   --> Hora knows who you are + what you were doing
+Session N:  Rich       --> Increasingly relevant responses, your vocabulary, your patterns
+```
+
+### What makes it different
+
+| | Without HORA | With HORA |
 |---|---|---|
-| Memoire persistante | Multi-agents paralleles | Auto-apprentissage silencieux |
-| Algorithm OBSERVE→VERIFY | Routing Haiku/Sonnet/Opus | Self-bootstrapping (0 config) |
-| Hooks lifecycle | Skills/commands | Natif Claude Code, 0 plugin |
-| Securite allow/deny/ask | Agents specialises | Vierge → riche par l'usage |
+| **New session** | "I have no context" | "Last time we were working on X. Continue?" |
+| **Dangerous command** | Executes silently | Blocked or confirmed before execution |
+| **Context compaction** | Lost train of thought | Auto-detected, checkpoint injected |
+| **File edited by mistake** | Hope you have git | Snapshot saved automatically before every edit |
+| **Multi-file refactor** | One file at a time | Parallel agents, coordinated execution |
+| **Research task** | Single perspective | 3-5 angles in parallel, synthesized |
 
 ---
 
-## Installation
+## Quick Start
 
 ### macOS / Linux
 
@@ -29,7 +61,7 @@ cd Hora
 bash install.sh
 ```
 
-### Windows (natif, sans WSL)
+### Windows (native, no WSL)
 
 ```powershell
 git clone https://github.com/Vivien83/Hora.git
@@ -37,392 +69,759 @@ cd Hora
 .\install.ps1
 ```
 
-Le script PowerShell detecte Git Bash, verifie les prerequis, puis delegue a `install.sh`.
-
-**Important** : Claude Code sur Windows necessite [Git for Windows](https://git-scm.com/download/win) (qui fournit Git Bash). Si les hooks ne fonctionnent pas, definir la variable d'environnement :
-
-```powershell
-[System.Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', 'C:\Program Files\Git\bin\bash.exe', 'User')
-```
-
-### Prerequis
-
-| | macOS | Linux | Windows |
-|---|---|---|---|
-| Claude Code | Requis | Requis | Requis |
-| Node.js 18+ | Requis | Requis | Requis |
-| tsx | Auto-installe | Auto-installe | Auto-installe |
-| Git | Requis | Requis | Requis (Git for Windows) |
-| jq | Recommande | Recommande | Optionnel |
-
-`jq` permet le merge intelligent de `settings.json` (conservation des hooks tiers). Sans jq, les settings sont ecrases.
-
-Le script installe `tsx` automatiquement s'il est absent.
-
-### Ce que fait install.sh
-
-1. **Sauvegarde** les donnees Claude Code existantes (sessions, todos, history, credentials)
-2. **Cree** l'arborescence `~/.claude/` (MEMORY/, hooks/, agents/, skills/, .hora/)
-3. **Merge** CLAUDE.md (preserve le contenu existant, insere le bloc HORA entre marqueurs)
-4. **Merge** settings.json (supprime les hooks PAI s'ils existent, fusionne sans ecraser les hooks tiers)
-5. **Copie** hooks, agents, skills, patterns de securite, statusline
-6. **Preserve** le profil MEMORY/ s'il est deja rempli (ne remet pas a zero)
-7. **Verifie** l'integrite des donnees Claude apres installation
-
-### Options
-
-| Flag | Effet |
-|---|---|
-| *(aucun)* | Installation complete |
-| `--dry-run` | Simule l'installation sans rien modifier (affiche `[DRY-RUN]` pour chaque operation) |
-| `--restore` | Restaure les donnees Claude Code depuis le backup |
-
-```bash
-bash install.sh --dry-run   # voir ce qui serait fait
-bash install.sh             # installer
-bash install.sh --restore   # rollback si besoin
-```
-
----
-
-## Demarrage
-
-Lance Claude Code normalement :
+### Then just use Claude Code as usual
 
 ```bash
 claude
 ```
 
-**Premiere session** : Hora pose 3 questions minimales, ensuite il apprend seul.
+That's it. No config files to edit. No API keys to set. HORA learns silently from your first session.
 
-**Sessions suivantes** : le contexte accumule est injecte automatiquement.
+### Prerequisites
+
+| | macOS | Linux | Windows |
+|:---|:---:|:---:|:---:|
+| **Claude Code** | Required | Required | Required |
+| **Node.js 18+** | Required | Required | Required |
+| **Git** | Required | Required | Required ([Git for Windows](https://git-scm.com/download/win)) |
+| **tsx** | Auto-installed | Auto-installed | Auto-installed |
+| **jq** | Recommended | Recommended | Optional |
+
+> `jq` enables smart merging of `settings.json` (preserves your existing hooks). Without it, HORA settings overwrite entirely. Install: `brew install jq` (macOS) / `apt install jq` (Linux) / `choco install jq` (Windows).
+
+### Install options
+
+```bash
+bash install.sh              # Full install
+bash install.sh --dry-run    # Preview what would happen (no changes)
+bash install.sh --restore    # Rollback to pre-install state
+```
+
+### What install.sh does
+
+1. **Backs up** your existing Claude Code data (sessions, todos, history, credentials)
+2. **Creates** the `~/.claude/` tree (MEMORY/, hooks/, agents/, skills/, .hora/)
+3. **Merges** CLAUDE.md (preserves your existing content, inserts HORA block between markers)
+4. **Merges** settings.json (merges without overwriting third-party hooks)
+5. **Copies** hooks, agents, skills, security patterns, statusline
+6. **Preserves** your MEMORY/ profile if already populated (never resets)
+7. **Verifies** Claude data integrity after installation
+
+> In case of error: `bash install.sh --restore` restores the backup.
 
 ---
 
 ## Features
 
-### 1. Securite (defense en couches)
+### 1. Layered Security
 
-Protection automatique de chaque operation via le hook `hora-security.ts`.
-
-```
-Couche 1 : L'IA demande confirmation (proactif)
-Couche 2 : Le hook valide et bloque (filet de securite)
-Couche 3 : Audit trail complet (MEMORY/SECURITY/)
-```
-
-**Niveaux :**
-
-| Niveau | Action | Exemples |
-|---|---|---|
-| BLOQUE | Operation interdite | `rm -rf /`, `gh repo delete`, `diskutil eraseDisk` |
-| CONFIRMER | Demande a l'utilisateur | `git push --force`, `DROP TABLE`, `terraform destroy` |
-| ALERTE | Logue mais autorise | `curl \| bash`, `sudo`, `chmod 777` |
-
-**Chemins proteges :**
-
-| Type | Effet | Exemples |
-|---|---|---|
-| zeroAccess | Aucun acces | `~/.ssh/id_*`, `credentials.json`, `.env.production` |
-| readOnly | Lecture seule | `/etc/**` |
-| confirmWrite | Ecriture = confirmation | `settings.json`, `.env`, `~/.zshrc` |
-| noDelete | Suppression interdite | `hooks/`, `skills/`, `.hora/`, `.git/` |
-
-Patterns personnalisables dans `~/.claude/.hora/patterns.yaml`.
-
-### 2. Extraction de lecons (SessionEnd)
-
-A la fin de chaque session significative (3+ messages) :
-
-- **Profil** : extrait identite, projets, preferences, langages (regex sur messages user)
-- **Erreurs** : detecte erreurs, blocages, corrections (contexte 5 lignes)
-- **Sentiment** : analyse le ton (score 1-5)
-- **Archive** : resume de session + 5000 premiers chars du transcript
-
-Tout dans `MEMORY/` — jamais de lecons perdues.
-
-### 3. Continuite cross-session
-
-Le systeme de **thread persistence** maintient la conversation entre sessions :
-
-- Chaque message utilisateur est sauvegarde en attente (`pending`)
-- En fin de session, la derniere reponse assistant est resumee
-- Au prochain prompt, les deux sont apparies dans un historique continu
-- Hora injecte automatiquement les 10 derniers echanges + les 3 dernieres sessions
-
-Resultat : Hora se souvient de ce qu'on faisait et le mentionne des le premier message.
-
-### 4. Nommage automatique des sessions
-
-Le premier prompt de chaque session genere un nom deterministe (2-3 mots) :
+Every operation is validated automatically by `hora-security.ts` — a defense-in-depth system with three layers.
 
 ```
-"Refonte page conges" → "Refonte Conges Session"
-"Fix the login bug"   → "Login Session"
+Layer 1:  AI asks for confirmation (proactive)
+Layer 2:  Hook validates and blocks if AI forgets (safety net)
+Layer 3:  Full audit trail in MEMORY/SECURITY/ (accountability)
 ```
 
-Pas d'inference IA — extraction par regex rapide. Stocke dans `MEMORY/STATE/session-names.json`.
+#### Severity Levels
 
-### 5. Snapshots pre-edit
+| Level | Action | Examples |
+|:---|:---|:---|
+| **BLOCKED** | Operation denied, exit 2 | `rm -rf /`, `gh repo delete`, `diskutil eraseDisk`, `format C:` |
+| **CONFIRM** | User prompt required | `git push --force`, `DROP TABLE`, `terraform destroy` |
+| **ALERT** | Logged, but allowed | `curl \| bash`, `sudo`, `chmod 777` |
 
-Chaque Write/Edit/MultiEdit sauvegarde le fichier AVANT modification.
-Fonctionne avec ou sans git. Filet de securite universel.
+#### Protected Paths
 
-- Manifest append-only (JSONL) : `.hora/snapshots/manifest.jsonl`
-- Fichiers : `.hora/snapshots/YYYY-MM-DD/HH-MM-SS-mmm_fichier.ext.bak`
-- Limites : 100 derniers snapshots, max 5 Mo par fichier, skip binaires
+| Type | Effect | Examples |
+|:---|:---|:---|
+| **zeroAccess** | No access at all | `~/.ssh/id_*`, `credentials.json`, `.env.production` |
+| **readOnly** | Read only | `/etc/**` |
+| **confirmWrite** | Write requires confirmation | `settings.json`, `.env`, `~/.zshrc` |
+| **noDelete** | Cannot be deleted | `hooks/`, `skills/`, `.hora/`, `.git/` |
 
-### 6. Backup automatique
+All patterns are customizable in `~/.claude/.hora/patterns.yaml`.
 
-Le hook `backup-monitor` surveille les modifications et declenche un backup :
+> **17 blocked patterns, 18 confirm patterns, 6 alert patterns** out of the box. Add your own in YAML.
 
-- **Seuils** : 15 min ecoulees avec fichiers modifies, ou 3+ fichiers dans la session
-- **Remote** : commit + push sur branche miroir `hora/backup/[branche]`
-- **Local** (fallback) : bundle git dans `.hora/backups/` (10 derniers gardes)
-- **Cooldown** : 30s entre checks complets
+---
 
-### 7. Statusline
+### 2. Self-Learning Memory
 
-Barre de statut riche affichee en bas de Claude Code (637 lignes, 3 modes responsive) :
+At the end of every significant session (3+ messages), HORA silently extracts:
+
+| What | Where | How |
+|:---|:---|:---|
+| **Identity** | `MEMORY/PROFILE/identity.md` | Regex on user messages: name, role, location |
+| **Projects** | `MEMORY/PROFILE/projects.md` | Detects project names, tech stacks, goals |
+| **Preferences** | `MEMORY/PROFILE/preferences.md` | Language, style, tools, workflow habits |
+| **Vocabulary** | `MEMORY/PROFILE/vocabulary.md` | Domain-specific terms and abbreviations |
+| **Errors & Lessons** | `MEMORY/LEARNING/FAILURES/` | Detects errors, blocks, corrections (5-line context) |
+| **Sentiment** | `MEMORY/LEARNING/ALGORITHM/` | Session tone analysis (score 1-5) |
+| **Session Archive** | `MEMORY/SESSIONS/` | Summary + first 5000 chars of transcript |
+
+**Everything is silent.** HORA never interrupts your flow. You won't even notice it's learning.
+
+---
+
+### 3. Cross-Session Continuity
+
+HORA maintains conversation threads across sessions using **deferred pairing**:
 
 ```
--- | HORA | -------------------------
- CONTEXTE : [gradient bar] XX%  | Xm
- USAGE : 5H: XX% (reset Xh) | WK: XX%
- GIT : branch | ~/path | Modif:X Nouv:X | Backup: R Xmin
- COMMITS : [mark] hash subject (x3)
- SNAP: X proteges | MODELE : name
---------------------------------------
+Session N:
+  1. prompt-submit.ts saves the user message (pending)
+  2. User works normally
+  3. session-end.ts saves the assistant's last response summary
+
+Session N+1:
+  1. prompt-submit.ts pairs pending messages with responses
+  2. Injects the last 10 exchanges + 3 most recent sessions
+  3. Claude sees the full context from the very first message
 ```
 
-**Donnees affichees :**
-- Contexte window avec barre gradient (emeraude → or → terracotta → rose)
-- Usage API Anthropic 5h et 7 jours (via OAuth, cache 60s)
-- Branche git, chemin projet, fichiers modifies/staged/non-suivis
-- 3 derniers commits (vert = pushed, orange = non pushed)
-- Etat backup (strategie R/L, anciennete, alerte si >20 min)
-- Nombre de snapshots proteges, modele actif
+**Result:** HORA remembers what you were working on and mentions it in its first response.
 
-### 8. Routing intelligent
+```
+You: "hey"
+HORA: "Hey! Last time we were refactoring the auth module.
+       The middleware was done but we still had 2 tests failing. Continue?"
+```
 
-Le hook `prompt-submit` detecte les intentions dans le message et suggere le skill adapte :
+---
 
-| Mots detectes | Suggestion |
-|---|---|
+### 4. Automatic Session Naming
+
+Every session gets a deterministic name from the first prompt:
+
+```
+"Refonte page conges"     -->  "Refonte Conges Session"
+"Fix the login bug"       -->  "Login Session"
+"Implement dark mode"     -->  "Dark Mode Session"
+```
+
+No AI inference — fast regex extraction. Stored in `MEMORY/STATE/session-names.json`.
+
+---
+
+### 5. Pre-Edit Snapshots
+
+Every `Write` / `Edit` / `MultiEdit` saves the file **BEFORE** modification.
+
+```
+.hora/snapshots/
+  manifest.jsonl                           <-- append-only index (JSONL)
+  2026-02-20/
+    10-32-15-042_auth-middleware.ts.bak     <-- timestamped backup
+    10-45-03-118_settings.json.bak
+    11-02-44-901_README.md.bak
+```
+
+| Parameter | Value |
+|:---|:---|
+| Max snapshots | 100 (auto-cleanup at 90) |
+| Max file size | 5 MB |
+| Binary files | Skipped |
+| Git required | No — works with or without git |
+
+**How to restore:**
+```bash
+# Find the snapshot
+grep "filename" ~/.claude/.hora/snapshots/manifest.jsonl | tail -1
+
+# Read the backup
+cat ~/.claude/.hora/snapshots/2026-02-20/10-32-15-042_auth-middleware.ts.bak
+```
+
+---
+
+### 6. Automatic Backup
+
+The `backup-monitor` hook watches for changes and triggers backup automatically:
+
+```
+Trigger conditions:
+  - 15 minutes elapsed with modified files
+  - OR 3+ files modified in the session
+
+Strategy selection:
+  Remote available?  -->  git commit + push to hora/backup/[branch]
+  No remote?         -->  git bundle to .hora/backups/ (keeps last 10)
+
+Cooldown: 30s between full checks
+```
+
+**Restore from backup:**
+
+```bash
+# From mirror branch (GitHub)
+git log hora/backup/main --oneline
+git checkout hora/backup/main -- path/to/file.ts
+
+# From local bundle
+git bundle verify .hora/backups/LATEST.bundle
+git clone .hora/backups/LATEST.bundle ./restored
+```
+
+---
+
+### 7. Rich Statusline
+
+A live status bar at the bottom of Claude Code with 3 responsive modes:
+
+```
+Full mode (>= 80 cols):
+-- | HORA | -------------------------------------------------------
+ CONTEXTE : [==============        ] 68%  | 23m
+ USAGE    : 5H: 42% (reset 2h31) | WK: 18%
+ GIT      : feat/auth | ~/project | Modif:3 Nouv:1 | Backup: R 5min
+ COMMITS  : * a1b2c3d Add auth middleware
+            * e4f5g6h Fix token validation
+            * i7j8k9l Update tests
+ SNAP: 12 proteges | MODELE : claude-sonnet-4-5-20250514
+---------------------------------------------------------------
+
+Normal mode (55-79 cols):
+-- | HORA | --------------------
+ CTX: [========    ] 68% | 23m
+ 5H: 42% (2h31) | WK: 18%
+ feat/auth | M:3 N:1 | Bk:R 5m
+------------------------------
+
+Compact mode (< 55 cols):
+HORA | 68% | 42% | feat/auth
+```
+
+| Data | Source | Platform |
+|:---|:---|:---|
+| Context window % | Claude Code API (JSON stdin) | All |
+| Gradient bar | Emerald -> Gold -> Terracotta -> Rose | All |
+| API usage (5h/7d) | Anthropic OAuth API via macOS Keychain | macOS only |
+| Git status | `git status --porcelain` (cached 15s) | All |
+| Last 3 commits | `git log --oneline -3` | All |
+| Backup status | `.hora/backup-state.json` | All |
+| Snapshot count | `.hora/snapshots/manifest.jsonl` | All |
+| Active model | Claude Code API (JSON stdin) | All |
+
+---
+
+### 8. Intelligent Routing
+
+The `prompt-submit` hook detects intent from your message and suggests the right skill:
+
+| Keywords detected | Suggested skill |
+|:---|:---|
 | refactor, refonte, migration, v2 | `/hora-parallel-code` |
-| compare, analyse, recherche | `/hora-parallel-research` |
-| planifie, architecture, roadmap | `/hora-plan` |
+| compare, analyse, research, benchmark | `/hora-parallel-research` |
+| plan, architecture, roadmap, strategy | `/hora-plan` |
+| from scratch, new project | Branch suggestion |
 
-Detection aussi des nouveaux projets (mots-cles "from scratch", "refonte") avec suggestion de branche.
-
-### 9. Spinner verbs personnalises
-
-50 messages en francais au lieu des generiques Claude Code :
-"Reflexion profonde", "Cartographie du code", "Tissage des liens", "Delegation aux agents"...
-
-### 10. Tool usage logging
-
-Chaque utilisation d'outil est logguee silencieusement dans `MEMORY/.tool-usage.jsonl` pour analytics (nom de l'outil, timestamp, session).
-
-### 11. Context Checkpoint System (anti-compact)
-
-Quand Claude Code compresse le contexte (compaction), Hora detecte et recupere automatiquement :
-
-```
-[Avant compact]  statusline ecrit context % → hook stocke 85%
-[Compact]        Claude Code compresse → contexte tombe a ~20%
-[Recovery]       hook detecte chute >40pts → injecte checkpoint + activity log
-```
-
-**Composants :**
-
-| Composant | Role |
-|---|---|
-| `statusline.sh` | Persiste `context-pct.txt` (ecriture atomique, >0 seulement) |
-| `context-checkpoint.ts` | PreToolUse: detecte compact, injecte recovery via `additionalContext` |
-| `prompt-submit.ts` | A 70% contexte, demande a Claude d'ecrire un checkpoint semantique |
-| `MEMORY/WORK/checkpoint.md` | Checkpoint semantique (objectif, etat, decisions, prochaines etapes) |
-
-**Ghost failures adresses :** faux positifs au demarrage (GF-2), changement de session (GF-3), checkpoints stale (GF-4), race conditions (GF-6), double injection (GF-11), fichier absent (GF-12).
+Skills also trigger via **natural language** — HORA detects the intent, not just keywords.
 
 ---
 
-## Skills
+### 9. Context Checkpoint System
 
-| Commande | Usage |
-|---|---|
-| `/hora-plan "objectif"` | Planification OBSERVE→THINK→PLAN + ISC verifiables |
-| `/hora-autopilot "objectif"` | Execution autonome bout en bout (ne s'arrete pas avant que tous les ISC soient valides) |
-| `/hora-parallel-code "tache"` | Architect decompose, executors en parallele, reviewer global |
-| `/hora-parallel-research "sujet"` | 3-5 angles, researchers en parallele, synthesizer agrege |
-| `/hora-backup` | Sauvegarde immediate (delegue a l'agent backup) |
-
-Les skills se declenchent aussi en **langage naturel** — Hora detecte l'intention.
-
----
-
-## Agents
-
-| Agent | Modele | Role |
-|---|---|---|
-| architect | Opus | Decisions structurelles, design systeme, propose 2-3 options |
-| executor | Sonnet | Implementation, debug, refactoring (modifications chirurgicales) |
-| researcher | Sonnet | Recherche multi-sources, analyse, documentation |
-| reviewer | Haiku | Review rapide, verdict PASS/FAIL, severite Critical/Warning/OK |
-| synthesizer | Haiku | Agregation multi-sources, elimination des doublons |
-| backup | Haiku | Backup git silencieux (branche miroir ou bundle local) |
-
----
-
-## Structure du repo
+When Claude Code compresses context (compaction), HORA detects and recovers automatically:
 
 ```
-hora/
-+-- README.md
-+-- install.sh                 <- Script d'installation (~/.claude/)
-+-- .gitignore
-+-- .hora/                     <- Etat runtime du projet (ignore par git)
-+-- claude/                    <- SOURCE — tout ce qui est deploye dans ~/.claude/
-    +-- CLAUDE.md              <- Algorithm central (The Brain)
-    +-- settings.json          <- Hooks + statusLine + spinnerVerbs
-    +-- statusline.sh          <- Barre de statut (637 lignes, 3 modes)
-    +-- .hora/
-    |   +-- patterns.yaml      <- Regles de securite (17 blocked, 18 confirm, 6 alert)
-    +-- hooks/                 <- 8 hooks TypeScript lifecycle
-    |   +-- snapshot.ts        <- PreToolUse: sauvegarde avant edit
-    |   +-- hora-security.ts   <- PreToolUse: validation securite (parseur YAML custom)
-    |   +-- tool-use.ts        <- PreToolUse: logging silencieux
-    |   +-- context-checkpoint.ts <- PreToolUse: detection compact + recovery
-    |   +-- backup-monitor.ts  <- PostToolUse: detection + execution backup
-    |   +-- prompt-submit.ts   <- UserPromptSubmit: contexte + routing + thread + checkpoint reminder
-    |   +-- hora-session-name.ts <- UserPromptSubmit: nommage auto
-    |   +-- session-end.ts     <- Stop: extraction profil + lecons + sentiment
-    +-- agents/                <- 6 agents specialises
-    |   +-- architect.md       <- Opus : architecture, design systeme
-    |   +-- executor.md        <- Sonnet : implementation, debug
-    |   +-- researcher.md      <- Sonnet : recherche, analyse
-    |   +-- reviewer.md        <- Haiku : review, validation
-    |   +-- synthesizer.md     <- Haiku : agregation multi-sources
-    |   +-- backup.md          <- Haiku : backup git
-    +-- skills/                <- 5 skills (format dossier/SKILL.md)
-    |   +-- hora-plan/SKILL.md           <- /hora-plan
-    |   +-- hora-autopilot/SKILL.md      <- /hora-autopilot
-    |   +-- hora-parallel-code/SKILL.md  <- /hora-parallel-code
-    |   +-- hora-parallel-research/SKILL.md <- /hora-parallel-research
-    |   +-- hora-backup/SKILL.md         <- /hora-backup
-    +-- MEMORY/                <- Memoire persistante (vierge au depart)
-        +-- PROFILE/           <- identity.md, projects.md, preferences.md, vocabulary.md
-        +-- LEARNING/
-        |   +-- FAILURES/      <- Erreurs et lecons extraites
-        |   +-- ALGORITHM/     <- Sentiments et patterns
-        |   +-- SYSTEM/        <- Problemes techniques
-        +-- SESSIONS/          <- Archives de sessions
-        +-- SECURITY/          <- Audit trail securite
-        +-- STATE/             <- Etat courant (session-names, thread-state)
-        +-- WORK/              <- Travaux en cours
+[Before compact]  Statusline writes context % --> hook stores 85%
+[Compact event]   Claude Code compresses     --> context drops to ~20%
+[Recovery]        Hook detects >40pt drop    --> injects checkpoint + activity log
 ```
+
+**How it works:**
+
+```
+statusline.sh          -->  Writes context-pct.txt (atomic write, >0 only)
+                             |
+context-checkpoint.ts  -->  PreToolUse: reads context-pct.txt
+                             |  Detects >40pt drop from stored state
+                             |  Injects recovery via additionalContext
+                             |
+prompt-submit.ts       -->  At 70% context: asks Claude to write a
+                             |  semantic checkpoint to MEMORY/WORK/checkpoint.md
+                             |
+checkpoint.md          -->  Contains: objective, current state,
+                                decisions made, next steps
+```
+
+**Ghost failures addressed:** false positives at startup (GF-2), session boundary (GF-3), stale checkpoints (GF-4), race conditions (GF-6), double injection (GF-11), missing file (GF-12).
 
 ---
 
-## Hooks lifecycle
+### 10. Custom Spinner Verbs
 
-```
-UserPromptSubmit
-  +-- prompt-submit.ts         (injection MEMORY/, routing hints, thread continuity)
-  +-- hora-session-name.ts     (nommage de session au 1er prompt)
+50 French messages replace the generic Claude Code spinners:
 
-PreToolUse
-  +-- snapshot.ts              (Write|Edit|MultiEdit — sauvegarde fichier avant edit)
-  +-- hora-security.ts         (Bash|Edit|Write|Read|MultiEdit — validation securite)
-  +-- tool-use.ts              (* — logging silencieux)
-  +-- context-checkpoint.ts    (* — detection compact + injection recovery)
+> "Reflexion profonde", "Cartographie du code", "Tissage des liens", "Delegation aux agents", "Exploration des possibles", "Verification des hypotheses"...
 
-PostToolUse
-  +-- backup-monitor.ts        (Write|Edit|MultiEdit — detection + backup auto)
-
-Stop
-  +-- session-end.ts           (extraction profil + erreurs + sentiment + archive)
-
-SubagentStop
-  +-- session-end.ts --subagent (skip extraction pour les sous-agents)
-```
+Customizable in the `spinnerVerbs` section of `~/.claude/settings.json`.
 
 ---
 
-## Comment fonctionne l'apprentissage
+### 11. Tool Usage Analytics
 
+Every tool call is silently logged to `MEMORY/.tool-usage.jsonl`:
+
+```json
+{"tool":"Edit","session":"a1b2c3d4","ts":"2026-02-20T10:32:15.042Z"}
+{"tool":"Bash","session":"a1b2c3d4","ts":"2026-02-20T10:32:18.118Z"}
+{"tool":"Read","session":"a1b2c3d4","ts":"2026-02-20T10:32:19.901Z"}
 ```
-Session 1 : vierge -> 3 questions -> MEMORY/PROFILE/ commence a se remplir
-Session 2 : contexte recharge -> Hora sait qui tu es + ce qu'on faisait
-Session N : profil riche + historique -> reponses de plus en plus pertinentes
-```
 
-**Tout est silencieux.** Hora n'interrompt pas ton flow.
+Useful for understanding your workflow patterns over time.
 
 ---
 
-## Architecture technique
+## Skills & Agents
 
-### Zero dependances runtime
+### Skills (slash commands)
 
-Tous les hooks utilisent uniquement les built-ins Node.js (fs, path, crypto). Le parseur YAML de `hora-security.ts` est custom. Aucun `npm install` requis au runtime — seul `tsx` est necessaire pour executer le TypeScript.
+| Command | What it does | Protocol |
+|:---|:---|:---|
+| `/hora-plan "objective"` | Full planning with verifiable ISC criteria | OBSERVE -> THINK -> PLAN -> AUDIT -> Validation |
+| `/hora-autopilot "objective"` | Autonomous end-to-end execution | OBSERVE -> THINK -> PLAN -> AUDIT -> BUILD -> VERIFY |
+| `/hora-parallel-code "task"` | Multi-agent codebase work | Architect decomposes -> AUDIT -> Executors in parallel -> Review |
+| `/hora-parallel-research "topic"` | Multi-angle research | 3-5 angles -> AUDIT -> Researchers in parallel -> Synthesizer |
+| `/hora-backup` | Immediate backup | Delegates to backup agent |
 
-### Fail-safe
-
-Chaque hook wrappe sa logique dans try/catch et sort `exit 0` en cas d'erreur. Les hooks ne bloquent **jamais** Claude Code, meme si un fichier est manquant ou corrompu.
-
-### Deferred pairing
-
-Les hooks ne voient pas simultanément le message user et la reponse assistant. Le systeme contourne cette limitation :
-1. `prompt-submit.ts` sauvegarde le message user au moment du prompt
-2. `session-end.ts` sauvegarde le resume assistant en fin de session
-3. Au prochain prompt, les deux sont apparies dans l'historique continu
-
-### macOS-specifique
-
-La statusline extrait le token OAuth depuis le macOS Keychain (`security find-generic-password`) pour l'API usage Anthropic. Les commandes `stat` ont des fallbacks macOS.
-
----
-
-## Comparaison
-
-| Critere | PAI | OMC | **HORA** |
-|---|---|---|---|
-| Setup initial | Templates a remplir | Plugin a configurer | **Aucun — 3 questions** |
-| Memoire long terme | Riche | Basique | **Auto-construite** |
-| Securite | Allow/deny/ask | Aucune | **Defense en couches + audit** |
-| Continuite cross-session | Non | Non | **Thread persistence** |
-| Learning extraction | A chaque session | Non | **Profil + erreurs + sentiment** |
-| Session naming | IA inference | Non | **Deterministe rapide** |
-| Statusline | Non | Non | **Riche (contexte, git, usage API, backup)** |
-| Compact recovery | Non | Non | **Auto-detection + checkpoint injection** |
-| Multi-agents | Oui | Oui (focus) | **Oui (6 agents, 3 modeles)** |
-| Routing modeles | Non | Oui | **Oui (Opus/Sonnet/Haiku)** |
-| Dependances | Bun, plugin PAI | Plugin OMC | **tsx uniquement** |
-| Spinner custom | 696 verbes EN | Non | **50 verbes FR** |
-
----
-
-## Personnalisation
-
-### Regles de securite
-
-Edite `~/.claude/.hora/patterns.yaml` pour ajouter/modifier les patterns bloques, a confirmer ou en alerte.
-
-### Spinner verbs
-
-Edite la section `spinnerVerbs` dans `~/.claude/settings.json`.
+> Every skill includes an **AUDIT step** that identifies ghost failures (silent failure modes) before any code is written.
 
 ### Agents
 
-Modifie les fichiers dans `~/.claude/agents/`. Chaque `.md` definit le modele, les outils autorises et le protocol.
+| Agent | Model | Role | When to use |
+|:---|:---:|:---|:---|
+| **architect** | Opus | Structural decisions, system design, proposes 2-3 options | Architecture, design system, tech choices |
+| **executor** | Sonnet | Implementation, debug, refactoring (surgical modifications) | Code changes, bug fixes, feature implementation |
+| **researcher** | Sonnet | Multi-source research, analysis, documentation | Technology comparison, due diligence |
+| **reviewer** | Haiku | Quick review, PASS/FAIL verdict, Critical/Warning/OK severity | Code review, validation |
+| **synthesizer** | Haiku | Multi-source aggregation, deduplication | Combining research from multiple angles |
+| **backup** | Haiku | Silent git backup (mirror branch or local bundle) | Automated by backup-monitor hook |
+
+> Agents are only activated when needed. Simple tasks get direct responses — no over-delegation.
+
+---
+
+## The Algorithm
+
+HORA follows a structured reasoning process for every task:
+
+```
+0. PRIORITIES (in case of conflict)
+   Security > Ethics > Robustness > HORA Guidelines > Utility
+
+1. EXPLORE
+   Read before writing. Always.
+   - What's the real ask behind the words?
+   - SSOT: Does this logic already exist? If yes --> reuse.
+   - Can what's in production break?
+
+2. PLAN
+   | Impact               | Thinking level                    |
+   |----------------------|-----------------------------------|
+   | Isolated / cosmetic  | Standard                          |
+   | Business logic       | Think hard                        |
+   | Auth / data / infra  | Ultrathink + user validation      |
+
+3. AUDIT (Ghost Failures)
+   Before coding, identify silent failure modes:
+   - What happens if this integration point fails, times out, or returns unexpected data?
+   - Is each technical assumption VERIFIED or ASSUMED?
+   - Race conditions, stale files, false positives?
+
+   Critical ghost failure found? --> Test before coding.
+   None found? --> Document why (negative proof).
+
+4. CODE
+   - Errors handled explicitly (no silent failures)
+   - Search before creating (SSOT)
+   - Modify only what's in scope (minimal footprint)
+
+5. COMMIT
+   - Verify each ISC criterion
+   - Message: what / why / impact
+   - Flag: tech debt introduced, uncovered edge cases, next steps
+```
+
+> **Robustness > Speed. SSOT > Convenience.**
+> A bug in production costs more than 30 minutes of design.
+
+---
+
+## Architecture
+
+### How hooks work
+
+```
+                         Claude Code
+                              |
+                    +---------+---------+
+                    |                   |
+              User Prompt          Tool Call
+                    |                   |
+           +--------+--------+    +----+----+
+           |                 |    |         |
+    UserPromptSubmit    PreToolUse    PostToolUse    Stop
+           |                 |         |              |
+    prompt-submit.ts   snapshot.ts  backup-monitor  session-end.ts
+    hora-session-name  hora-security     .ts          |
+           .ts         tool-use.ts                 Extract:
+           |           context-                    - Profile
+    Injects:           checkpoint.ts               - Errors
+    - MEMORY/                |                     - Sentiment
+    - Thread history   Validates:                  - Archive
+    - Routing hints    - Security rules
+    - Checkpoint       - Pre-edit snapshot
+      reminder         - Tool logging
+                       - Compact detection
+```
+
+### Data flow
+
+```
+                    ~/.claude/
+                         |
+        +--------+-------+-------+--------+
+        |        |       |       |        |
+     MEMORY/   hooks/  agents/  skills/  .hora/
+        |                                  |
+   +----+----+                    +--------+--------+
+   |    |    |                    |        |        |
+PROFILE/ LEARNING/ SESSIONS/  snapshots/ backups/ state/
+   |       |          |           |                  |
+identity errors    archives    manifest.jsonl   context-pct.txt
+projects failures  summaries   timestamped       backup-state
+prefs    sentiment             .bak files        session-state
+vocab    system
+```
+
+### Zero runtime dependencies
+
+All hooks use **only Node.js built-ins** (`fs`, `path`, `crypto`). The YAML parser in `hora-security.ts` is custom-written. No `npm install` required at runtime — only `tsx` is needed to execute TypeScript.
+
+### Fail-safe design
+
+Every hook wraps its logic in `try/catch` and exits `0` on error. **Hooks never block Claude Code**, even if a file is missing or corrupted.
+
+### Deferred pairing
+
+Hooks can't see both the user message and assistant response simultaneously. HORA works around this:
+
+1. `prompt-submit.ts` saves the user message at prompt time
+2. `session-end.ts` saves the assistant response summary at session end
+3. On next prompt, both are paired into a continuous thread history
+
+### Cross-platform
+
+| Component | macOS | Linux | Windows (Git Bash) |
+|:---|:---:|:---:|:---:|
+| install.sh | Full | Full | Full |
+| install.ps1 | N/A | N/A | Full (entry point) |
+| TypeScript hooks | Full | Full | Full |
+| statusline.sh | Full | Full | Full (no API usage*) |
+| Security patterns | Full | Full | Full |
+
+> \* API usage display requires macOS Keychain. On Windows/Linux, the statusline gracefully degrades — all other data (context %, git, backup, commits) works everywhere.
+
+---
+
+## Hooks Lifecycle
+
+```
+UserPromptSubmit (fires on every user message)
+  |-- prompt-submit.ts         Injects MEMORY/, routing hints, thread continuity,
+  |                            checkpoint reminder at 70% context
+  |-- hora-session-name.ts     Names the session on first prompt
+
+PreToolUse (fires before every tool call)
+  |-- snapshot.ts              Write|Edit|MultiEdit: saves file before edit
+  |-- hora-security.ts         Bash|Edit|Write|Read|MultiEdit: security validation
+  |-- tool-use.ts              *: silent usage logging
+  |-- context-checkpoint.ts    *: compact detection + recovery injection
+
+PostToolUse (fires after every tool call)
+  |-- backup-monitor.ts        Write|Edit|MultiEdit: monitors changes, triggers backup
+
+Stop (fires at session end)
+  |-- session-end.ts           Extracts profile + errors + sentiment + archive
+
+SubagentStop
+  |-- session-end.ts --subagent  Skips extraction for sub-agents
+```
+
+---
+
+## Repository Structure
+
+```
+hora/
+|-- README.md
+|-- install.sh                    # Installer (macOS/Linux/Windows via Git Bash)
+|-- install.ps1                   # Windows PowerShell entry point
+|-- .gitattributes                # Forces LF line endings (prevents Windows CRLF issues)
+|-- .gitignore
+|-- .hora/                        # Runtime state (git-ignored)
+|
+|-- claude/                       # SOURCE — everything deployed to ~/.claude/
+    |
+    |-- CLAUDE.md                 # The Algorithm (central brain)
+    |-- settings.json             # Hooks + statusLine + spinnerVerbs
+    |-- statusline.sh             # Rich status bar (3 responsive modes)
+    |
+    |-- .hora/
+    |   |-- patterns.yaml         # Security rules (17 blocked, 18 confirm, 6 alert)
+    |
+    |-- hooks/                    # 8 TypeScript lifecycle hooks
+    |   |-- snapshot.ts           #   PreToolUse: pre-edit file backup
+    |   |-- hora-security.ts      #   PreToolUse: security validation (custom YAML parser)
+    |   |-- tool-use.ts           #   PreToolUse: silent usage logging
+    |   |-- context-checkpoint.ts #   PreToolUse: compact detection + recovery
+    |   |-- backup-monitor.ts     #   PostToolUse: auto-backup trigger
+    |   |-- prompt-submit.ts      #   UserPromptSubmit: context + routing + thread + checkpoint
+    |   |-- hora-session-name.ts  #   UserPromptSubmit: auto session naming
+    |   |-- session-end.ts        #   Stop: profile + errors + sentiment + archive extraction
+    |
+    |-- agents/                   # 6 specialized agents
+    |   |-- architect.md          #   Opus: architecture, system design
+    |   |-- executor.md           #   Sonnet: implementation, debug
+    |   |-- researcher.md         #   Sonnet: research, analysis
+    |   |-- reviewer.md           #   Haiku: review, validation
+    |   |-- synthesizer.md        #   Haiku: multi-source aggregation
+    |   |-- backup.md             #   Haiku: git backup
+    |
+    |-- skills/                   # 5 skills (directory/SKILL.md format)
+    |   |-- hora-plan/SKILL.md
+    |   |-- hora-autopilot/SKILL.md
+    |   |-- hora-parallel-code/SKILL.md
+    |   |-- hora-parallel-research/SKILL.md
+    |   |-- hora-backup/SKILL.md
+    |
+    |-- MEMORY/                   # Persistent memory (empty at start)
+        |-- PROFILE/              #   identity.md, projects.md, preferences.md, vocabulary.md
+        |-- LEARNING/
+        |   |-- FAILURES/         #   Extracted errors and lessons
+        |   |-- ALGORITHM/        #   Sentiment patterns
+        |   |-- SYSTEM/           #   Technical issues
+        |-- SESSIONS/             #   Session archives
+        |-- SECURITY/             #   Security audit trail
+        |-- STATE/                #   Current state (session names, thread state)
+        |-- WORK/                 #   Work in progress (checkpoints)
+```
+
+---
+
+## What HORA Provides
+
+| Capability | Details |
+|:---|:---|
+| **Initial setup** | Nothing — 3 questions, then it learns |
+| **Long-term memory** | Self-constructed from sessions |
+| **Security** | Layered defense + audit trail |
+| **Cross-session continuity** | Thread persistence across sessions |
+| **Learning extraction** | Profile + errors + sentiment |
+| **Session naming** | Deterministic (fast regex, no AI) |
+| **Statusline** | Rich (context %, git, API usage, backup) |
+| **Compact recovery** | Auto-detection + checkpoint injection |
+| **Pre-edit snapshots** | Every edit, with or without git |
+| **Auto backup** | Mirror branch or local bundle |
+| **Multi-agents** | 6 agents across 3 models |
+| **Model routing** | Opus / Sonnet / Haiku |
+| **Ghost failure detection** | Built into the Algorithm |
+| **Cross-platform** | macOS / Linux / Windows |
+| **Runtime dependencies** | tsx only |
+| **Custom spinners** | 50 verbs (FR, customizable) |
+
+---
+
+## Customization
+
+### Security rules
+
+Edit `~/.claude/.hora/patterns.yaml`:
+
+```yaml
+blocked:
+  - pattern: "rm -rf /"
+    reason: "System destruction"
+  - pattern: "your-custom-pattern"
+    reason: "Your reason"
+
+confirm:
+  - pattern: "git push --force"
+    reason: "Force push — may lose commits"
+
+alert:
+  - pattern: "sudo"
+    reason: "Elevated privileges"
+```
+
+### Agents
+
+Edit files in `~/.claude/agents/`. Each `.md` file defines the model, authorized tools, and protocol:
+
+```markdown
+# Agent: your-agent-name
+
+Model: sonnet
+Tools: Read, Write, Edit, Bash, Glob, Grep
+
+## Protocol
+1. First step
+2. Second step
+```
 
 ### Skills
 
-Modifie les fichiers dans `~/.claude/skills/`. Chaque skill suit le format OBSERVE → PLAN → BUILD → VERIFY.
+Edit files in `~/.claude/skills/`. Each skill follows the directory format with `SKILL.md` + YAML frontmatter:
+
+```
+~/.claude/skills/your-skill/SKILL.md
+```
+
+```markdown
+---
+name: your-skill
+description: What it does. USE WHEN trigger words.
+---
+
+# Skill: your-skill
+
+## Protocol
+### 1. Step one
+### 2. Step two
+```
+
+### Spinner verbs
+
+Edit the `spinnerVerbs` section in `~/.claude/settings.json`:
+
+```json
+{
+  "spinnerVerbs": [
+    "Your custom message 1",
+    "Your custom message 2"
+  ]
+}
+```
+
+---
+
+## Windows Notes
+
+Claude Code on Windows runs through **Git Bash** (provided by [Git for Windows](https://git-scm.com/download/win)). This means:
+
+- All shell scripts work natively through Git Bash
+- TypeScript hooks execute via `npx tsx` (requires Node.js in PATH)
+- `~` expands to `%USERPROFILE%` via Git Bash
+
+**Known issues & workarounds:**
+
+| Issue | Workaround |
+|:---|:---|
+| Hooks fail with `'bash' is not recognized` | Set `CLAUDE_CODE_GIT_BASH_PATH` env var ([#22700](https://github.com/anthropics/claude-code/issues/22700)) |
+| WSL bash hijacks Git Bash | Set `CLAUDE_CODE_GIT_BASH_PATH` explicitly ([#26006](https://github.com/anthropics/claude-code/issues/26006)) |
+| Console window flashes on hook execution | Known Claude Code limitation ([#17230](https://github.com/anthropics/claude-code/issues/17230)) |
+| API usage not displayed | macOS Keychain only — degrades gracefully on Windows |
+| CRLF corrupts scripts | Handled by `.gitattributes` (forces LF) |
+
+```powershell
+# Fix hooks on Windows (run once):
+[System.Environment]::SetEnvironmentVariable(
+    'CLAUDE_CODE_GIT_BASH_PATH',
+    'C:\Program Files\Git\bin\bash.exe',
+    'User'
+)
+```
+
+---
+
+## FAQ
+
+<details>
+<summary><strong>Does HORA send my data anywhere?</strong></summary>
+
+No. Everything stays local in `~/.claude/`. The only network call is the Anthropic API usage check (macOS only, uses your existing Claude Code OAuth token). No telemetry, no analytics, no external services.
+</details>
+
+<details>
+<summary><strong>Can HORA break my Claude Code setup?</strong></summary>
+
+No. The installer backs up all your data first and can be rolled back with `bash install.sh --restore`. HORA merges into your existing config — it doesn't replace it. Every hook is fail-safe (try/catch + exit 0).
+</details>
+
+<details>
+<summary><strong>What happens if I uninstall HORA?</strong></summary>
+
+Run `bash install.sh --restore` to get back to your pre-HORA state. Or manually remove the HORA blocks from `~/.claude/CLAUDE.md` and `~/.claude/settings.json`.
+</details>
+
+<details>
+<summary><strong>Does it work with other Claude Code extensions?</strong></summary>
+
+Yes. The installer preserves third-party hooks during merge (requires jq). HORA hooks are additive — they don't interfere with existing ones.
+</details>
+
+<details>
+<summary><strong>Can I use it in English?</strong></summary>
+
+Yes. HORA's internal language is French (comments, spinner verbs, skill descriptions) but it works with any language. Memory extraction and session continuity are language-agnostic. You can customize spinner verbs to English in `settings.json`.
+</details>
+
+<details>
+<summary><strong>What's the performance impact?</strong></summary>
+
+Minimal. Each hook runs in 10-50ms. The statusline is a single bash script. Backup checks have a 30s cooldown. The heaviest operation (session-end extraction) only runs once per session.
+</details>
+
+<details>
+<summary><strong>What's a "ghost failure"?</strong></summary>
+
+A ghost failure is when something fails **silently** — no error, no warning, but the system doesn't work as expected. HORA's Algorithm includes a mandatory AUDIT step that identifies these before any code is written. Example: the discovery that `system_reminder` output from PreToolUse hooks is silently ignored by Claude Code (the correct format is `hookSpecificOutput.additionalContext`).
+</details>
+
+---
+
+## Contributing
+
+Contributions are welcome! HORA is built with a specific philosophy:
+
+1. **Zero runtime dependencies** — only Node.js built-ins
+2. **Fail-safe everything** — hooks must never block Claude Code
+3. **Silent by default** — never interrupt the user's flow
+4. **SSOT** — search before creating, reuse before duplicating
+5. **Ghost failure awareness** — identify silent failures before coding
+
+### Development
+
+```bash
+# Clone and install
+git clone https://github.com/Vivien83/Hora.git
+cd Hora
+bash install.sh
+
+# Test changes
+bash install.sh --dry-run     # Verify installer
+npx tsx claude/hooks/FILE.ts  # Test individual hooks
+
+# The source is in claude/ — everything deploys to ~/.claude/
+```
+
+---
+
+## Acknowledgments
+
+HORA was born from the inspiration of two projects: [PAI](https://github.com/danielmiessler/Personal_AI_Infrastructure) by Daniel Miessler and [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) by Yeachan Heo. Their work showed what was possible with Claude Code — HORA takes a different path, but wouldn't exist without them.
 
 ---
 
 ## License
 
-MIT — Libre, open-source, forever.
+**MIT** — Free, open-source, forever.
+
+---
+
+<p align="center">
+  <strong>HORA starts empty and builds itself through usage.</strong><br>
+  The more you use it, the more it knows. The more it knows, the better it helps.
+</p>

@@ -3,7 +3,7 @@
 ## Qu'est-ce que Hora ?
 
 Hora est une infrastructure personnelle pour Claude Code, installee dans `~/.claude/`.
-C'est le successeur de PAI (Personal AI Infrastructure), reecrit from scratch pour etre plus leger et natif.
+C'est une infrastructure native pour Claude Code, legere et auto-apprenante.
 
 Objectif : transformer Claude Code en assistant personnel auto-apprenant,
 avec memoire persistante entre sessions, hooks intelligents, securite integree et statusline de monitoring.
@@ -149,7 +149,7 @@ Choix delibere : extraction deterministe pour eviter la latence et les dependanc
 ## Ce qui fonctionne
 
 - [x] Install script (install.sh) avec backup/restore des sessions Claude
-- [x] Suppression automatique des hooks PAI lors de l'installation
+- [x] Nettoyage automatique des hooks tiers lors de l'installation
 - [x] Merge intelligent de settings.json (pas d'ecrasement des hooks existants)
 - [x] statusline.sh connecte via le mecanisme natif Claude Code
 - [x] CLAUDE.md avec section securite, learning, session naming
