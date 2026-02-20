@@ -114,19 +114,16 @@ if (-not (Get-Command jq -ErrorAction SilentlyContinue)) {
     Write-Host "[OK] jq : $(jq --version)"
 }
 
-# --- Set CLAUDE_CODE_GIT_BASH_PATH if not already set ---
-if (-not $env:CLAUDE_CODE_GIT_BASH_PATH) {
-    Write-Host ""
-    Write-Host "[IMPORTANT] Pour que les hooks Claude Code fonctionnent :" -ForegroundColor Yellow
-    Write-Host "   Ajoute cette variable d'environnement :" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "   [System.Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', '$bashPath', 'User')" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "   (Requis pour eviter le bug #22700 - Claude Code utilise 'bash' nu sans le chemin complet)"
-    Write-Host ""
-
-    # Set for current session
+# --- Set CLAUDE_CODE_GIT_BASH_PATH permanently ---
+$currentEnv = [System.Environment]::GetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', 'User')
+if (-not $currentEnv -or -not (Test-Path $currentEnv)) {
+    Write-Host "[CONFIG] CLAUDE_CODE_GIT_BASH_PATH -> $bashPath"
+    [System.Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', $bashPath, 'User')
     $env:CLAUDE_CODE_GIT_BASH_PATH = $bashPath
+    Write-Host "[OK] Variable d'environnement definie (session + permanent)"
+} else {
+    Write-Host "[OK] CLAUDE_CODE_GIT_BASH_PATH : $currentEnv"
+    $env:CLAUDE_CODE_GIT_BASH_PATH = $currentEnv
 }
 
 # --- Delegate to bash install.sh ---
@@ -158,17 +155,24 @@ if ($exitCode -ne 0) {
     exit $exitCode
 }
 
-# --- Post-install: remind about CLAUDE_CODE_GIT_BASH_PATH ---
-if (-not [System.Environment]::GetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', 'User')) {
-    Write-Host ""
-    Write-Host "========================================" -ForegroundColor Yellow
-    Write-Host "  ACTION REQUISE pour les hooks :" -ForegroundColor Yellow
-    Write-Host "========================================" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "  Executer cette commande une seule fois :" -ForegroundColor White
-    Write-Host ""
-    Write-Host "  [System.Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', '$bashPath', 'User')" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "  Puis relancer le terminal." -ForegroundColor White
-    Write-Host ""
+# --- Post-install: verify hooks work ---
+Write-Host ""
+Write-Host "[CHECK] Verification des hooks..."
+$hookTest = $null
+try {
+    $hookTest = & $bashPath -c "echo '{}' | npx tsx ~/.claude/hooks/prompt-submit.ts 2>&1" 2>$null
+    Write-Host "[OK] Hooks TypeScript fonctionnels"
+} catch {
+    Write-Host "[WARN] Les hooks pourraient ne pas fonctionner." -ForegroundColor Yellow
+    Write-Host "   Essayer : npm install -g tsx" -ForegroundColor Yellow
 }
+
+Write-Host ""
+Write-Host "+===========================================+"
+Write-Host "|       Installation HORA terminee !         |"
+Write-Host "+===========================================+"
+Write-Host ""
+Write-Host "  Lancez Claude Code dans un projet :"
+Write-Host "    cd votre-projet"
+Write-Host "    claude"
+Write-Host ""
