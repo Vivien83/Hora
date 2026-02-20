@@ -23,6 +23,13 @@ Sauvegarde manuelle immediate. Delegue a l'agent backup.
 
 ## Protocol
 
+### Pre-check (AUDIT)
+Avant de deleguer, verifier :
+- Remote accessible ? (timeout reseau = fallback bundle local automatique)
+- Branche courante identifiee ? (ne jamais toucher main)
+- Espace disque suffisant pour bundle local ? (`df -h .hora/`)
+
+### Execution
 Delegue a l'agent `backup` avec l'instruction :
 
 ```

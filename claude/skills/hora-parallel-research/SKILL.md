@@ -24,7 +24,17 @@ Exemples pour "choisir une base de donnees" :
 - Angle 3 : Cout et licensing
 - Angle 4 : Cas d'usage similaires au projet
 
-### 2. Dispatch (researcher x N)
+### 2. AUDIT (ghost failures)
+Avant de dispatcher les researchers, verifier :
+- Angles redondants ou avec overlap significatif ? (gaspillage d'agents)
+- Sources potentiellement biaisees ou contradictoires ?
+- Hypotheses non verifiees sur la disponibilite/qualite des sources ?
+- Risque de synthese superficielle si trop d'angles (profondeur vs couverture) ?
+
+Si ghost failure critique → reduire ou ajuster les angles avant dispatch.
+Si aucun → documenter pourquoi.
+
+### 3. Dispatch (researcher x N)
 Lance un agent researcher par angle via Task :
 
 ```
@@ -33,10 +43,10 @@ Recherche uniquement sur cet angle. Produis un output structure
 avec findings, sources, points cles, et limites."
 ```
 
-### 3. Agregation (synthesizer)
+### 4. Agregation (synthesizer)
 Une fois tous les researchers termines, passe leurs outputs a synthesizer.
 
-### 4. Rapport final
+### 5. Rapport final
 
 ```
 ## Research — [sujet]

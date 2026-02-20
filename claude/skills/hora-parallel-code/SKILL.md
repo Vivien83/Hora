@@ -20,7 +20,17 @@ Execution parallele multi-agents sur une codebase. Optimal pour refactoring, mig
 - Identifie les dependances entre sous-taches
 - Separe en taches **independantes** (parallelisables) et **sequentielles** (ordonnees)
 
-### 2. Dispatch (executor x N)
+### 2. AUDIT (ghost failures)
+Avant de dispatcher les executors, verifier :
+- Dependances circulaires entre taches ? (parallelisation impossible)
+- Fichiers partages entre taches ? (conflit de modification simultanee)
+- Hypotheses sur l'etat du code : **verifiees** ou **supposees** ?
+- Impact de chaque modification sur les tests existants ?
+
+Si ghost failure critique → ajuster la decomposition avant dispatch.
+Si aucun → documenter pourquoi.
+
+### 3. Dispatch (executor x N)
 Pour chaque tache independante, lance un agent executor via Task :
 
 ```
@@ -29,18 +39,18 @@ Contexte : [ce que l'agent doit savoir].
 Contrainte : ne pas modifier [Y] ni [Z]."
 ```
 
-### 3. Coordination
+### 4. Coordination
 - Les taches sequentielles attendent la fin des paralleles
 - Si un executor echoue → signale et propose correction
 - Pas de modification de fichier partage en simultane
 
-### 4. Review (reviewer)
+### 5. Review (reviewer)
 Une fois tous les executors termines :
 - Review globale des modifications
 - Verification de coherence inter-fichiers
 - Test si possible (Bash)
 
-### 5. Rapport final
+### 6. Rapport final
 
 ```
 ## Parallel-code — Resultat
