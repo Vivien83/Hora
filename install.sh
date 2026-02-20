@@ -75,6 +75,11 @@ backup_all() {
   done
   $has_data || return 0
 
+  # Migration : si "latest" est un dossier/symlink (ancienne version), le supprimer
+  if [ -d "$BACKUP_BASE/latest" ] || [ -L "$BACKUP_BASE/latest" ]; then
+    rm -rf "$BACKUP_BASE/latest"
+  fi
+
   local ts
   ts=$(date +%Y%m%d-%H%M%S)
   local backup_dir="$BACKUP_BASE/$ts"
@@ -104,9 +109,8 @@ backup_all() {
   done
 
   if ! $DRY_RUN; then
-    # Mettre a jour le symlink latest
-    rm -f "$BACKUP_BASE/latest"
-    ln -sf "$ts" "$BACKUP_BASE/latest"
+    # Mettre a jour le marqueur latest (fichier texte, pas symlink — Windows compat)
+    echo "$ts" > "$BACKUP_BASE/latest"
 
     # Rotation : garder les BACKUP_MAX derniers
     local backups=()
@@ -144,8 +148,8 @@ do_restore() {
         local name
         name=$(basename "$d")
         local marker=""
-        if [ -L "$BACKUP_BASE/latest" ]; then
-          [ "$(readlink "$BACKUP_BASE/latest")" = "$name" ] && marker=" <- latest"
+        if [ -f "$BACKUP_BASE/latest" ]; then
+          [ "$(cat "$BACKUP_BASE/latest" 2>/dev/null | tr -d '[:space:]')" = "$name" ] && marker=" <- latest"
         fi
         # Compter les elements dans le backup
         local file_count
@@ -164,12 +168,12 @@ do_restore() {
   # Resoudre "latest"
   local restore_dir
   if [ "$target" = "latest" ]; then
-    if [ ! -L "$BACKUP_BASE/latest" ]; then
+    if [ ! -f "$BACKUP_BASE/latest" ]; then
       echo "[ERREUR] Aucun backup 'latest' trouve."
       echo "   Lance : bash install.sh --list-backups"
       exit 1
     fi
-    restore_dir="$BACKUP_BASE/$(readlink "$BACKUP_BASE/latest")"
+    restore_dir="$BACKUP_BASE/$(cat "$BACKUP_BASE/latest" | tr -d '[:space:]')"
   else
     restore_dir="$BACKUP_BASE/$target"
   fi
@@ -649,8 +653,8 @@ ISSUES=0
 
 # Verifier que les donnees de session n'ont pas ete perdues
 LATEST_BACKUP=""
-if [ -L "$BACKUP_BASE/latest" ] && [ -d "$BACKUP_BASE/$(readlink "$BACKUP_BASE/latest")" ]; then
-  LATEST_BACKUP="$BACKUP_BASE/$(readlink "$BACKUP_BASE/latest")"
+if [ -f "$BACKUP_BASE/latest" ] && [ -d "$BACKUP_BASE/$(cat "$BACKUP_BASE/latest" | tr -d '[:space:]')" ]; then
+  LATEST_BACKUP="$BACKUP_BASE/$(cat "$BACKUP_BASE/latest" | tr -d '[:space:]')"
 fi
 
 if [ -n "$LATEST_BACKUP" ]; then
