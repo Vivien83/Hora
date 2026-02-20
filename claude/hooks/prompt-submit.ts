@@ -496,6 +496,39 @@ async function main() {
     }
     // else: profil vide mais historique present → skip les questions, le thread suffit
 
+    // --- Project knowledge injection ---
+    const projectKnowledgeFile = path.join(process.cwd(), ".hora", "project-knowledge.md");
+    try {
+      if (fs.existsSync(projectKnowledgeFile)) {
+        // Projet connu → injecter le knowledge comme contexte
+        const knowledge = readFile(projectKnowledgeFile);
+        if (knowledge && knowledge.length > 20) {
+          parts.push(`[HORA PROJECT KNOWLEDGE]\n${truncate(knowledge, 3000)}`);
+        }
+      } else {
+        // Nouveau projet → proposer un audit complet
+        const projectName = path.basename(process.cwd());
+        const hasCode = (() => {
+          try {
+            // Verifier qu'il y a du code (pas un dossier vide)
+            const files = fs.readdirSync(process.cwd()).filter(
+              (f) => !f.startsWith(".") && f !== "node_modules"
+            );
+            return files.length > 0;
+          } catch { return false; }
+        })();
+        if (hasCode) {
+          parts.push(
+            `[HORA AUDIT] Nouveau projet "${projectName}" sans audit.\n` +
+            `INSTRUCTION : Propose a l'utilisateur un audit complet du projet AVANT de travailler.\n` +
+            `L'audit doit couvrir : architecture, stack, failles (avec severite), dette technique, points positifs.\n` +
+            `Utilise /hora-parallel-code pour explorer la codebase en parallele.\n` +
+            `Resultat a ecrire dans .hora/project-knowledge.md`
+          );
+        }
+      }
+    } catch {}
+
     // Thread injection (premier message, filtre par projet courant)
     if (hasThreadHistory) {
       const threadText = formatThreadForInjection(thread, getProjectId());
