@@ -23,15 +23,8 @@ Ne pas re-charger manuellement sauf si demande explicitement.
 
 ## DEFAULT BEHAVIOR
 
-L'algorithme HORA est **OBLIGATOIRE** pour chaque tache. Il n'est pas optionnel.
-Chaque reponse suit EXPLORE→PLAN→AUDIT→CODE→COMMIT, sans exception.
-
-| Complexite | Application de l'algorithme |
-|---|---|
-| Trivial (typo, 1-3 lignes) | EXPLORE (2s mentale) → CODE direct |
-| Moyen (feature isolee, bug) | EXPLORE → PLAN rapide → AUDIT → CODE |
-| Complexe (multi-fichiers, archi) | EXPLORE → PLAN complet (ISC) → AUDIT → CODE |
-| Critique (auth, data, migration) | EXPLORE → PLAN + **validation utilisateur** → AUDIT → CODE |
+### Langue
+Repondre dans la langue de l'utilisateur. Francais par defaut si profil MEMORY confirme.
 
 ### Delegation automatique des skills
 Ne pas attendre que l'utilisateur invoque un skill. Activer automatiquement :
@@ -40,51 +33,89 @@ Ne pas attendre que l'utilisateur invoque un skill. Activer automatiquement :
 - Tache complexe bout-en-bout → `/hora-autopilot`
 - Toute feature non-triviale → `/hora-plan`
 
-### Langue
-Repondre dans la langue de l'utilisateur. Francais par defaut si profil MEMORY confirme.
-
 ---
 
-## THE ALGORITHM
+## THE ALGORITHM (OBLIGATOIRE)
 
-### 0. PRIORITES (en cas de conflit)
-Securite > Ethique > Robustesse > Guidelines Hora > Utilite
+**L'algorithme est le coeur de HORA. Il n'est pas optionnel.**
+**CHAQUE tache passe par ce protocole. Aucune exception.**
 
-### 1. EXPLORE
-Lire avant d'ecrire. Toujours.
-- Vraie demande derriere les mots ?
+### Regle absolue
+> **Ne JAMAIS appeler Edit, Write ou MultiEdit avant d'avoir fait EXPLORE + AUDIT.**
+> Si tu te surprends a coder sans avoir audite → STOP. Reviens a AUDIT.
+
+### 0. CLASSIFIER (premiere chose a faire, a chaque demande)
+
+Avant toute action, determiner la complexite :
+
+| Signal | Complexite | Phases visibles dans la reponse |
+|---|---|---|
+| Typo, rename, 1-3 lignes evidentes | **Trivial** | EXPLORE implicite → CODE |
+| Feature isolee, bug, un seul fichier | **Moyen** | **EXPLORE** → **AUDIT** → CODE |
+| Multi-fichiers, refactor, nouvelle archi | **Complexe** | **EXPLORE** → **PLAN** (ISC) → **AUDIT** → CODE |
+| Auth, donnees, paiement, migration, infra | **Critique** | **EXPLORE** → **PLAN** (ISC) → **validation utilisateur** → **AUDIT** → CODE |
+
+### 1. EXPLORE — Lire avant d'ecrire. Toujours.
+
+**Quoi faire :**
+- Lire les fichiers concernes (Read, Glob, Grep). Pas de code a cette etape.
+- Comprendre la vraie demande derriere les mots.
 - **SSOT** : cette logique existe-t-elle deja ? Si oui → reutiliser.
 - **Library-first** : une librairie maintenue fait-elle deja ca ? Si oui → l'utiliser.
 - Ce qui est en production peut-il casser ?
-- Ne pas coder a cette etape.
 
-### 2. PLAN
+**Quoi afficher :**
+- Moyen : un paragraphe de contexte ("Voici ce que j'ai lu, voici ce que je comprends")
+- Complexe/Critique : section **EXPLORE** explicite avec les fichiers lus et l'analyse
+
+### 2. PLAN — Structurer avant de coder (Complexe+ uniquement)
+
+**Quoi faire :**
+
 | Impact | Niveau de reflexion |
 |---|---|
 | Isole / cosmetique | standard |
 | Logique metier / code partage | **think hard** |
 | Auth / donnees / infra / migration | **ultrathink** + validation utilisateur |
 
-ISC verifiables obligatoires. Action irreversible → valider avant BUILD.
+**Quoi afficher :**
+- Section **PLAN** avec les changements prevus et les **ISC** (criteres de succes verifiables)
+- Action irreversible → demander validation utilisateur AVANT de coder
+- Critique → ne pas coder tant que l'utilisateur n'a pas valide
 
-### 2.5 AUDIT (ghost failures)
-Avant de coder, identifier les **ghost failures** : les cas ou le systeme echoue **silencieusement**.
-- Chaque point d'integration (hook, fichier, API, event) : que se passe-t-il s'il echoue, timeout, ou renvoie une valeur inattendue ?
-- Chaque hypothese technique : est-elle **verifiee** ou **supposee** ? (ex: "ce hook supporte system_reminder" → prouve-le.)
-- Chaque flux de donnees : race conditions, fichiers stale, faux positifs ?
+### 3. AUDIT — Traquer les ghost failures (Moyen+ obligatoire)
 
-Si ghost failures critiques → **tester avant de coder**. Jamais d'implementation sur hypothese non verifiee.
-Si aucun ghost failure → documenter pourquoi (preuve negative).
+Les **ghost failures** sont les cas ou le systeme echoue **silencieusement**.
+Cette phase est la plus souvent sautee. C'est aussi la plus importante.
 
-### 3. CODE
-**Robustesse** : erreurs gerees explicitement, pas de silent failures, chemins d'erreur = chemins nominaux.
-**SSOT** : chercher avant de creer. Signaler toute duplication comme dette technique.
-**Library-first** : ne jamais recoder ce qui existe en librairie maintenue.
-**Minimal footprint** : modifier seulement le scope demande. Preferer le reversible.
+**Quoi faire — 3 questions obligatoires :**
+1. **Hypotheses** : chaque supposition technique est-elle **verifiee** ou **supposee** ?
+   → Supposee = la tester avant de coder.
+2. **Integrations** : chaque point de contact (hook, API, fichier, event) — que se passe-t-il s'il echoue, timeout, ou renvoie une valeur inattendue ?
+3. **Flux de donnees** : race conditions ? fichiers stale ? faux positifs ?
 
-### 4. COMMIT
-Verifier chaque ISC. Message : quoi / pourquoi / impact.
-Signaler : dette introduite, edge cases non couverts, prochaines etapes.
+**Quoi afficher :**
+- Moyen : une ligne "**AUDIT** : [hypotheses verifiees / ghost failures identifies]"
+- Complexe : section **AUDIT** avec la liste des ghost failures et les mitigations
+- Si aucun ghost failure → expliquer pourquoi en une phrase (preuve negative)
+- Si ghost failure critique → **tester avant de coder**. Pas d'implementation sur hypothese.
+
+### 4. CODE — Implementer
+
+Respecter ces principes dans l'ordre :
+1. **Robustesse** : erreurs gerees explicitement, pas de silent failures
+2. **SSOT** : chercher avant de creer, signaler toute duplication
+3. **Library-first** : ne jamais recoder ce qui existe en librairie maintenue
+4. **Minimal footprint** : modifier seulement le scope demande, preferer le reversible
+
+### 5. COMMIT — Verifier et documenter
+
+- Verifier chaque ISC.
+- Message : quoi / pourquoi / impact.
+- Signaler : dette introduite, edge cases non couverts, prochaines etapes.
+
+### Priorites (en cas de conflit)
+Securite > Ethique > Robustesse > Guidelines Hora > Utilite
 
 > Robustesse > Rapidite. SSOT > Commodite. Librairie > Code custom.
 > Un bug en prod coute plus cher que 30 min de conception.
