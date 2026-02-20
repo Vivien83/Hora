@@ -31,12 +31,21 @@ ISC de succes :
 - [ ] Critere 3 (verifiable)
 ```
 
-### 4. BUILD
+### 4. AUDIT (ghost failures)
+Avant de coder, identifier les **ghost failures** — les cas ou le systeme echoue silencieusement :
+- Chaque point d'integration : que se passe-t-il s'il echoue, timeout, ou valeur inattendue ?
+- Chaque hypothese technique : **verifiee** ou **supposee** ?
+- Chaque flux de donnees : race conditions, fichiers stale, faux positifs ?
+
+Si ghost failures critiques → **tester avant de coder**. Jamais d'implementation sur hypothese non verifiee.
+Si aucun → documenter pourquoi (preuve negative).
+
+### 5. BUILD (si AUDIT ok)
 Delegue a architect pour les decisions structurelles.
 Delegue a executor pour l'implementation.
 Lance en parallele si les taches sont independantes.
 
-### 5. VERIFY
+### 6. VERIFY
 Passe en revue chaque ISC. Tous coches → termine. ISC manquant → reboucle sur BUILD.
 
 ## Regle fondamentale
