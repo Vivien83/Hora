@@ -652,67 +652,23 @@ if ! $DRY_RUN && [ -f "$TARGET_SETTINGS" ]; then
   " "$TARGET_SETTINGS" 2>&1
 fi
 
-# Windows : Claude Code execute les hooks via cmd.exe, pas Git Bash.
-# cmd.exe ne comprend ni ~, ni $HOME, ni les .sh/.ts directement.
-# Solution : creer des wrappers .cmd qui lancent Git Bash.
+# Windows : resoudre ~ et $HOME en chemins absolus dans settings.json
+# cmd.exe ne comprend ni ~ ni $HOME, mais npx/tsx fonctionnent nativement
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     if ! $DRY_RUN && [ -f "$TARGET_SETTINGS" ]; then
+      # cygpath -m donne C:/Users/... (compatible cmd.exe + bash)
       WIN_HOME=$(cygpath -m "$HOME" 2>/dev/null || echo "$HOME")
-      WIN_BASH=$(cygpath -w "$(command -v bash)" 2>/dev/null || echo "C:\\Program Files\\Git\\bin\\bash.exe")
-
-      # 1. Creer run-hook.cmd : lance un hook .ts via Git Bash + npx tsx
-      cat > "$CLAUDE_DIR/run-hook.cmd" << 'CMDEOF'
-@echo off
-setlocal
-set "HOOK=%~1"
-set "ARGS=%~2 %~3 %~4"
-CMDEOF
-      # Ajouter la ligne bash avec le chemin Windows correct
-      echo "\"${WIN_BASH}\" -c \"npx tsx '%%HOOK%%' %%ARGS%%\"" >> "$CLAUDE_DIR/run-hook.cmd"
-      echo "   [WIN] run-hook.cmd cree"
-
-      # 2. Creer run-statusline.cmd : lance statusline.sh via Git Bash
-      cat > "$CLAUDE_DIR/run-statusline.cmd" << CMDEOF
-@echo off
-"${WIN_BASH}" "${WIN_HOME}/.claude/statusline.sh"
-CMDEOF
-      echo "   [WIN] run-statusline.cmd cree"
-
-      # 3. Mettre a jour settings.json : chemins absolus + wrappers .cmd
       node -e "
         const fs = require('fs');
-        const winHome = process.argv[2];
-        const s = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
-
-        // Remplacer les commandes de hooks
-        for (const [event, matchers] of Object.entries(s.hooks || {})) {
-          for (const m of matchers) {
-            for (const h of (m.hooks || [])) {
-              if (h.command && h.command.includes('npx tsx')) {
-                // Extraire le chemin du hook et les args
-                const match = h.command.match(/npx tsx\s+(.+)/);
-                if (match) {
-                  let hookPath = match[1].replace(/~\//g, winHome + '/.claude/').replace(/\\\$HOME\//g, winHome + '/');
-                  // Si le chemin ne commence pas par le home, c'est relatif
-                  if (!hookPath.startsWith(winHome)) {
-                    hookPath = hookPath.replace('~/.claude/', winHome + '/.claude/').replace('\$HOME/.claude/', winHome + '/.claude/');
-                  }
-                  h.command = winHome + '/.claude/run-hook.cmd ' + hookPath;
-                }
-              }
-            }
-          }
-        }
-
-        // Remplacer la commande statusline
-        if (s.statusLine && s.statusLine.command) {
-          s.statusLine.command = winHome + '/.claude/run-statusline.cmd';
-        }
-
-        fs.writeFileSync(process.argv[1], JSON.stringify(s, null, 2) + '\n');
+        let s = fs.readFileSync(process.argv[1], 'utf8');
+        const h = process.argv[2];
+        // Remplacer ~/ et \$HOME/ par le chemin absolu Windows
+        s = s.replace(/~\//g, h + '/');
+        s = s.replace(/\\\$HOME\//g, h + '/');
+        fs.writeFileSync(process.argv[1], s);
       " "$TARGET_SETTINGS" "$WIN_HOME"
-      echo "   [WIN] settings.json mis a jour avec wrappers .cmd"
+      echo "   [WIN] Chemins absolus resolus dans settings.json"
     fi
     ;;
 esac

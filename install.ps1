@@ -159,23 +159,15 @@ if ($exitCode -ne 0) {
 Write-Host ""
 Write-Host "[CHECK] Verification des hooks..."
 
-# Test 1 : le wrapper .cmd existe
-$runHookCmd = Join-Path $env:USERPROFILE ".claude\run-hook.cmd"
-if (Test-Path $runHookCmd) {
-    Write-Host "[OK] run-hook.cmd present"
-} else {
-    Write-Host "[WARN] run-hook.cmd absent" -ForegroundColor Yellow
-}
-
-# Test 2 : les hooks tournent via cmd.exe (comme Claude Code le fera)
 $hookTs = Join-Path $env:USERPROFILE ".claude\hooks\prompt-submit.ts"
 if (Test-Path $hookTs) {
     try {
-        $hookResult = echo '{}' | cmd /c "$runHookCmd $hookTs" 2>$null
+        # Test via cmd.exe (comme Claude Code le fera)
+        $hookResult = echo '{}' | cmd /c "npx tsx `"$hookTs`"" 2>$null
         if ($hookResult -and $hookResult -match "hookSpecificOutput") {
             Write-Host "[OK] Hooks fonctionnels (test via cmd.exe)"
         } else {
-            # Fallback : test via Git Bash direct
+            Write-Host "[INFO] Test cmd.exe non concluant, test via Git Bash..."
             $hookResult2 = & $bashPath -c "echo '{}' | npx tsx ~/.claude/hooks/prompt-submit.ts 2>&1" 2>$null
             if ($hookResult2 -match "hookSpecificOutput") {
                 Write-Host "[OK] Hooks fonctionnels (test via Git Bash)"
