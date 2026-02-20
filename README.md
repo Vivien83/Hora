@@ -184,6 +184,27 @@ Detection aussi des nouveaux projets (mots-cles "from scratch", "refonte") avec 
 
 Chaque utilisation d'outil est logguee silencieusement dans `MEMORY/.tool-usage.jsonl` pour analytics (nom de l'outil, timestamp, session).
 
+### 11. Context Checkpoint System (anti-compact)
+
+Quand Claude Code compresse le contexte (compaction), Hora detecte et recupere automatiquement :
+
+```
+[Avant compact]  statusline ecrit context % → hook stocke 85%
+[Compact]        Claude Code compresse → contexte tombe a ~20%
+[Recovery]       hook detecte chute >40pts → injecte checkpoint + activity log
+```
+
+**Composants :**
+
+| Composant | Role |
+|---|---|
+| `statusline.sh` | Persiste `context-pct.txt` (ecriture atomique, >0 seulement) |
+| `context-checkpoint.ts` | PreToolUse: detecte compact, injecte recovery via `additionalContext` |
+| `prompt-submit.ts` | A 70% contexte, demande a Claude d'ecrire un checkpoint semantique |
+| `MEMORY/WORK/checkpoint.md` | Checkpoint semantique (objectif, etat, decisions, prochaines etapes) |
+
+**Ghost failures adresses :** faux positifs au demarrage (GF-2), changement de session (GF-3), checkpoints stale (GF-4), race conditions (GF-6), double injection (GF-11), fichier absent (GF-12).
+
 ---
 
 ## Skills
@@ -227,12 +248,13 @@ hora/
     +-- statusline.sh          <- Barre de statut (637 lignes, 3 modes)
     +-- .hora/
     |   +-- patterns.yaml      <- Regles de securite (17 blocked, 18 confirm, 6 alert)
-    +-- hooks/                 <- 7 hooks TypeScript lifecycle
+    +-- hooks/                 <- 8 hooks TypeScript lifecycle
     |   +-- snapshot.ts        <- PreToolUse: sauvegarde avant edit
     |   +-- hora-security.ts   <- PreToolUse: validation securite (parseur YAML custom)
     |   +-- tool-use.ts        <- PreToolUse: logging silencieux
+    |   +-- context-checkpoint.ts <- PreToolUse: detection compact + recovery
     |   +-- backup-monitor.ts  <- PostToolUse: detection + execution backup
-    |   +-- prompt-submit.ts   <- UserPromptSubmit: contexte + routing + thread
+    |   +-- prompt-submit.ts   <- UserPromptSubmit: contexte + routing + thread + checkpoint reminder
     |   +-- hora-session-name.ts <- UserPromptSubmit: nommage auto
     |   +-- session-end.ts     <- Stop: extraction profil + lecons + sentiment
     +-- agents/                <- 6 agents specialises
@@ -273,6 +295,7 @@ PreToolUse
   +-- snapshot.ts              (Write|Edit|MultiEdit — sauvegarde fichier avant edit)
   +-- hora-security.ts         (Bash|Edit|Write|Read|MultiEdit — validation securite)
   +-- tool-use.ts              (* — logging silencieux)
+  +-- context-checkpoint.ts    (* — detection compact + injection recovery)
 
 PostToolUse
   +-- backup-monitor.ts        (Write|Edit|MultiEdit — detection + backup auto)
@@ -332,6 +355,7 @@ La statusline extrait le token OAuth depuis le macOS Keychain (`security find-ge
 | Learning extraction | A chaque session | Non | **Profil + erreurs + sentiment** |
 | Session naming | IA inference | Non | **Deterministe rapide** |
 | Statusline | Non | Non | **Riche (contexte, git, usage API, backup)** |
+| Compact recovery | Non | Non | **Auto-detection + checkpoint injection** |
 | Multi-agents | Oui | Oui (focus) | **Oui (6 agents, 3 modeles)** |
 | Routing modeles | Non | Oui | **Oui (Opus/Sonnet/Haiku)** |
 | Dependances | Bun, plugin PAI | Plugin OMC | **tsx uniquement** |

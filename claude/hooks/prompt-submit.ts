@@ -469,6 +469,27 @@ async function main() {
     }
   }
 
+  // --- Checkpoint reminder (contexte >= 70%) ---
+  const CHECKPOINT_THRESHOLD = 70;
+  const CTX_PCT_FILE = path.join(CLAUDE_DIR, ".hora", "context-pct.txt");
+  try {
+    const pctRaw = fs.readFileSync(CTX_PCT_FILE, "utf-8").trim();
+    const pctVal = parseInt(pctRaw, 10);
+    if (!isNaN(pctVal) && pctVal >= CHECKPOINT_THRESHOLD) {
+      const checkpointPath = path.join(MEMORY_DIR, "WORK", "checkpoint.md");
+      parts.push(
+        `[HORA CHECKPOINT] Contexte a ${pctVal}%. INSTRUCTION OBLIGATOIRE : ecris un checkpoint semantique dans ${checkpointPath} avec ce format :\n` +
+        `---\n` +
+        `session: ${sessionId.slice(0, 8)}\n` +
+        `timestamp: ${new Date().toISOString()}\n` +
+        `context_pct: ${pctVal}\n` +
+        `---\n` +
+        `# Objectif en cours\n[Quoi]\n\n# Etat actuel\n[Ou on en est]\n\n# Decisions prises\n[Ce qui a ete decide]\n\n# Prochaines etapes\n[Ce qui reste a faire]\n\n` +
+        `Fais-le MAINTENANT avant de repondre, puis continue normalement.`
+      );
+    }
+  } catch {}
+
   // --- Suggestion branche (nouveau chantier + uncommitted changes) ---
   if (message && detectNewWork(message) && !state.branchSuggestionMade) {
     if (isGitRepo() && hasUncommittedChanges()) {

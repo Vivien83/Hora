@@ -64,6 +64,14 @@ if [ "$ctx_pct_int" = "0" ] && [ "${cur_input:-0}" -gt 0 ] 2>/dev/null; then
     [ "$ctx_pct_int" -gt 100 ] && ctx_pct_int=100
 fi
 
+# GF-2: Persister context-pct seulement si > 0 (evite faux positifs au demarrage)
+if [ "$ctx_pct_int" -gt 0 ]; then
+    mkdir -p "$HORA_STATE_DIR" 2>/dev/null
+    # GF-6: Ecriture atomique (tmp + mv)
+    _ctx_tmp="${HORA_STATE_DIR}/context-pct.tmp"
+    printf '%d' "$ctx_pct_int" > "$_ctx_tmp" 2>/dev/null && mv "$_ctx_tmp" "${HORA_STATE_DIR}/context-pct.txt" 2>/dev/null
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DUREE DE SESSION (depuis Claude Code JSON)
 # ─────────────────────────────────────────────────────────────────────────────

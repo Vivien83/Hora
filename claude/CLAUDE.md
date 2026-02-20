@@ -39,6 +39,15 @@ Lire avant d'ecrire. Toujours.
 
 ISC verifiables obligatoires. Action irreversible → valider avant BUILD.
 
+### 2.5 AUDIT (ghost failures)
+Avant de coder, identifier les **ghost failures** : les cas ou le systeme echoue **silencieusement**.
+- Chaque point d'integration (hook, fichier, API, event) : que se passe-t-il s'il echoue, timeout, ou renvoie une valeur inattendue ?
+- Chaque hypothese technique : est-elle **verifiee** ou **supposee** ? (ex: "ce hook supporte system_reminder" → prouve-le.)
+- Chaque flux de donnees : race conditions, fichiers stale, faux positifs ?
+
+Si ghost failures critiques → **tester avant de coder**. Jamais d'implementation sur hypothese non verifiee.
+Si aucun ghost failure → documenter pourquoi (preuve negative).
+
 ### 3. CODE
 **Robustesse** : erreurs gerees explicitement, pas de silent failures, chemins d'erreur = chemins nominaux.
 **SSOT** : chercher avant de creer. Signaler toute duplication comme dette technique.

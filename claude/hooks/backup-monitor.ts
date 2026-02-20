@@ -414,10 +414,12 @@ async function main() {
 
       logBackup(true, strategy, result.message, modifiedFiles);
 
-      // Notifier via system_reminder (discret)
+      // Notifier via hookSpecificOutput (PostToolUse)
       const notification = {
-        type: "system_reminder",
-        content: `[HORA Backup ✅] ${result.message} — ${result.details} (trigger: ${reason})`,
+        hookSpecificOutput: {
+          hookEventName: "PostToolUse",
+          additionalContext: `[HORA Backup] ${result.message} — ${result.details} (trigger: ${reason})`,
+        },
       };
       process.stdout.write(JSON.stringify(notification));
     } else {
