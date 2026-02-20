@@ -95,6 +95,15 @@ if (-not $hasTsx -and -not (Get-Command tsx -ErrorAction SilentlyContinue)) {
     npm install -g tsx
 }
 
+# 5. jq (optionnel mais recommande pour la performance statusline)
+if (-not (Get-Command jq -ErrorAction SilentlyContinue)) {
+    Write-Host "[INFO] jq absent (optionnel - la statusline utilisera node a la place)" -ForegroundColor Yellow
+    Write-Host "   Pour de meilleures performances : winget install jqlang.jq"
+    Write-Host ""
+} else {
+    Write-Host "[OK] jq : $(jq --version)"
+}
+
 # --- Set CLAUDE_CODE_GIT_BASH_PATH if not already set ---
 if (-not $env:CLAUDE_CODE_GIT_BASH_PATH) {
     Write-Host ""

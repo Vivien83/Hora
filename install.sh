@@ -415,7 +415,13 @@ HAS_JQ=false
 if command -v jq &>/dev/null; then
   HAS_JQ=true
 else
-  echo "[INFO] jq absent — le merge settings.json utilisera node"
+  echo "[INFO] jq absent (optionnel - HORA utilisera node a la place)"
+  echo "   Pour de meilleures performances (statusline + merge settings) :"
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) echo "   winget install jqlang.jq" ;;
+    Darwin)               echo "   brew install jq" ;;
+    *)                    echo "   sudo apt install jq  # ou equivalent" ;;
+  esac
 fi
 
 # ─── Backup complet ────────────────────────────────────────────────────────
