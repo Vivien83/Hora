@@ -598,6 +598,26 @@ if [ -f "$TARGET_SETTINGS" ]; then
 else
   _cp "$HORA_SETTINGS" "$TARGET_SETTINGS"
 fi
+
+# Windows : resoudre ~ et $HOME en chemin absolu dans settings.json
+# cmd.exe ne comprend pas ~ ni $HOME, il faut le chemin Windows complet
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    if ! $DRY_RUN && [ -f "$TARGET_SETTINGS" ]; then
+      # cygpath -m donne le format mixte (C:/Users/...) compatible cmd.exe + bash
+      WIN_HOME=$(cygpath -m "$HOME" 2>/dev/null || echo "$HOME")
+      # Remplacer ~/ et $HOME/ par le chemin absolu
+      node -e "
+        const fs = require('fs');
+        let s = fs.readFileSync(process.argv[1], 'utf8');
+        s = s.replace(/~\//g, process.argv[2] + '/');
+        s = s.replace(/\\\$HOME\//g, process.argv[2] + '/');
+        fs.writeFileSync(process.argv[1], s);
+      " "$TARGET_SETTINGS" "$WIN_HOME"
+      echo "   [WIN] Chemins absolus resolus dans settings.json"
+    fi
+    ;;
+esac
 echo "[OK] settings.json"
 
 # ─── Statusline ────────────────────────────────────────────────────────────
