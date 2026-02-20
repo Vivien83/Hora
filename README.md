@@ -87,9 +87,9 @@ That's it. No config files to edit. No API keys to set. HORA learns silently fro
 | **Node.js 18+** | Required | Required | Required |
 | **Git** | Required | Required | Required ([Git for Windows](https://git-scm.com/download/win)) |
 | **tsx** | Auto-installed | Auto-installed | Auto-installed |
-| **jq** | Recommended | Recommended | Optional |
+| **jq** | Recommended | Recommended | Auto-installed |
 
-> `jq` enables smart merging of `settings.json` (preserves your existing hooks). Without it, HORA settings overwrite entirely. Install: `brew install jq` (macOS) / `apt install jq` (Linux) / `choco install jq` (Windows).
+> `jq` enables smart merging of `settings.json` (preserves your existing hooks). Without it, HORA settings overwrite entirely. The installer auto-installs jq when possible (`winget` on Windows, `brew` on macOS, `apt`/`apk` on Linux). Manual install: `brew install jq` / `apt install jq` / `choco install jq`.
 
 ### Install options
 
@@ -106,8 +106,10 @@ bash install.sh --restore    # Rollback to pre-install state
 3. **Merges** CLAUDE.md (preserves your existing content, inserts HORA block between markers)
 4. **Merges** settings.json (merges without overwriting third-party hooks)
 5. **Copies** hooks, agents, skills, security patterns, statusline
-6. **Preserves** your MEMORY/ profile if already populated (never resets)
-7. **Verifies** Claude data integrity after installation
+6. **Cleans orphan hooks** (removes hooks pointing to non-existent files from other frameworks)
+7. **Resolves paths** on Windows (`~` and `$HOME` replaced with absolute `C:/Users/...` paths)
+8. **Preserves** your MEMORY/ profile if already populated (never resets)
+9. **Verifies** Claude data integrity after installation
 
 > In case of error: `bash install.sh --restore` restores the backup.
 
@@ -691,13 +693,15 @@ Hooks can't see both the user message and assistant response simultaneously. HOR
 
 | Component | macOS | Linux | Windows (Git Bash) |
 |:---|:---:|:---:|:---:|
-| install.sh | Full | Full | Full |
+| install.sh | Full | Full | Full (via install.ps1) |
 | install.ps1 | N/A | N/A | Full (entry point) |
-| TypeScript hooks | Full | Full | Full |
-| statusline.sh | Full | Full | Full (no API usage*) |
+| TypeScript hooks | Full | Full | Full (runs via cmd.exe) |
+| statusline.sh | Full | Full | Full (jq or Node.js fallback) |
 | Security patterns | Full | Full | Full |
+| Orphan hook cleanup | Full | Full | Full |
+| Path resolution | N/A | N/A | Auto (`~` → `C:/Users/...`) |
 
-> \* API usage display requires macOS Keychain. On Windows/Linux, the statusline gracefully degrades — all other data (context %, git, backup, commits) works everywhere.
+> \* API usage display requires macOS Keychain. On Windows/Linux, the statusline gracefully degrades — all other data (context %, git, backup, commits) works everywhere. The statusline uses `jq` when available and falls back to Node.js.
 
 ---
 
@@ -891,29 +895,68 @@ Edit the `spinnerVerbs` section in `~/.claude/settings.json`:
 
 ## Windows Notes
 
-Claude Code on Windows runs through **Git Bash** (provided by [Git for Windows](https://git-scm.com/download/win)). This means:
+### How it works
 
-- All shell scripts work natively through Git Bash
-- TypeScript hooks execute via `npx tsx` (requires Node.js in PATH)
-- `~` expands to `%USERPROFILE%` via Git Bash
+Claude Code on Windows uses **Git for Windows** ([download](https://git-scm.com/download/win)) for shell operations. Important distinction:
 
-**Known issues & workarounds:**
+- **Hooks** (TypeScript) execute via **cmd.exe** using `npx tsx` — NOT through Git Bash
+- **Bash tool** uses Git Bash (controlled by `CLAUDE_CODE_GIT_BASH_PATH`)
+- **Statusline** runs through Git Bash
 
-| Issue | Workaround |
+### What install.ps1 handles automatically
+
+The PowerShell installer (`.\install.ps1`) does everything:
+
+| Step | What it does |
 |:---|:---|
-| Hooks fail with `'bash' is not recognized` | Set `CLAUDE_CODE_GIT_BASH_PATH` env var ([#22700](https://github.com/anthropics/claude-code/issues/22700)) |
-| WSL bash hijacks Git Bash | Set `CLAUDE_CODE_GIT_BASH_PATH` explicitly ([#26006](https://github.com/anthropics/claude-code/issues/26006)) |
-| Console window flashes on hook execution | Known Claude Code limitation ([#17230](https://github.com/anthropics/claude-code/issues/17230)) |
-| API usage not displayed | macOS Keychain only — degrades gracefully on Windows |
-| CRLF corrupts scripts | Handled by `.gitattributes` (forces LF) |
+| **Git Bash detection** | Finds `bash.exe` in standard locations, rejects WSL bash |
+| **CLAUDE_CODE_GIT_BASH_PATH** | Set permanently (User env var) — no manual config needed |
+| **jq installation** | Auto-installs via `winget` if missing (optional, Node.js fallback exists) |
+| **tsx installation** | Auto-installs via `npm install -g tsx` if missing |
+| **Orphan hook cleanup** | Removes hooks from other frameworks pointing to non-existent files |
+| **Path resolution** | Replaces `~` and `$HOME` with absolute `C:/Users/...` paths in settings.json |
+| **Hook verification** | Tests hooks after install to confirm they work |
+
+### Receiving HORA without git clone
+
+If you receive HORA as a `.zip` (private repo, offline transfer):
+
+1. Extract the zip anywhere
+2. Open PowerShell in the extracted folder
+3. Run `.\install.ps1`
+
+The installer works identically whether the source is a git clone or extracted zip.
+
+### Switching from another framework
+
+If you previously used another Claude Code framework, HORA automatically detects and removes orphan hooks — no need to manually delete `~/.claude/settings.json` before installing. The cleanup runs after HORA hooks are copied, so only truly orphaned references (files that don't exist) are removed.
+
+### Known limitations
+
+| Limitation | Details |
+|:---|:---|
+| API usage not displayed | Requires macOS Keychain — statusline gracefully degrades |
+| Console window flashes | Known Claude Code limitation on Windows ([#17230](https://github.com/anthropics/claude-code/issues/17230)) |
+| CRLF line endings | Handled by `.gitattributes` (forces LF on all scripts) |
+| Symlinks not supported | HORA uses plain text files instead (backup `latest` pointer) |
+
+### Manual troubleshooting
+
+If hooks fail after install, check these in order:
 
 ```powershell
-# Fix hooks on Windows (run once):
-[System.Environment]::SetEnvironmentVariable(
-    'CLAUDE_CODE_GIT_BASH_PATH',
-    'C:\Program Files\Git\bin\bash.exe',
-    'User'
-)
+# 1. Verify CLAUDE_CODE_GIT_BASH_PATH is set
+[System.Environment]::GetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', 'User')
+
+# 2. Test a hook manually
+echo '{}' | npx tsx "$env:USERPROFILE\.claude\hooks\prompt-submit.ts"
+
+# 3. Check settings.json for orphan hooks
+# Look for hooks referencing .ts files that don't exist:
+Get-Content "$env:USERPROFILE\.claude\settings.json" | Select-String "\.ts"
+
+# 4. Re-run the installer (safe to run multiple times)
+.\install.ps1
 ```
 
 ---
@@ -941,7 +984,13 @@ Run `bash install.sh --restore` to get back to your pre-HORA state. Or manually 
 <details>
 <summary><strong>Does it work with other Claude Code extensions?</strong></summary>
 
-Yes. The installer preserves third-party hooks during merge (requires jq). HORA hooks are additive — they don't interfere with existing ones.
+Yes. The installer preserves third-party hooks during merge (requires jq). HORA hooks are additive — they don't interfere with existing ones. If you switch FROM another framework to HORA, orphan hooks (referencing non-existent files) are automatically cleaned up.
+</details>
+
+<details>
+<summary><strong>I'm on Windows and hooks are failing — what should I do?</strong></summary>
+
+Re-run `.\install.ps1` — it's safe to run multiple times. The installer will auto-detect Git Bash, set `CLAUDE_CODE_GIT_BASH_PATH`, clean orphan hooks from previous frameworks, and resolve paths. If you previously used another Claude Code framework, the installer handles the transition automatically. See the [Windows Notes](#windows-notes) section for manual troubleshooting.
 </details>
 
 <details>
