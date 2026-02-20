@@ -270,10 +270,10 @@ function formatThreadForInjection(entries: ThreadEntry[]): string {
 function detectMode(message: string): string | null {
   const msg = message.toLowerCase();
 
-  if (msg.includes("/hora:autopilot")) return "AUTOPILOT";
-  if (msg.includes("/hora:parallel-code")) return "PARALLEL_CODE";
-  if (msg.includes("/hora:parallel-research")) return "PARALLEL_RESEARCH";
-  if (msg.includes("/hora:plan")) return "PLAN";
+  if (msg.includes("/hora-autopilot")) return "AUTOPILOT";
+  if (msg.includes("/hora-parallel-code")) return "PARALLEL_CODE";
+  if (msg.includes("/hora-parallel-research")) return "PARALLEL_RESEARCH";
+  if (msg.includes("/hora-plan")) return "PLAN";
 
   const codeWords = ["refactor", "implement", "implément", "migrate", "architecture", "restructure", "plusieurs fichiers", "codebase"];
   const researchWords = ["compare", "benchmark", "évalue", "quelles sont les", "what are the best"];
@@ -292,9 +292,9 @@ function getRoutingHint(mode: string): string {
     PARALLEL_CODE:     "Mode PARALLEL_CODE active. Lis ~/.claude/skills/parallel-code.md pour le protocol complet. Divise en sous-taches independantes. Agents executor en parallele, architect en coordination.",
     PARALLEL_RESEARCH: "Mode PARALLEL_RESEARCH active. Lis ~/.claude/skills/parallel-research.md pour le protocol complet. Agents researcher en parallele sur angles differents. Agrege avec synthesizer.",
     PLAN:              "Mode PLAN active. Lis ~/.claude/skills/plan.md pour le protocol complet. Produis le plan + ISC avant tout code. Attends validation.",
-    CODE_HINT:         "Hint: /hora:parallel-code si plusieurs fichiers/sous-systemes.",
-    RESEARCH_HINT:     "Hint: /hora:parallel-research pour multi-sources.",
-    PLAN_HINT:         "Hint: /hora:plan pour definir les ISC avant d'executer.",
+    CODE_HINT:         "Hint: /hora-parallel-code si plusieurs fichiers/sous-systemes.",
+    RESEARCH_HINT:     "Hint: /hora-parallel-research pour multi-sources.",
+    PLAN_HINT:         "Hint: /hora-plan pour definir les ISC avant d'executer.",
   };
   return hints[mode] || "";
 }

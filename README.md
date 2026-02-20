@@ -169,9 +169,9 @@ Le hook `prompt-submit` detecte les intentions dans le message et suggere le ski
 
 | Mots detectes | Suggestion |
 |---|---|
-| refactor, refonte, migration, v2 | `/hora:parallel-code` |
-| compare, analyse, recherche | `/hora:parallel-research` |
-| planifie, architecture, roadmap | `/hora:plan` |
+| refactor, refonte, migration, v2 | `/hora-parallel-code` |
+| compare, analyse, recherche | `/hora-parallel-research` |
+| planifie, architecture, roadmap | `/hora-plan` |
 
 Detection aussi des nouveaux projets (mots-cles "from scratch", "refonte") avec suggestion de branche.
 
@@ -211,11 +211,11 @@ Quand Claude Code compresse le contexte (compaction), Hora detecte et recupere a
 
 | Commande | Usage |
 |---|---|
-| `/hora:plan "objectif"` | Planification OBSERVE→THINK→PLAN + ISC verifiables |
-| `/hora:autopilot "objectif"` | Execution autonome bout en bout (ne s'arrete pas avant que tous les ISC soient valides) |
-| `/hora:parallel-code "tache"` | Architect decompose, executors en parallele, reviewer global |
-| `/hora:parallel-research "sujet"` | 3-5 angles, researchers en parallele, synthesizer agrege |
-| `/hora:backup` | Sauvegarde immediate (delegue a l'agent backup) |
+| `/hora-plan "objectif"` | Planification OBSERVE→THINK→PLAN + ISC verifiables |
+| `/hora-autopilot "objectif"` | Execution autonome bout en bout (ne s'arrete pas avant que tous les ISC soient valides) |
+| `/hora-parallel-code "tache"` | Architect decompose, executors en parallele, reviewer global |
+| `/hora-parallel-research "sujet"` | 3-5 angles, researchers en parallele, synthesizer agrege |
+| `/hora-backup` | Sauvegarde immediate (delegue a l'agent backup) |
 
 Les skills se declenchent aussi en **langage naturel** — Hora detecte l'intention.
 
@@ -264,12 +264,12 @@ hora/
     |   +-- reviewer.md        <- Haiku : review, validation
     |   +-- synthesizer.md     <- Haiku : agregation multi-sources
     |   +-- backup.md          <- Haiku : backup git
-    +-- skills/                <- 5 skills principaux
-    |   +-- plan.md            <- /hora:plan
-    |   +-- autopilot.md       <- /hora:autopilot
-    |   +-- parallel-code.md   <- /hora:parallel-code
-    |   +-- parallel-research.md <- /hora:parallel-research
-    |   +-- backup.md          <- /hora:backup
+    +-- skills/                <- 5 skills (format dossier/SKILL.md)
+    |   +-- hora-plan/SKILL.md           <- /hora-plan
+    |   +-- hora-autopilot/SKILL.md      <- /hora-autopilot
+    |   +-- hora-parallel-code/SKILL.md  <- /hora-parallel-code
+    |   +-- hora-parallel-research/SKILL.md <- /hora-parallel-research
+    |   +-- hora-backup/SKILL.md         <- /hora-backup
     +-- MEMORY/                <- Memoire persistante (vierge au depart)
         +-- PROFILE/           <- identity.md, projects.md, preferences.md, vocabulary.md
         +-- LEARNING/

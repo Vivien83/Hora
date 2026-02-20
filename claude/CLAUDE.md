@@ -1,3 +1,9 @@
+This file does nothing.
+
+# Read the PAI system for system understanding and initiation
+`read skills/PAI/SKILL.md`
+
+<!-- HORA:START -->
 # HORA — Hybrid Orchestrated Reasoning Architecture
 
 > Auto-apprenant. Vierge au depart. Se construit a l'usage.
@@ -142,8 +148,9 @@ Quand un skill est invoque, lire son fichier dans `~/.claude/skills/` pour le pr
 
 | Commande | Fichier | Description |
 |---|---|---|
-| `/hora:plan` | `~/.claude/skills/plan.md` | Planification + ISC |
-| `/hora:autopilot` | `~/.claude/skills/autopilot.md` | Execution autonome |
-| `/hora:parallel-code` | `~/.claude/skills/parallel-code.md` | Multi-agents codebase |
-| `/hora:parallel-research` | `~/.claude/skills/parallel-research.md` | Recherche multi-angles |
-| `/hora:backup` | `~/.claude/skills/backup.md` | Sauvegarde immediate |
+| `/hora-plan` | `~/.claude/skills/plan.md` | Planification + ISC |
+| `/hora-autopilot` | `~/.claude/skills/autopilot.md` | Execution autonome |
+| `/hora-parallel-code` | `~/.claude/skills/parallel-code.md` | Multi-agents codebase |
+| `/hora-parallel-research` | `~/.claude/skills/parallel-research.md` | Recherche multi-angles |
+| `/hora-backup` | `~/.claude/skills/backup.md` | Sauvegarde immediate |
+<!-- HORA:END -->
