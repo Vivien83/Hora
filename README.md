@@ -41,7 +41,19 @@ Le script installe `tsx` automatiquement s'il est absent. Pour jq : `brew instal
 6. **Preserve** le profil MEMORY/ s'il est deja rempli (ne remet pas a zero)
 7. **Verifie** l'integrite des donnees Claude apres installation
 
-En cas d'erreur : `bash install.sh --restore` restaure le backup.
+### Options
+
+| Flag | Effet |
+|---|---|
+| *(aucun)* | Installation complete |
+| `--dry-run` | Simule l'installation sans rien modifier (affiche `[DRY-RUN]` pour chaque operation) |
+| `--restore` | Restaure les donnees Claude Code depuis le backup |
+
+```bash
+bash install.sh --dry-run   # voir ce qui serait fait
+bash install.sh             # installer
+bash install.sh --restore   # rollback si besoin
+```
 
 ---
 
