@@ -44,16 +44,34 @@ get_mtime() {
 
 input=$(cat)
 
-eval "$(echo "$input" | jq -r '
-  "ctx_pct=" + (.context_window.used_percentage // 0 | tostring) + "\n" +
-  "ctx_max=" + (.context_window.context_window_size // 200000 | tostring) + "\n" +
-  "session_id=" + (.session_id // "" | @sh) + "\n" +
-  "model_name=" + (.model.display_name // "unknown" | @sh) + "\n" +
-  "duration_ms=" + (.cost.total_duration_ms // 0 | tostring) + "\n" +
-  "cur_input=" + (.context_window.current_usage.input_tokens // 0 | tostring) + "\n" +
-  "cur_cache_create=" + (.context_window.current_usage.cache_creation_input_tokens // 0 | tostring) + "\n" +
-  "cur_cache_read=" + (.context_window.current_usage.cache_read_input_tokens // 0 | tostring)
-' 2>/dev/null)"
+if command -v jq &>/dev/null; then
+    eval "$(echo "$input" | jq -r '
+      "ctx_pct=" + (.context_window.used_percentage // 0 | tostring) + "\n" +
+      "ctx_max=" + (.context_window.context_window_size // 200000 | tostring) + "\n" +
+      "session_id=" + (.session_id // "" | @sh) + "\n" +
+      "model_name=" + (.model.display_name // "unknown" | @sh) + "\n" +
+      "duration_ms=" + (.cost.total_duration_ms // 0 | tostring) + "\n" +
+      "cur_input=" + (.context_window.current_usage.input_tokens // 0 | tostring) + "\n" +
+      "cur_cache_create=" + (.context_window.current_usage.cache_creation_input_tokens // 0 | tostring) + "\n" +
+      "cur_cache_read=" + (.context_window.current_usage.cache_read_input_tokens // 0 | tostring)
+    ' 2>/dev/null)"
+elif command -v node &>/dev/null; then
+    eval "$(echo "$input" | node -e "
+      let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{
+        try{const j=JSON.parse(d);
+        const cw=j.context_window||{};const cu=cw.current_usage||{};
+        console.log('ctx_pct='+(cw.used_percentage||0));
+        console.log('ctx_max='+(cw.context_window_size||200000));
+        console.log('session_id=\\x27'+(j.session_id||'')+'\\x27');
+        console.log('model_name=\\x27'+(j.model?.display_name||'unknown')+'\\x27');
+        console.log('duration_ms='+(j.cost?.total_duration_ms||0));
+        console.log('cur_input='+(cu.input_tokens||0));
+        console.log('cur_cache_create='+(cu.cache_creation_input_tokens||0));
+        console.log('cur_cache_read='+(cu.cache_read_input_tokens||0));
+        }catch{}
+      })
+    " 2>/dev/null)"
+fi
 
 # Valeurs par defaut
 ctx_pct=${ctx_pct:-0}
@@ -299,8 +317,18 @@ b_str=""
 b_icon=""
 b_warn=""
 if [ -f "$BACKUP_STATE" ]; then
-    last_backup=$(jq -r '.lastBackup // empty' "$BACKUP_STATE" 2>/dev/null)
-    strategy=$(jq -r '.strategy // "none"' "$BACKUP_STATE" 2>/dev/null)
+    if command -v jq &>/dev/null; then
+        last_backup=$(jq -r '.lastBackup // empty' "$BACKUP_STATE" 2>/dev/null)
+        strategy=$(jq -r '.strategy // "none"' "$BACKUP_STATE" 2>/dev/null)
+    elif command -v node &>/dev/null; then
+        eval "$(node -e "
+            const d=require('fs').readFileSync('$BACKUP_STATE','utf8');
+            try{const j=JSON.parse(d);
+            console.log('last_backup='+(j.lastBackup||''));
+            console.log('strategy='+(j.strategy||'none'));
+            }catch{}
+        " 2>/dev/null)"
+    fi
     if [ -n "$last_backup" ]; then
         elapsed_b=0
         if date -d "$last_backup" +%s > /dev/null 2>&1; then
