@@ -181,26 +181,26 @@ else
   echo "[OK] CLAUDE.md (cree)"
 fi
 
-# --- settings.json : remplacer par Hora, supprimer hooks PAI ---
+# --- settings.json : remplacer par Hora, nettoyer hooks tiers ---
 HORA_SETTINGS="$HORA_DIR/settings.json"
 TARGET_SETTINGS="$CLAUDE_DIR/settings.json"
 
 if [ -f "$TARGET_SETTINGS" ]; then
   if $DRY_RUN; then
     if $HAS_JQ; then
-      echo "   [DRY-RUN] settings.json — merge Hora (PAI supprime si present)"
+      echo "   [DRY-RUN] settings.json — merge Hora (hooks tiers nettoyes)"
     else
       echo "   [DRY-RUN] settings.json — ecrasement par Hora (jq absent)"
     fi
   elif $HAS_JQ; then
     cp "$TARGET_SETTINGS" "$TARGET_SETTINGS.bak"
 
-    # Détecter si PAI est présent
+    # Détecter et nettoyer les hooks legacy (PAI_DIR)
     if jq -e '.hooks | to_entries[].value[] | .hooks[]?.command | contains("PAI_DIR")' "$TARGET_SETTINGS" &>/dev/null; then
-      echo "[INFO] PAI detecte -> suppression des hooks PAI..."
+      echo "[INFO] Hooks legacy detectes -> nettoyage..."
     fi
 
-    # Garder les hooks tiers non-PAI + merger hooks Hora + conserver statusLine/spinnerVerbs
+    # Garder les hooks tiers + merger hooks Hora + conserver statusLine/spinnerVerbs
     jq -s '
       .[0] as $existing | .[1] as $hora |
       ($existing.hooks // {}) |
