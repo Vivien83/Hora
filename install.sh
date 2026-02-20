@@ -622,13 +622,29 @@ if [ -f "$TARGET_SETTINGS" ]; then
 else
   _cp "$HORA_SETTINGS" "$TARGET_SETTINGS"
 fi
+echo "[OK] settings.json (merge)"
 
-# Post-merge : supprimer les hooks qui pointent vers des fichiers inexistants
-# (frameworks tiers desinstalles, hooks orphelins, etc.)
+# ─── Statusline ────────────────────────────────────────────────────────────
+
+_cp "$HORA_DIR/statusline.sh" "$CLAUDE_DIR/statusline.sh"
+_chmod +x "$CLAUDE_DIR/statusline.sh"
+echo "[OK] statusline.sh"
+
+# ─── Hooks ─────────────────────────────────────────────────────────────────
+
+if $DRY_RUN; then
+  echo "   [DRY-RUN] hooks/ — $(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers seraient copies"
+else
+  cp "$HORA_DIR/hooks/"*.ts "$CLAUDE_DIR/hooks/"
+fi
+echo "[OK] hooks/ ($(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers)"
+
+# ─── settings.json : nettoyage orphelins + Windows paths ─────────────────
+# (apres copie des hooks pour ne pas supprimer les hooks HORA pas encore installes)
+
 if ! $DRY_RUN && [ -f "$TARGET_SETTINGS" ]; then
   node -e "
     const fs = require('fs');
-    const path = require('path');
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
     const s = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
     let removed = 0;
@@ -652,18 +668,15 @@ if ! $DRY_RUN && [ -f "$TARGET_SETTINGS" ]; then
   " "$TARGET_SETTINGS" 2>&1
 fi
 
-# Windows : resoudre ~ et $HOME en chemins absolus dans settings.json
-# cmd.exe ne comprend ni ~ ni $HOME, mais npx/tsx fonctionnent nativement
+# Windows : resoudre ~ et $HOME en chemins absolus
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     if ! $DRY_RUN && [ -f "$TARGET_SETTINGS" ]; then
-      # cygpath -m donne C:/Users/... (compatible cmd.exe + bash)
       WIN_HOME=$(cygpath -m "$HOME" 2>/dev/null || echo "$HOME")
       node -e "
         const fs = require('fs');
         let s = fs.readFileSync(process.argv[1], 'utf8');
         const h = process.argv[2];
-        // Remplacer ~/ et \$HOME/ par le chemin absolu Windows
         s = s.replace(/~\//g, h + '/');
         s = s.replace(/\\\$HOME\//g, h + '/');
         fs.writeFileSync(process.argv[1], s);
@@ -672,22 +685,6 @@ case "$(uname -s)" in
     fi
     ;;
 esac
-echo "[OK] settings.json"
-
-# ─── Statusline ────────────────────────────────────────────────────────────
-
-_cp "$HORA_DIR/statusline.sh" "$CLAUDE_DIR/statusline.sh"
-_chmod +x "$CLAUDE_DIR/statusline.sh"
-echo "[OK] statusline.sh"
-
-# ─── Hooks ─────────────────────────────────────────────────────────────────
-
-if $DRY_RUN; then
-  echo "   [DRY-RUN] hooks/ — $(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers seraient copies"
-else
-  cp "$HORA_DIR/hooks/"*.ts "$CLAUDE_DIR/hooks/"
-fi
-echo "[OK] hooks/ ($(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers)"
 
 # ─── Agents ────────────────────────────────────────────────────────────────
 
