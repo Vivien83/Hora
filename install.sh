@@ -553,16 +553,40 @@ merge_settings_jq() {
 merge_settings_node() {
   node -e "
     const fs = require('fs');
+    const path = require('path');
     const existing = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
     const hora = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
 
-    // Nettoyer les hooks PAI de l'existant
-    const cleaned = {};
-    for (const [event, matchers] of Object.entries(existing.hooks || {})) {
-      cleaned[event] = matchers.filter(m =>
-        !m.hooks?.some(h => h.command?.includes('PAI_DIR') || h.command?.includes('pai-'))
-      );
+    // Verifier si un fichier reference dans un hook existe
+    function hookFileExists(command) {
+      if (!command) return false;
+      // Extraire le chemin du fichier (.ts ou .js) de la commande
+      const match = command.match(/(?:npx tsx|tsx|node)\s+(.+\.(?:ts|js))(?:\s|$)/);
+      if (!match) return true; // pas un hook fichier, on garde
+      let filePath = match[1].trim();
+      // Resoudre ~ et \$HOME
+      filePath = filePath.replace(/^~\//, homeDir + '/');
+      filePath = filePath.replace(/^\\\$HOME\//, homeDir + '/');
+      try { return fs.existsSync(filePath); } catch { return false; }
     }
+
+    // Nettoyer les hooks de l'existant : PAI + fichiers inexistants
+    const cleaned = {};
+    let removed = 0;
+    for (const [event, matchers] of Object.entries(existing.hooks || {})) {
+      cleaned[event] = matchers.filter(m => {
+        const dominated = m.hooks?.some(h =>
+          h.command?.includes('PAI_DIR') || h.command?.includes('pai-')
+        );
+        if (dominated) { removed++; return false; }
+        // Verifier que les fichiers references existent
+        const missing = m.hooks?.some(h => !hookFileExists(h.command));
+        if (missing) { removed++; return false; }
+        return true;
+      });
+    }
+    if (removed > 0) process.stderr.write('   [CLEAN] ' + removed + ' hooks orphelins supprimes\n');
 
     // Merger : hooks existants (nettoyes) + hooks HORA (dedup par commande)
     const merged = {};
@@ -599,22 +623,96 @@ else
   _cp "$HORA_SETTINGS" "$TARGET_SETTINGS"
 fi
 
-# Windows : resoudre ~ et $HOME en chemin absolu dans settings.json
-# cmd.exe ne comprend pas ~ ni $HOME, il faut le chemin Windows complet
+# Post-merge : supprimer les hooks qui pointent vers des fichiers inexistants
+# (frameworks tiers desinstalles, hooks orphelins, etc.)
+if ! $DRY_RUN && [ -f "$TARGET_SETTINGS" ]; then
+  node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    const s = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+    let removed = 0;
+    for (const [event, matchers] of Object.entries(s.hooks || {})) {
+      s.hooks[event] = matchers.filter(m => {
+        for (const h of (m.hooks || [])) {
+          if (!h.command) continue;
+          const match = h.command.match(/(?:npx tsx|tsx|node)\s+([^\s]+\.(?:ts|js))/);
+          if (!match) continue;
+          let fp = match[1].replace(/^~\//, homeDir + '/').replace(/^\\\$HOME\//, homeDir + '/');
+          if (!fs.existsSync(fp)) { removed++; return false; }
+        }
+        return true;
+      });
+      if (s.hooks[event].length === 0) delete s.hooks[event];
+    }
+    if (removed > 0) {
+      fs.writeFileSync(process.argv[1], JSON.stringify(s, null, 2) + '\n');
+      process.stderr.write('   [CLEAN] ' + removed + ' hook(s) orphelin(s) supprime(s)\n');
+    }
+  " "$TARGET_SETTINGS" 2>&1
+fi
+
+# Windows : Claude Code execute les hooks via cmd.exe, pas Git Bash.
+# cmd.exe ne comprend ni ~, ni $HOME, ni les .sh/.ts directement.
+# Solution : creer des wrappers .cmd qui lancent Git Bash.
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     if ! $DRY_RUN && [ -f "$TARGET_SETTINGS" ]; then
-      # cygpath -m donne le format mixte (C:/Users/...) compatible cmd.exe + bash
       WIN_HOME=$(cygpath -m "$HOME" 2>/dev/null || echo "$HOME")
-      # Remplacer ~/ et $HOME/ par le chemin absolu
+      WIN_BASH=$(cygpath -w "$(command -v bash)" 2>/dev/null || echo "C:\\Program Files\\Git\\bin\\bash.exe")
+
+      # 1. Creer run-hook.cmd : lance un hook .ts via Git Bash + npx tsx
+      cat > "$CLAUDE_DIR/run-hook.cmd" << 'CMDEOF'
+@echo off
+setlocal
+set "HOOK=%~1"
+set "ARGS=%~2 %~3 %~4"
+CMDEOF
+      # Ajouter la ligne bash avec le chemin Windows correct
+      echo "\"${WIN_BASH}\" -c \"npx tsx '%%HOOK%%' %%ARGS%%\"" >> "$CLAUDE_DIR/run-hook.cmd"
+      echo "   [WIN] run-hook.cmd cree"
+
+      # 2. Creer run-statusline.cmd : lance statusline.sh via Git Bash
+      cat > "$CLAUDE_DIR/run-statusline.cmd" << CMDEOF
+@echo off
+"${WIN_BASH}" "${WIN_HOME}/.claude/statusline.sh"
+CMDEOF
+      echo "   [WIN] run-statusline.cmd cree"
+
+      # 3. Mettre a jour settings.json : chemins absolus + wrappers .cmd
       node -e "
         const fs = require('fs');
-        let s = fs.readFileSync(process.argv[1], 'utf8');
-        s = s.replace(/~\//g, process.argv[2] + '/');
-        s = s.replace(/\\\$HOME\//g, process.argv[2] + '/');
-        fs.writeFileSync(process.argv[1], s);
+        const winHome = process.argv[2];
+        const s = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+
+        // Remplacer les commandes de hooks
+        for (const [event, matchers] of Object.entries(s.hooks || {})) {
+          for (const m of matchers) {
+            for (const h of (m.hooks || [])) {
+              if (h.command && h.command.includes('npx tsx')) {
+                // Extraire le chemin du hook et les args
+                const match = h.command.match(/npx tsx\s+(.+)/);
+                if (match) {
+                  let hookPath = match[1].replace(/~\//g, winHome + '/.claude/').replace(/\\\$HOME\//g, winHome + '/');
+                  // Si le chemin ne commence pas par le home, c'est relatif
+                  if (!hookPath.startsWith(winHome)) {
+                    hookPath = hookPath.replace('~/.claude/', winHome + '/.claude/').replace('\$HOME/.claude/', winHome + '/.claude/');
+                  }
+                  h.command = winHome + '/.claude/run-hook.cmd ' + hookPath;
+                }
+              }
+            }
+          }
+        }
+
+        // Remplacer la commande statusline
+        if (s.statusLine && s.statusLine.command) {
+          s.statusLine.command = winHome + '/.claude/run-statusline.cmd';
+        }
+
+        fs.writeFileSync(process.argv[1], JSON.stringify(s, null, 2) + '\n');
       " "$TARGET_SETTINGS" "$WIN_HOME"
-      echo "   [WIN] Chemins absolus resolus dans settings.json"
+      echo "   [WIN] settings.json mis a jour avec wrappers .cmd"
     fi
     ;;
 esac

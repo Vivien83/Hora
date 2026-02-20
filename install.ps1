@@ -158,13 +158,35 @@ if ($exitCode -ne 0) {
 # --- Post-install: verify hooks work ---
 Write-Host ""
 Write-Host "[CHECK] Verification des hooks..."
-$hookTest = $null
-try {
-    $hookTest = & $bashPath -c "echo '{}' | npx tsx ~/.claude/hooks/prompt-submit.ts 2>&1" 2>$null
-    Write-Host "[OK] Hooks TypeScript fonctionnels"
-} catch {
-    Write-Host "[WARN] Les hooks pourraient ne pas fonctionner." -ForegroundColor Yellow
-    Write-Host "   Essayer : npm install -g tsx" -ForegroundColor Yellow
+
+# Test 1 : le wrapper .cmd existe
+$runHookCmd = Join-Path $env:USERPROFILE ".claude\run-hook.cmd"
+if (Test-Path $runHookCmd) {
+    Write-Host "[OK] run-hook.cmd present"
+} else {
+    Write-Host "[WARN] run-hook.cmd absent" -ForegroundColor Yellow
+}
+
+# Test 2 : les hooks tournent via cmd.exe (comme Claude Code le fera)
+$hookTs = Join-Path $env:USERPROFILE ".claude\hooks\prompt-submit.ts"
+if (Test-Path $hookTs) {
+    try {
+        $hookResult = echo '{}' | cmd /c "$runHookCmd $hookTs" 2>$null
+        if ($hookResult -and $hookResult -match "hookSpecificOutput") {
+            Write-Host "[OK] Hooks fonctionnels (test via cmd.exe)"
+        } else {
+            # Fallback : test via Git Bash direct
+            $hookResult2 = & $bashPath -c "echo '{}' | npx tsx ~/.claude/hooks/prompt-submit.ts 2>&1" 2>$null
+            if ($hookResult2 -match "hookSpecificOutput") {
+                Write-Host "[OK] Hooks fonctionnels (test via Git Bash)"
+            } else {
+                Write-Host "[WARN] Les hooks n'ont pas retourne le format attendu" -ForegroundColor Yellow
+            }
+        }
+    } catch {
+        Write-Host "[WARN] Erreur test hooks : $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "   Essayer : npm install -g tsx" -ForegroundColor Yellow
+    }
 }
 
 Write-Host ""
