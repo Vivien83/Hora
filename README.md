@@ -11,7 +11,7 @@
 
 <p align="center">
   <strong>A self-learning AI system for Claude Code.</strong><br>
-  Starts empty. Builds itself through usage. No templates. No config. Just start.
+  Starts empty. Builds itself through usage. Opinionated TypeScript/React stack. Library-first.
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
   <a href="#-how-it-works">How It Works</a> &bull;
   <a href="#-skills--agents">Skills & Agents</a> &bull;
   <a href="#%EF%B8%8F-architecture">Architecture</a> &bull;
-  <a href="#-what-hora-provides">Overview</a> &bull;
+  <a href="#-web-saas-conventions">Web/SaaS Stack</a> &bull;
   <a href="#-customization">Customization</a>
 </p>
 
@@ -43,11 +43,13 @@ Session N:  Rich       --> Increasingly relevant responses, your vocabulary, you
 | | Without HORA | With HORA |
 |---|---|---|
 | **New session** | "I have no context" | "Last time we were working on X. Continue?" |
+| **New project** | Re-explore the codebase every time | Auto-audit stored in `.hora/project-knowledge.md` |
 | **Dangerous command** | Executes silently | Blocked or confirmed before execution |
 | **Context compaction** | Lost train of thought | Auto-detected, checkpoint injected |
 | **File edited by mistake** | Hope you have git | Snapshot saved automatically before every edit |
 | **Multi-file refactor** | One file at a time | Parallel agents, coordinated execution |
-| **Research task** | Single perspective | 3-5 angles in parallel, synthesized |
+| **Library choice** | "Let me write a custom date picker" | Library-first: use battle-tested packages |
+| **UI design** | Generic AI-generated look | Professional design guidelines enforced |
 
 ---
 
@@ -148,17 +150,47 @@ All patterns are customizable in `~/.claude/.hora/patterns.yaml`.
 
 ### 2. Self-Learning Memory
 
-At the end of every significant session (3+ messages), HORA silently extracts:
+At the end of every significant session (3+ messages), HORA silently extracts profile data using **two-layer hybrid extraction**:
 
-| What | Where | How |
+#### Layer A — Environment (deterministic)
+
+| Source | Command | Data extracted |
 |:---|:---|:---|
-| **Identity** | `MEMORY/PROFILE/identity.md` | Regex on user messages: name, role, location |
-| **Projects** | `MEMORY/PROFILE/projects.md` | Detects project names, tech stacks, goals |
-| **Preferences** | `MEMORY/PROFILE/preferences.md` | Language, style, tools, workflow habits |
-| **Vocabulary** | `MEMORY/PROFILE/vocabulary.md` | Domain-specific terms and abbreviations |
-| **Errors & Lessons** | `MEMORY/LEARNING/FAILURES/` | Detects errors, blocks, corrections (5-line context) |
-| **Sentiment** | `MEMORY/LEARNING/ALGORITHM/` | Session tone analysis (score 1-5) |
-| **Session Archive** | `MEMORY/SESSIONS/` | Summary + first 5000 chars of transcript |
+| Git config | `git config user.name/email` | Full name, email |
+| Git remote | `git remote get-url origin` | GitHub username |
+| Working directory | `process.cwd()` | Current project name |
+| package.json | `fs.readFileSync` (max 50KB) | Tech stack from dependencies |
+| Git ls-files | `git ls-files` (timeout 3s) | Dominant languages by extension |
+
+#### Layer B — Linguistic (transcript analysis)
+
+| Detection | Method | Example |
+|:---|:---|:---|
+| Language | >50% user lines contain FR words | `Langue: francais [transcript]` |
+| Vocabulary | Technical terms repeated 3+ times (stopwords filtered) | `hook, snapshot, statusline` |
+| Identity (fallback) | Regex patterns if git config empty | `je m'appelle X` |
+
+#### Output format
+
+Every data point is tagged with its source for traceability:
+
+```markdown
+## Identite
+- Nom: Vivien MARTIN [env:git-config]
+- GitHub: Vivien83 [env:git-remote]
+
+## Preferences
+- Langue: francais [transcript]
+- Tech: TypeScript [env:package.json]
+```
+
+#### Additional extractions
+
+| What | Format | Storage |
+|:---|:---|:---|
+| **Errors & Lessons** | JSONL (user messages only, conversational patterns, max 5/session) | `LEARNING/FAILURES/failures-log.jsonl` |
+| **Sentiment** | JSONL (one line per session) | `LEARNING/ALGORITHM/sentiment-log.jsonl` |
+| **Session Archive** | Markdown (summary + first 5000 chars) | `SESSIONS/` |
 
 **Everything is silent.** HORA never interrupts your flow. You won't even notice it's learning.
 
@@ -180,7 +212,9 @@ Session N+1:
   3. Claude sees the full context from the very first message
 ```
 
-**Result:** HORA remembers what you were working on and mentions it in its first response.
+#### Project-scoped context
+
+Session history is **filtered by project**. Each project gets a stable ID stored in `.hora/project-id` — persists even if the folder is renamed. When you switch projects, you only see context from that project.
 
 ```
 You: "hey"
@@ -350,7 +384,137 @@ checkpoint.md          -->  Contains: objective, current state,
 
 ---
 
-### 10. Custom Spinner Verbs
+### 10. Auto Project Audit
+
+When HORA detects a **new project** (no `.hora/project-knowledge.md`), it automatically proposes a full codebase audit before any work begins.
+
+```
+You open Claude Code in a new project:
+
+HORA: "This project hasn't been audited yet. I'll analyze:
+       - Architecture and structure
+       - Stack and dependencies
+       - Security flaws (with severity levels)
+       - Technical debt
+       - Good practices already in place
+
+       Want me to run the full audit?"
+```
+
+#### Audit output
+
+Results are stored in `.hora/project-knowledge.md` — versioned with git, injected automatically on every future session:
+
+```markdown
+# Audit : my-saas-app
+> Last updated: 2026-02-20
+
+## Architecture
+Next.js 15 App Router, src/ directory, feature-based structure...
+
+## Stack
+TypeScript 5.7, React 19, Tailwind CSS 4, Drizzle ORM, PostgreSQL...
+
+## Flaws Identified
+| # | Severity | Description | Impact | Solution |
+|---|----------|-------------|--------|----------|
+| 1 | critical | No rate limiting on auth endpoints | Brute force possible | Add rate-limiter middleware |
+| 2 | high     | SQL queries not parameterized in 3 files | SQL injection risk | Migrate to Drizzle prepared statements |
+| 3 | medium   | No error boundaries on route layouts | White screen on crash | Add Error Boundary per layout |
+
+## Technical Debt
+- 12 `any` types in API layer
+- No input validation on 4 form components
+- Unused dependencies: lodash, moment (replaced by date-fns)
+
+## Strengths
+- Clean separation of concerns (services layer)
+- Consistent naming conventions
+- Good test coverage on auth module (87%)
+```
+
+**Incremental updates:** When Claude discovers new information during a session (new flaw fixed, module added, debt resolved), the relevant section is updated in-place — never a full rewrite.
+
+---
+
+### 11. Web/SaaS Conventions (Built-in)
+
+HORA ships with **opinionated conventions** for modern web/SaaS development. These are enforced automatically through the CLAUDE.md guidelines — not optional suggestions.
+
+#### Mandatory algorithm
+
+The HORA algorithm (EXPLORE → PLAN → AUDIT → CODE → COMMIT) runs on **every task**, with depth proportional to complexity:
+
+| Complexity | Algorithm depth |
+|:---|:---|
+| Trivial (typo, 1-3 lines) | EXPLORE (2s mental) → CODE |
+| Medium (feature, bug) | EXPLORE → PLAN → AUDIT → CODE |
+| Complex (multi-file, archi) | EXPLORE → full PLAN with ISC → AUDIT → CODE |
+| Critical (auth, data, migration) | Full algorithm + **user validation required** |
+
+Skills are activated automatically — no need to type `/hora-plan` or `/hora-autopilot`:
+
+- Multi-file task → `/hora-parallel-code` auto-triggered
+- Research/comparison → `/hora-parallel-research` auto-triggered
+- Complex end-to-end → `/hora-autopilot` auto-triggered
+
+#### Library-first philosophy
+
+**Never reimplement what a maintained library already does.**
+
+Decision rule:
+1. Does it differentiate the product? **No** → use existing library
+2. Does the library cover 80%+ of the need? **Yes** → library + light extension
+3. Otherwise → build, but document why
+
+Never build from scratch: auth, form validation, dates, drag-and-drop, file upload, payments, charts, rich text editors.
+
+#### Default stack
+
+| Layer | Default | Alternative |
+|:---|:---|:---|
+| Language | **TypeScript strict** | Never JS, never Python |
+| Frontend | **React 19+ / Next.js App Router** | Vite + React (SPA) |
+| Styling | **Tailwind CSS + shadcn/ui** | — |
+| Database | **PostgreSQL + Drizzle ORM** | Prisma if already in place |
+| Auth | **Better-Auth** or Auth.js v5 | — |
+| Validation | **Zod** (forms, API, env) | — |
+| Forms | **react-hook-form + Zod** | — |
+| Tables | **@tanstack/react-table** | — |
+| Server state | **TanStack Query** | — |
+| Client state | **Zustand** | Context if trivial |
+| Animations | **motion** | — |
+| Charts | **Recharts** | Tremor for dashboards |
+| Rich text | **@tiptap/react** | — |
+| DnD | **@dnd-kit/core** | — |
+| i18n | **next-intl** | — |
+| Payments | **@stripe/react-stripe-js** | — |
+| Analytics | **PostHog** | — |
+| Errors | **@sentry/nextjs** | — |
+| Testing | **Vitest + Testing Library + Playwright** | — |
+
+#### Design anti-patterns (banned)
+
+HORA explicitly **bans the generic "AI look"** in all UI work:
+
+| Banned pattern | Replace with |
+|:---|:---|
+| Blue-violet gradients (Tailwind defaults) | Custom brand hue from OKLCH palette |
+| Inter on everything | Geist, Plus Jakarta Sans, Bricolage Grotesque |
+| 3 icons in a grid ("features section") | Asymmetric layouts, numbered lists, prose |
+| Glassmorphism / blurry cards | Solid surfaces with defined elevation |
+| Floating blob SVGs | Intentional geometric elements tied to brand |
+| Hero > 100vh with centered H1 + CTA | Show the product in the hero |
+| Pure black `#000000` backgrounds | `#0A0A0B` or warm dark neutrals |
+| Gradient CTAs with glow effects | Solid primary color, high contrast |
+
+**Design references:** Linear, Vercel, Clerk, Resend — not AI startup templates.
+
+**Accessibility (WCAG 2.2):** 4.5:1 contrast, 44px touch targets, visible focus rings, `prefers-reduced-motion` respected, keyboard alternatives for all drag interactions.
+
+---
+
+### 12. Custom Spinner Verbs
 
 50 French messages replace the generic Claude Code spinners:
 
@@ -360,7 +524,7 @@ Customizable in the `spinnerVerbs` section of `~/.claude/settings.json`.
 
 ---
 
-### 11. Tool Usage Analytics
+### 13. Tool Usage Analytics
 
 Every tool call is silently logged to `MEMORY/.tool-usage.jsonl`:
 
@@ -405,7 +569,7 @@ Useful for understanding your workflow patterns over time.
 
 ## The Algorithm
 
-HORA follows a structured reasoning process for every task:
+HORA follows a structured reasoning process for **every task** — it's not optional. The depth scales with complexity, but the steps are always followed.
 
 ```
 0. PRIORITIES (in case of conflict)
@@ -415,6 +579,7 @@ HORA follows a structured reasoning process for every task:
    Read before writing. Always.
    - What's the real ask behind the words?
    - SSOT: Does this logic already exist? If yes --> reuse.
+   - Library-first: Does a maintained library do this? If yes --> use it.
    - Can what's in production break?
 
 2. PLAN
@@ -486,14 +651,24 @@ HORA follows a structured reasoning process for every task:
         |        |       |       |        |
      MEMORY/   hooks/  agents/  skills/  .hora/
         |                                  |
-   +----+----+                    +--------+--------+
-   |    |    |                    |        |        |
-PROFILE/ LEARNING/ SESSIONS/  snapshots/ backups/ state/
+   +----+----+                    +--------+--------+--------+
+   |    |    |                    |        |        |        |
+PROFILE/ LEARNING/ SESSIONS/  snapshots/ backups/ state/  patterns.yaml
    |       |          |           |                  |
 identity errors    archives    manifest.jsonl   context-pct.txt
 projects failures  summaries   timestamped       backup-state
 prefs    sentiment             .bak files        session-state
 vocab    system
+
+                    <project>/
+                         |
+                       .hora/
+                         |
+              +----------+----------+
+              |                     |
+        project-id         project-knowledge.md
+     (stable UUID,          (auto-audit results,
+      survives rename)       injected every session)
 ```
 
 ### Zero runtime dependencies
@@ -561,11 +736,15 @@ hora/
 |-- install.ps1                   # Windows PowerShell entry point
 |-- .gitattributes                # Forces LF line endings (prevents Windows CRLF issues)
 |-- .gitignore
-|-- .hora/                        # Runtime state (git-ignored)
+|-- .hora/                        # Project runtime state (git-ignored)
+|   |-- project-id                # Stable project ID (survives folder renames)
+|   |-- project-knowledge.md      # Auto-audit results (versioned with git)
+|   |-- snapshots/                # Pre-edit file backups
+|   |-- backups/                  # Git bundles (when no remote)
 |
 |-- claude/                       # SOURCE — everything deployed to ~/.claude/
     |
-    |-- CLAUDE.md                 # The Algorithm (central brain)
+    |-- CLAUDE.md                 # The Algorithm + Stack + Design + Security
     |-- settings.json             # Hooks + statusLine + spinnerVerbs
     |-- statusline.sh             # Rich status bar (3 responsive modes)
     |
@@ -616,10 +795,12 @@ hora/
 | Capability | Details |
 |:---|:---|
 | **Initial setup** | Nothing — 3 questions, then it learns |
-| **Long-term memory** | Self-constructed from sessions |
+| **Long-term memory** | Self-constructed from sessions (hybrid env + linguistic extraction) |
 | **Security** | Layered defense + audit trail |
-| **Cross-session continuity** | Thread persistence across sessions |
-| **Learning extraction** | Profile + errors + sentiment |
+| **Cross-session continuity** | Thread persistence, project-scoped (stable `.hora/project-id`) |
+| **Learning extraction** | Profile + errors + sentiment (JSONL append-only) |
+| **Auto project audit** | Full codebase analysis on first session (stored in `.hora/project-knowledge.md`) |
+| **Web/SaaS conventions** | Opinionated TypeScript/React stack, library-first, anti "AI look" design |
 | **Session naming** | Deterministic (fast regex, no AI) |
 | **Statusline** | Rich (context %, git, API usage, backup) |
 | **Compact recovery** | Auto-detection + checkpoint injection |
@@ -627,7 +808,8 @@ hora/
 | **Auto backup** | Mirror branch or local bundle |
 | **Multi-agents** | 6 agents across 3 models |
 | **Model routing** | Opus / Sonnet / Haiku |
-| **Ghost failure detection** | Built into the Algorithm |
+| **Ghost failure detection** | Built into the Algorithm (AUDIT step) |
+| **Library-first** | Never reimplement what a maintained library does |
 | **Cross-platform** | macOS / Linux / Windows |
 | **Runtime dependencies** | tsx only |
 | **Custom spinners** | 50 verbs (FR, customizable) |
@@ -772,6 +954,24 @@ Yes. HORA's internal language is French (comments, spinner verbs, skill descript
 <summary><strong>What's the performance impact?</strong></summary>
 
 Minimal. Each hook runs in 10-50ms. The statusline is a single bash script. Backup checks have a 30s cooldown. The heaviest operation (session-end extraction) only runs once per session.
+</details>
+
+<details>
+<summary><strong>What happens if I rename a project folder?</strong></summary>
+
+Nothing breaks. HORA generates a stable project ID stored in `.hora/project-id` on first use. This ID persists across folder renames, so session history and project knowledge stay associated correctly.
+</details>
+
+<details>
+<summary><strong>Can I opt out of the web/SaaS conventions?</strong></summary>
+
+Yes. The conventions live in the `STACK & CONVENTIONS WEB/SAAS` and `DESIGN UI/UX` sections of `~/.claude/CLAUDE.md`. Remove or edit those sections to change the defaults. The core HORA features (memory, security, snapshots, continuity) are independent of the stack opinions.
+</details>
+
+<details>
+<summary><strong>How does the auto project audit work?</strong></summary>
+
+When you open Claude Code in a directory without `.hora/project-knowledge.md`, HORA detects it as a new project and proposes a full codebase audit. The audit covers architecture, stack, security flaws (with severity), technical debt, and good practices. Results are stored locally and injected as context on every future session — so Claude never has to re-analyze the same project.
 </details>
 
 <details>
