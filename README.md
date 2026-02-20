@@ -21,15 +21,43 @@
 
 ## Installation
 
+### macOS / Linux
+
 ```bash
 git clone https://github.com/Vivien83/Hora.git
 cd Hora
 bash install.sh
 ```
 
-**Prerequis** : Claude Code + Node.js 18+ + tsx + jq
+### Windows (natif, sans WSL)
 
-Le script installe `tsx` automatiquement s'il est absent. Pour jq : `brew install jq` (macOS) ou `apt install jq` (Linux).
+```powershell
+git clone https://github.com/Vivien83/Hora.git
+cd Hora
+.\install.ps1
+```
+
+Le script PowerShell detecte Git Bash, verifie les prerequis, puis delegue a `install.sh`.
+
+**Important** : Claude Code sur Windows necessite [Git for Windows](https://git-scm.com/download/win) (qui fournit Git Bash). Si les hooks ne fonctionnent pas, definir la variable d'environnement :
+
+```powershell
+[System.Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', 'C:\Program Files\Git\bin\bash.exe', 'User')
+```
+
+### Prerequis
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Claude Code | Requis | Requis | Requis |
+| Node.js 18+ | Requis | Requis | Requis |
+| tsx | Auto-installe | Auto-installe | Auto-installe |
+| Git | Requis | Requis | Requis (Git for Windows) |
+| jq | Recommande | Recommande | Optionnel |
+
+`jq` permet le merge intelligent de `settings.json` (conservation des hooks tiers). Sans jq, les settings sont ecrases.
+
+Le script installe `tsx` automatiquement s'il est absent.
 
 ### Ce que fait install.sh
 

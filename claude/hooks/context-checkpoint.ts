@@ -19,9 +19,10 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { homedir } from "os";
 
-const HORA_STATE_DIR = path.join(process.env.HOME!, ".claude", ".hora");
-const MEMORY_DIR = path.join(process.env.HOME!, ".claude", "MEMORY");
+const HORA_STATE_DIR = path.join(homedir(), ".claude", ".hora");
+const MEMORY_DIR = path.join(homedir(), ".claude", "MEMORY");
 
 const CONTEXT_PCT_FILE = path.join(HORA_STATE_DIR, "context-pct.txt");
 const CONTEXT_STATE_FILE = path.join(HORA_STATE_DIR, "context-state.json");

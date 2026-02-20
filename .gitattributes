@@ -1,0 +1,3 @@
+# Prevent CRLF corruption on Windows (Git Bash requires LF)
+*.sh text eol=lf
+*.ts text eol=lf

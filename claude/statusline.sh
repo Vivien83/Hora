@@ -105,10 +105,15 @@ fetch_usage() {
         fi
     fi
 
-    # Extraire le token OAuth depuis le Keychain macOS
+    # Extraire le token OAuth — macOS Keychain uniquement
+    # Sur Windows/Linux, l'API usage n'est pas disponible (pas de Keychain)
+    if ! command -v security &>/dev/null; then
+        return 0
+    fi
+
     local keychain_data token
     keychain_data=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null)
-    token=$(echo "$keychain_data" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('claudeAiOauth',{}).get('accessToken',''))" 2>/dev/null)
+    token=$(echo "$keychain_data" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log(j.claudeAiOauth?.accessToken||'')}catch{}})" 2>/dev/null)
 
     if [ -n "$token" ]; then
         local usage_json
@@ -118,8 +123,13 @@ fetch_usage() {
             -H "anthropic-beta: oauth-2025-04-20" \
             "https://api.anthropic.com/api/oauth/usage" 2>/dev/null)
 
-        if [ -n "$usage_json" ] && echo "$usage_json" | jq -e '.five_hour' >/dev/null 2>&1; then
-            echo "$usage_json" | jq '.' > "$USAGE_CACHE" 2>/dev/null
+        if [ -n "$usage_json" ]; then
+            # Utiliser jq si disponible, sinon sauvegarder le JSON brut
+            if command -v jq &>/dev/null; then
+                echo "$usage_json" | jq -e '.five_hour' >/dev/null 2>&1 && echo "$usage_json" | jq '.' > "$USAGE_CACHE" 2>/dev/null
+            else
+                echo "$usage_json" > "$USAGE_CACHE" 2>/dev/null
+            fi
         fi
     fi
 }
@@ -129,42 +139,67 @@ fetch_usage &
 USAGE_PID=$!
 
 # Lire le cache existant (meme si le fetch tourne en parallele)
-if [ -f "$USAGE_CACHE" ]; then
-    eval "$(jq -r '
-        "usage_5h=" + (.five_hour.utilization // 0 | tostring) + "\n" +
-        "usage_5h_reset=" + (.five_hour.resets_at // "" | @sh) + "\n" +
-        "usage_7d=" + (.seven_day.utilization // 0 | tostring) + "\n" +
-        "usage_7d_reset=" + (.seven_day.resets_at // "" | @sh)
-    ' "$USAGE_CACHE" 2>/dev/null)"
-fi
+# Fonction cross-platform : jq si disponible, sinon node
+read_usage_cache() {
+    [ -f "$USAGE_CACHE" ] || return
+    if command -v jq &>/dev/null; then
+        eval "$(jq -r '
+            "usage_5h=" + (.five_hour.utilization // 0 | tostring) + "\n" +
+            "usage_5h_reset=" + (.five_hour.resets_at // "" | @sh) + "\n" +
+            "usage_7d=" + (.seven_day.utilization // 0 | tostring) + "\n" +
+            "usage_7d_reset=" + (.seven_day.resets_at // "" | @sh)
+        ' "$USAGE_CACHE" 2>/dev/null)"
+    elif command -v node &>/dev/null; then
+        eval "$(node -e "
+            const d=require('fs').readFileSync('$USAGE_CACHE','utf8');
+            try{const j=JSON.parse(d);
+            console.log('usage_5h='+(j.five_hour?.utilization||0));
+            console.log('usage_5h_reset=\\x27'+(j.five_hour?.resets_at||'')+'\\x27');
+            console.log('usage_7d='+(j.seven_day?.utilization||0));
+            console.log('usage_7d_reset=\\x27'+(j.seven_day?.resets_at||'')+'\\x27');
+            }catch{}
+        " 2>/dev/null)"
+    fi
+}
+read_usage_cache
 
 usage_5h_int=${usage_5h%%.*}
 usage_7d_int=${usage_7d%%.*}
 [ -z "$usage_5h_int" ] && usage_5h_int=0
 [ -z "$usage_7d_int" ] && usage_7d_int=0
 
-# Calculer le temps restant avant reset 5h
+# Calculer le temps restant avant reset (bash pur — cross-platform)
+parse_countdown() {
+    local ts="$1"
+    [ -z "$ts" ] || [ "$ts" = "null" ] || [ "$ts" = "''" ] && return
+    local ts_epoch now_epoch diff h m
+    # GNU date (Linux, Git Bash on Windows)
+    ts_epoch=$(date -d "$ts" +%s 2>/dev/null)
+    # BSD date (macOS) fallback
+    if [ -z "$ts_epoch" ]; then
+        local clean_ts="${ts%%Z*}"
+        clean_ts="${clean_ts%%+*}"
+        ts_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$clean_ts" +%s 2>/dev/null)
+    fi
+    [ -z "$ts_epoch" ] && return
+    now_epoch=$(date +%s)
+    diff=$((ts_epoch - now_epoch))
+    if [ "$diff" -le 0 ]; then
+        echo "now"
+    else
+        h=$((diff / 3600))
+        m=$(( (diff % 3600) / 60 ))
+        if [ "$h" -gt 0 ]; then
+            printf '%dh%02d' "$h" "$m"
+        else
+            printf '%dm' "$m"
+        fi
+    fi
+}
+
 reset_5h_str=""
 if [ -n "$usage_5h_reset" ] && [ "$usage_5h_reset" != "null" ] && [ "$usage_5h_reset" != "''" ]; then
-    reset_5h_str=$(python3 -c "
-from datetime import datetime, timezone
-try:
-    ts = '${usage_5h_reset}'
-    if not ts: raise ValueError
-    if ts.endswith('Z'):
-        dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-    elif '+' in ts[10:]:
-        dt = datetime.fromisoformat(ts)
-    else:
-        dt = datetime.fromisoformat(ts + '+00:00')
-    diff = int((dt - datetime.now(timezone.utc)).total_seconds())
-    if diff <= 0: print('now')
-    else:
-        h, m = diff // 3600, (diff % 3600) // 60
-        print(f'{h}h{m:02d}' if h > 0 else f'{m}m')
-except:
-    pass
-" 2>/dev/null)
+    reset_5h_str=$(parse_countdown "$usage_5h_reset")
 fi
 reset_5h_str="${reset_5h_str:-—}"
 
@@ -281,7 +316,8 @@ fi
 
 detect_width() {
     local w=""
-    w=$(stty size </dev/tty 2>/dev/null | awk '{print $2}')
+    # /dev/tty n'existe pas sur Windows — tester avant d'utiliser
+    [ -e /dev/tty ] && w=$(stty size </dev/tty 2>/dev/null | awk '{print $2}')
     [ -z "$w" ] || [ "$w" = "0" ] && w=$(tput cols 2>/dev/null)
     [ -z "$w" ] || [ "$w" = "0" ] && w=${COLUMNS:-80}
     echo "$w"
@@ -449,42 +485,17 @@ pct_color() {
 wait $USAGE_PID 2>/dev/null
 
 # Relire le cache si le fetch a mis a jour
-if [ -f "$USAGE_CACHE" ]; then
-    eval "$(jq -r '
-        "usage_5h=" + (.five_hour.utilization // 0 | tostring) + "\n" +
-        "usage_5h_reset=" + (.five_hour.resets_at // "" | @sh) + "\n" +
-        "usage_7d=" + (.seven_day.utilization // 0 | tostring) + "\n" +
-        "usage_7d_reset=" + (.seven_day.resets_at // "" | @sh)
-    ' "$USAGE_CACHE" 2>/dev/null)"
+read_usage_cache
 
-    usage_5h_int=${usage_5h%%.*}
-    usage_7d_int=${usage_7d%%.*}
-    [ -z "$usage_5h_int" ] && usage_5h_int=0
-    [ -z "$usage_7d_int" ] && usage_7d_int=0
+usage_5h_int=${usage_5h%%.*}
+usage_7d_int=${usage_7d%%.*}
+[ -z "$usage_5h_int" ] && usage_5h_int=0
+[ -z "$usage_7d_int" ] && usage_7d_int=0
 
-    # Recalculer le reset time si pas deja fait
-    if [ -n "$usage_5h_reset" ] && [ "$usage_5h_reset" != "null" ] && [ "$usage_5h_reset" != "''" ] && [ "$reset_5h_str" = "—" ]; then
-        reset_5h_str=$(python3 -c "
-from datetime import datetime, timezone
-try:
-    ts = '${usage_5h_reset}'
-    if not ts: raise ValueError
-    if ts.endswith('Z'):
-        dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-    elif '+' in ts[10:]:
-        dt = datetime.fromisoformat(ts)
-    else:
-        dt = datetime.fromisoformat(ts + '+00:00')
-    diff = int((dt - datetime.now(timezone.utc)).total_seconds())
-    if diff <= 0: print('now')
-    else:
-        h, m = diff // 3600, (diff % 3600) // 60
-        print(f'{h}h{m:02d}' if h > 0 else f'{m}m')
-except:
-    pass
-" 2>/dev/null)
-        reset_5h_str="${reset_5h_str:-—}"
-    fi
+# Recalculer le reset time si pas deja fait
+if [ -n "$usage_5h_reset" ] && [ "$usage_5h_reset" != "null" ] && [ "$usage_5h_reset" != "''" ] && [ "$reset_5h_str" = "—" ]; then
+    reset_5h_str=$(parse_countdown "$usage_5h_reset")
+    reset_5h_str="${reset_5h_str:-—}"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

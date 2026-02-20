@@ -90,9 +90,12 @@ if ! node -e "require('tsx')" &>/dev/null 2>&1 && ! command -v tsx &>/dev/null; 
   fi
 fi
 
-if ! command -v jq &>/dev/null; then
-  echo "[ERREUR] jq requis. Installe : brew install jq / apt install jq"
-  exit 1
+HAS_JQ=false
+if command -v jq &>/dev/null; then
+  HAS_JQ=true
+else
+  echo "[WARN] jq non trouve — le merge settings.json sera simplifie (ecrasement au lieu de fusion)"
+  echo "   Pour un merge complet : brew install jq (macOS) / apt install jq (Linux) / choco install jq (Windows)"
 fi
 
 # --- Sauvegarde des données de session Claude ---
@@ -184,8 +187,12 @@ TARGET_SETTINGS="$CLAUDE_DIR/settings.json"
 
 if [ -f "$TARGET_SETTINGS" ]; then
   if $DRY_RUN; then
-    echo "   [DRY-RUN] settings.json — merge Hora (PAI supprime si present)"
-  else
+    if $HAS_JQ; then
+      echo "   [DRY-RUN] settings.json — merge Hora (PAI supprime si present)"
+    else
+      echo "   [DRY-RUN] settings.json — ecrasement par Hora (jq absent)"
+    fi
+  elif $HAS_JQ; then
     cp "$TARGET_SETTINGS" "$TARGET_SETTINGS.bak"
 
     # Détecter si PAI est présent
@@ -224,6 +231,11 @@ if [ -f "$TARGET_SETTINGS" ]; then
         spinnerVerbs: ($hora.spinnerVerbs // $existing.spinnerVerbs // null)
       } | with_entries(select(.value != null))
     ' "$TARGET_SETTINGS" "$HORA_SETTINGS" > "$TARGET_SETTINGS.tmp" && mv "$TARGET_SETTINGS.tmp" "$TARGET_SETTINGS"
+  else
+    # Sans jq : sauvegarder et ecraser
+    cp "$TARGET_SETTINGS" "$TARGET_SETTINGS.bak"
+    cp "$HORA_SETTINGS" "$TARGET_SETTINGS"
+    echo "[WARN] settings.json ecrase (jq absent — hooks tiers perdus, .bak conserve)"
   fi
 else
   _cp "$HORA_SETTINGS" "$TARGET_SETTINGS"

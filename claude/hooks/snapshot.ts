@@ -15,12 +15,13 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
+import { homedir } from "os";
 
 const MAX_SNAPSHOTS = 100;
 const CLEANUP_TARGET = 90;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 Mo
 
-const HORA_DIR = path.join(process.env.HOME!, ".claude", ".hora");
+const HORA_DIR = path.join(homedir(), ".claude", ".hora");
 const SNAPSHOTS_DIR = path.join(HORA_DIR, "snapshots");
 const MANIFEST_FILE = path.join(SNAPSHOTS_DIR, "manifest.jsonl");
 

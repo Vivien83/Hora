@@ -10,8 +10,9 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+import { homedir } from "os";
 
-const CLAUDE_DIR = path.join(process.env.HOME!, ".claude");
+const CLAUDE_DIR = path.join(homedir(), ".claude");
 const MEMORY_DIR = path.join(CLAUDE_DIR, "MEMORY");
 const PROFILE_DIR = path.join(MEMORY_DIR, "PROFILE");
 const STATE_DIR = path.join(MEMORY_DIR, "STATE");
