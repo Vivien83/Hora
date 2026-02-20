@@ -11,7 +11,13 @@
 # Utilise le JSON natif de Claude Code :
 #   - context_window.used_percentage : % contexte
 #   - cost.total_duration_ms         : duree session
-# Usage 5h/7d via API OAuth Anthropic (cache 60s).
+# Usage 5h/7d via API OAuth Anthropic (cache 60s, cross-platform).
+#
+# Credentials cross-platform :
+#   - macOS  : Keychain natif (service "Claude Code-credentials")
+#   - Windows: ~/.claude/.credentials.json (JSON en clair)
+#   - Linux  : ~/.claude/.credentials.json + fallback secret-tool
+#   - CI     : variable CLAUDE_CODE_OAUTH_TOKEN
 # ═══════════════════════════════════════════════════════════════════════════════
 
 set -o pipefail
@@ -105,15 +111,38 @@ fetch_usage() {
         fi
     fi
 
-    # Extraire le token OAuth — macOS Keychain uniquement
-    # Sur Windows/Linux, l'API usage n'est pas disponible (pas de Keychain)
-    if ! command -v security &>/dev/null; then
-        return 0
-    fi
+    # Extraire le token OAuth — cross-platform
+    # Priorite : env var > fichier credentials > macOS Keychain > Linux secret-tool
+    # - macOS : Keychain natif (le fichier .credentials.json est supprime apres migration)
+    # - Windows/Linux : fichier ~/.claude/.credentials.json (JSON en clair)
+    # - CI/headless : variable CLAUDE_CODE_OAUTH_TOKEN
+    local keychain_data="" token=""
 
-    local keychain_data token
-    keychain_data=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null)
-    token=$(echo "$keychain_data" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log(j.claudeAiOauth?.accessToken||'')}catch{}})" 2>/dev/null)
+    # 1. Variable d'env (CI, containers, headless)
+    if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+        token="$CLAUDE_CODE_OAUTH_TOKEN"
+    else
+        # 2. Fichier credentials (Linux, Windows/Git Bash, containers)
+        local creds_file="$HOME/.claude/.credentials.json"
+        if [ -f "$creds_file" ]; then
+            keychain_data=$(cat "$creds_file" 2>/dev/null)
+        fi
+
+        # 3. macOS Keychain (le fichier est absent car supprime apres migration)
+        if [ -z "$keychain_data" ] && command -v security &>/dev/null; then
+            keychain_data=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null)
+        fi
+
+        # 4. Linux GNOME Keyring (secret-tool via D-Bus)
+        if [ -z "$keychain_data" ] && command -v secret-tool &>/dev/null; then
+            keychain_data=$(secret-tool lookup service "Claude Code-credentials" 2>/dev/null)
+        fi
+
+        # Extraire le token OAuth du JSON
+        if [ -n "$keychain_data" ]; then
+            token=$(echo "$keychain_data" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log(j.claudeAiOauth?.accessToken||'')}catch{}})" 2>/dev/null)
+        fi
+    fi
 
     if [ -n "$token" ]; then
         local usage_json
@@ -124,7 +153,6 @@ fetch_usage() {
             "https://api.anthropic.com/api/oauth/usage" 2>/dev/null)
 
         if [ -n "$usage_json" ]; then
-            # Utiliser jq si disponible, sinon sauvegarder le JSON brut
             if command -v jq &>/dev/null; then
                 echo "$usage_json" | jq -e '.five_hour' >/dev/null 2>&1 && echo "$usage_json" | jq '.' > "$USAGE_CACHE" 2>/dev/null
             else
