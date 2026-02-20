@@ -19,6 +19,26 @@ const STATE_DIR = path.join(MEMORY_DIR, "STATE");
 const SESSIONS_DIR = path.join(MEMORY_DIR, "SESSIONS");
 const STATE_FILE = path.join(MEMORY_DIR, ".session-state.json");
 
+/**
+ * Retourne un ID stable pour le projet courant.
+ * Stocke dans .hora/project-id a la racine du projet.
+ * Persiste meme si le dossier est renomme.
+ */
+function getProjectId(): string {
+  const horaDir = path.join(process.cwd(), ".hora");
+  const idFile = path.join(horaDir, "project-id");
+  try {
+    const existing = fs.readFileSync(idFile, "utf-8").trim();
+    if (existing.length >= 8) return existing;
+  } catch {}
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  try {
+    fs.mkdirSync(horaDir, { recursive: true });
+    fs.writeFileSync(idFile, id, "utf-8");
+  } catch {}
+  return id;
+}
+
 // Thread continuity files
 const PENDING_USER_MSG = path.join(STATE_DIR, ".pending-user-msg.json");
 const THREAD_STATE_FILE = path.join(STATE_DIR, "thread-state.json");
@@ -67,6 +87,7 @@ interface ThreadEntry {
   sid: string;
   u: string;
   a: string;
+  project?: string;
 }
 
 function summarizeUserMessage(msg: string): string {
@@ -135,11 +156,13 @@ interface LastSessionInfo {
   summary: string;
 }
 
-function getLastSessionSummary(): LastSessionInfo | null {
+function getLastSessionSummary(currentProject: string): LastSessionInfo | null {
   try {
     try {
       const threadState = JSON.parse(fs.readFileSync(THREAD_STATE_FILE, "utf-8"));
-      if (threadState.session_name && threadState.session_summary) {
+      // Only use if same project (or no project field = legacy)
+      if (threadState.session_name && threadState.session_summary &&
+          (!threadState.project || threadState.project === currentProject)) {
         return {
           name: threadState.session_name,
           sid: threadState.session_id || "?",
@@ -187,8 +210,12 @@ function getLastSessionSummary(): LastSessionInfo | null {
   }
 }
 
-function formatThreadForInjection(entries: ThreadEntry[]): string {
-  if (entries.length === 0) return "";
+function formatThreadForInjection(entries: ThreadEntry[], currentProject: string): string {
+  // Filter to current project (entries without project field = legacy, include them)
+  const filtered = entries.filter(
+    (e) => !e.project || e.project === currentProject
+  );
+  if (filtered.length === 0) return "";
 
   const parts: string[] = [];
 
@@ -203,8 +230,8 @@ function formatThreadForInjection(entries: ThreadEntry[]): string {
     ``
   );
 
-  // 2. Resume de la derniere session
-  const lastSession = getLastSessionSummary();
+  // 2. Resume de la derniere session (meme projet)
+  const lastSession = getLastSessionSummary(currentProject);
   if (lastSession) {
     parts.push(
       `Derniere session: "${lastSession.name}" (${lastSession.sid}) — ${lastSession.date}`,
@@ -213,15 +240,28 @@ function formatThreadForInjection(entries: ThreadEntry[]): string {
     );
   }
 
-  // 3. Dernieres sessions archivees (2-3 plus recentes)
+  // 3. Dernieres sessions archivees (meme projet, 2-3 plus recentes)
   try {
-    const sessionFiles = fs.readdirSync(SESSIONS_DIR)
+    const allSessionFiles = fs.readdirSync(SESSIONS_DIR)
       .filter((f: string) => f.endsWith(".md"))
-      .sort()
-      .slice(-3);
-    if (sessionFiles.length > 0) {
+      .sort();
+
+    // Filter by project: read each file and check **Projet** field
+    const projectSessions: string[] = [];
+    for (let i = allSessionFiles.length - 1; i >= 0 && projectSessions.length < 3; i--) {
+      try {
+        const content = fs.readFileSync(path.join(SESSIONS_DIR, allSessionFiles[i]), "utf-8");
+        const projetIdMatch = content.match(/\*\*ProjetID\*\*\s*:\s*(\S+)/);
+        // Include if same project ID or no ProjetID field (legacy)
+        if (!projetIdMatch || projetIdMatch[1].trim() === currentProject) {
+          projectSessions.unshift(allSessionFiles[i]);
+        }
+      } catch {}
+    }
+
+    if (projectSessions.length > 0) {
       parts.push(`Sessions recentes:`);
-      for (const sf of sessionFiles) {
+      for (const sf of projectSessions) {
         try {
           const content = fs.readFileSync(path.join(SESSIONS_DIR, sf), "utf-8");
           const nameMatch = content.match(/^# Session\s*:\s*(.+)$/m);
@@ -243,12 +283,12 @@ function formatThreadForInjection(entries: ThreadEntry[]): string {
     }
   } catch {}
 
-  // 4. Thread des echanges recents
+  // 4. Thread des echanges recents (meme projet)
   let lines: string[] = [];
   let totalChars = 0;
 
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const e = entries[i];
+  for (let i = filtered.length - 1; i >= 0; i--) {
+    const e = filtered[i];
     const time = e.ts.slice(11, 16); // HH:MM
     const line = `[${time} ${e.sid}] U: ${e.u} | A: ${e.a}`;
     if (totalChars + line.length > MAX_THREAD_CHARS && lines.length > 0) break;
@@ -393,6 +433,7 @@ async function main() {
         sid: (prevUser.session_id || sessionId).slice(0, 8),
         u: summarizeUserMessage(prevUser.message),
         a: prevAssistant.assistant_summary,
+        project: prevUser.project || prevAssistant.project || getProjectId(),
       };
       if (entry.u.length > 0) {
         let thread = readThreadFile();
@@ -406,6 +447,7 @@ async function main() {
       fs.mkdirSync(path.dirname(PENDING_USER_MSG), { recursive: true });
       fs.writeFileSync(PENDING_USER_MSG, JSON.stringify({
         session_id: sessionId,
+        project: getProjectId(),
         message: message,
         timestamp: new Date().toISOString(),
       }), "utf-8");
@@ -454,9 +496,9 @@ async function main() {
     }
     // else: profil vide mais historique present → skip les questions, le thread suffit
 
-    // Thread injection (premier message, toujours si historique existe)
+    // Thread injection (premier message, filtre par projet courant)
     if (hasThreadHistory) {
-      const threadText = formatThreadForInjection(thread);
+      const threadText = formatThreadForInjection(thread, getProjectId());
       if (threadText) parts.push(threadText);
     }
   }

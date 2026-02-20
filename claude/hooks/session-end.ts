@@ -15,6 +15,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { homedir } from "os";
+import { execSync } from "child_process";
 
 const CLAUDE_DIR = path.join(homedir(), ".claude");
 const MEMORY_DIR = path.join(CLAUDE_DIR, "MEMORY");
@@ -24,7 +25,11 @@ const SESSIONS_DIR = path.join(MEMORY_DIR, "SESSIONS");
 const STATE_FILE = path.join(MEMORY_DIR, ".session-state.json");
 const EXTRACTED_FLAG = path.join(MEMORY_DIR, ".extraction-done");
 const THREAD_STATE_FILE = path.join(MEMORY_DIR, "STATE", "thread-state.json");
+const SENTIMENT_LOG = path.join(LEARNING_DIR, "ALGORITHM", "sentiment-log.jsonl");
+const FAILURES_LOG = path.join(LEARNING_DIR, "FAILURES", "failures-log.jsonl");
+const MIGRATION_FLAG = path.join(MEMORY_DIR, ".migration-hora-v2-done");
 
+const PROJECT_DISPLAY = path.basename(process.cwd());
 const isSubagent = process.argv.includes("--subagent");
 
 interface HookInput {
@@ -36,6 +41,26 @@ interface HookInput {
 // ========================================
 // Utilitaires
 // ========================================
+
+/**
+ * Retourne un ID stable pour le projet courant.
+ * Stocke dans .hora/project-id a la racine du projet.
+ * Persiste meme si le dossier est renomme.
+ */
+function getProjectId(): string {
+  const horaDir = path.join(process.cwd(), ".hora");
+  const idFile = path.join(horaDir, "project-id");
+  try {
+    const existing = fs.readFileSync(idFile, "utf-8").trim();
+    if (existing.length >= 8) return existing;
+  } catch {}
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  try {
+    fs.mkdirSync(horaDir, { recursive: true });
+    fs.writeFileSync(idFile, id, "utf-8");
+  } catch {}
+  return id;
+}
 
 function readFile(filePath: string): string {
   try {
@@ -50,18 +75,21 @@ function writeFile(filePath: string, content: string) {
   fs.writeFileSync(filePath, content, "utf-8");
 }
 
-function appendFile(filePath: string, content: string) {
+function appendJsonl(filePath: string, data: Record<string, any>): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.appendFileSync(filePath, "\n\n" + content, "utf-8");
+  fs.appendFileSync(filePath, JSON.stringify(data) + "\n", "utf-8");
 }
 
 function timestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 }
 
-function yearMonth(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+function execWithTimeout(cmd: string, timeoutMs: number): string {
+  try {
+    return execSync(cmd, { timeout: timeoutMs, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  } catch {
+    return "";
+  }
 }
 
 // ========================================
@@ -190,122 +218,360 @@ function parseTranscript(transcriptPath: string): string {
 }
 
 // ========================================
-// Extraction de profil
+// Extraction de profil — Couche A : environnement
 // ========================================
 
-function extractProfile(transcript: string): Record<string, string[]> {
-  const extracted: Record<string, string[]> = {
+interface ProfileEntry {
+  key: string;
+  value: string;
+  source: string;
+}
+
+interface ProfileData {
+  identity: ProfileEntry[];
+  projects: Array<{ name: string; source: string; date: string }>;
+  techStack: Array<{ name: string; source: string }>;
+  preferences: ProfileEntry[];
+  vocabulary: string[];
+}
+
+function extractProfileEnv(): ProfileData {
+  const data: ProfileData = {
     identity: [],
     projects: [],
+    techStack: [],
     preferences: [],
+    vocabulary: [],
   };
+
+  // Git config → name, email
+  const gitName = execWithTimeout("git config user.name", 2000);
+  if (gitName) data.identity.push({ key: "Nom", value: gitName, source: "env:git-config" });
+
+  const gitEmail = execWithTimeout("git config user.email", 2000);
+  if (gitEmail) data.identity.push({ key: "Email", value: gitEmail, source: "env:git-config" });
+
+  // Git remote → GitHub username
+  const remote = execWithTimeout("git remote get-url origin", 2000);
+  if (remote) {
+    const ghMatch = remote.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+    if (ghMatch) data.identity.push({ key: "GitHub", value: ghMatch[1], source: "env:git-remote" });
+  }
+
+  // CWD → project name
+  const cwdName = path.basename(process.cwd());
+  if (cwdName && cwdName !== "/" && cwdName !== ".") {
+    data.projects.push({ name: cwdName, source: "env:cwd", date: new Date().toISOString().slice(0, 10) });
+  }
+
+  // package.json → tech stack
+  try {
+    const pkgPath = path.join(process.cwd(), "package.json");
+    const stat = fs.statSync(pkgPath);
+    if (stat.size <= 50 * 1024) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+      const allDeps: Record<string, string> = { ...pkg.dependencies, ...pkg.devDependencies };
+      const techMap: Record<string, string> = {
+        typescript: "TypeScript",
+        react: "React",
+        next: "Next.js",
+        vue: "Vue",
+        express: "Express",
+        "drizzle-orm": "Drizzle",
+        "@trpc/server": "tRPC",
+        svelte: "Svelte",
+        "@angular/core": "Angular",
+        fastify: "Fastify",
+        hono: "Hono",
+        prisma: "Prisma",
+        tsx: "tsx",
+        tailwindcss: "Tailwind CSS",
+        vite: "Vite",
+        esbuild: "esbuild",
+        "n8n-workflow": "n8n",
+        flask: "Flask",
+        "solid-js": "SolidJS",
+      };
+      for (const [dep, label] of Object.entries(techMap)) {
+        if (allDeps[dep]) data.techStack.push({ name: label, source: "env:package.json" });
+      }
+    }
+  } catch {}
+
+  // Git ls-files → dominant languages by extension
+  try {
+    const files = execWithTimeout("git ls-files", 3000);
+    if (files) {
+      const truncated = files.slice(0, 10000);
+      const extCounts: Record<string, number> = {};
+      for (const line of truncated.split("\n")) {
+        const ext = path.extname(line).toLowerCase();
+        if (ext && ext.length <= 6) extCounts[ext] = (extCounts[ext] || 0) + 1;
+      }
+      const extToLang: Record<string, string> = {
+        ".ts": "TypeScript",
+        ".tsx": "TypeScript",
+        ".js": "JavaScript",
+        ".jsx": "JavaScript",
+        ".py": "Python",
+        ".rs": "Rust",
+        ".go": "Go",
+        ".java": "Java",
+        ".rb": "Ruby",
+        ".dart": "Dart",
+        ".swift": "Swift",
+        ".kt": "Kotlin",
+      };
+      const sorted = Object.entries(extCounts).sort((a, b) => b[1] - a[1]);
+      for (const [ext] of sorted.slice(0, 3)) {
+        const lang = extToLang[ext];
+        if (lang && !data.techStack.some((t) => t.name === lang)) {
+          data.techStack.push({ name: lang, source: "env:git-ls-files" });
+        }
+      }
+    }
+  } catch {}
+
+  return data;
+}
+
+// ========================================
+// Extraction de profil — Couche B : linguistique
+// ========================================
+
+const STOPWORDS = new Set([
+  // FR
+  "je", "tu", "il", "elle", "on", "nous", "vous", "ils", "elles",
+  "le", "la", "les", "un", "une", "des", "de", "du", "au", "aux",
+  "et", "ou", "mais", "donc", "car", "ni", "que", "qui", "quoi",
+  "ce", "cette", "ces", "mon", "ton", "son", "ma", "ta", "sa",
+  "dans", "sur", "sous", "avec", "sans", "pour", "par", "en",
+  "est", "sont", "fait", "faire", "pas", "plus", "bien", "tout",
+  "oui", "non", "aussi", "comme", "peut", "faut", "deja", "ici",
+  "moi", "toi", "lui", "eux", "nos", "vos", "leurs", "ses",
+  // EN
+  "the", "a", "an", "is", "are", "was", "were", "be", "been",
+  "have", "has", "had", "do", "does", "did", "will", "would",
+  "could", "should", "may", "might", "can", "shall", "must",
+  "and", "or", "but", "not", "no", "yes", "so", "if", "then",
+  "this", "that", "these", "those", "it", "its", "my", "your",
+  "his", "her", "our", "their", "what", "which", "who", "whom",
+  "how", "when", "where", "why", "all", "each", "every", "both",
+  "few", "more", "most", "other", "some", "such", "than", "too",
+  "very", "just", "about", "above", "after", "again", "also",
+  "any", "because", "before", "between", "come", "from", "get",
+  "into", "know", "like", "make", "need", "new", "now", "only",
+  "out", "over", "take", "them", "there", "they", "think",
+  "time", "use", "want", "way", "work", "with", "you",
+  // code common
+  "file", "code", "line", "function", "const", "let", "var",
+  "true", "false", "null", "undefined", "return", "import",
+  "string", "number", "type", "class", "export", "default",
+]);
+
+function extractProfileLinguistic(transcript: string): Partial<ProfileData> {
+  const data: Partial<ProfileData> = { identity: [], preferences: [], vocabulary: [] };
 
   const userLines = transcript
     .split("\n")
     .filter((l) => l.startsWith("[user]:") || l.startsWith("[human]:"));
   const userText = userLines.join("\n");
 
-  // Identite
+  if (userLines.length === 0) return data;
+
+  // Langue detection: >50% user lines contain FR words
+  const frWords =
+    /\b(je|tu|on|les|des|dans|pour|avec|est|une|que|pas|sur|qui|mais|comme|cette|mon|ton|faut|fait)\b/i;
+  const frCount = userLines.filter((l) => frWords.test(l)).length;
+  if (frCount / userLines.length > 0.5) {
+    data.preferences!.push({ key: "Langue", value: "francais", source: "transcript" });
+  } else {
+    data.preferences!.push({ key: "Langue", value: "english", source: "transcript" });
+  }
+
+  // Vocabulary: technical terms repeated 3+ times (exclude code blocks)
+  const cleanUserText = userText.replace(/```[\s\S]*?```/g, "");
+  const words = cleanUserText
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+
+  const wordFreq: Record<string, number> = {};
+  for (const w of words) wordFreq[w] = (wordFreq[w] || 0) + 1;
+
+  data.vocabulary = Object.entries(wordFreq)
+    .filter(([, count]) => count >= 3)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .map(([word]) => word);
+
+  // Identity fallback (original patterns, used only if env didn't find name)
   const namePatterns = [
     /je m'appelle (\w+)/i,
     /mon nom est (\w+)/i,
     /i'm (\w+)/i,
     /my name is (\w+)/i,
   ];
-  namePatterns.forEach((p) => {
+  for (const p of namePatterns) {
     const match = userText.match(p);
-    if (match) extracted.identity.push(`Nom: ${match[1]}`);
-  });
-
-  // Domaine/projets
-  const domainPatterns = [
-    /je travaille (?:dans|sur|en) ([^.!?\n]{5,40})/i,
-    /mon domaine (?:est|c'est) ([^.!?\n]{5,40})/i,
-    /i work (?:on|in|with) ([^.!?\n]{5,40})/i,
-  ];
-  domainPatterns.forEach((p) => {
-    const match = userText.match(p);
-    if (match) extracted.projects.push(match[1].trim());
-  });
-
-  // Preferences de code
-  const langPatterns: [RegExp, string][] = [
-    [/\bj'utilise (python|typescript|rust|flutter|dart|go|java)\b/i, "Langage"],
-    [/\bje code en (python|typescript|rust|flutter|dart|go|java)\b/i, "Langage"],
-    [/\bj'utilise (n8n|flask|solidjs|nextjs|react|vue|angular)\b/i, "Framework"],
-    [/\bje bosse avec (n8n|flask|solidjs|nextjs|react|vue|angular)\b/i, "Framework"],
-  ];
-  langPatterns.forEach(([pattern, category]) => {
-    const match = userText.match(pattern);
     if (match) {
-      const val = `${category}: ${match[1]}`;
-      if (!extracted.preferences.includes(val)) {
-        extracted.preferences.push(val);
-      }
+      data.identity!.push({ key: "Nom", value: match[1], source: "transcript" });
+      break;
     }
-  });
+  }
 
-  return extracted;
+  return data;
 }
 
 // ========================================
-// Extraction des erreurs et lecons
+// Ecriture du profil
+// ========================================
+
+function writeProfileFiles(env: ProfileData, ling: Partial<ProfileData>): void {
+  const identityFile = path.join(PROFILE_DIR, "identity.md");
+  const projectsFile = path.join(PROFILE_DIR, "projects.md");
+  const preferencesFile = path.join(PROFILE_DIR, "preferences.md");
+  const vocabularyFile = path.join(PROFILE_DIR, "vocabulary.md");
+
+  // --- identity.md ---
+  // Merge: env identity takes priority, linguistic as fallback
+  const identityEntries = [...env.identity];
+  for (const entry of ling.identity || []) {
+    if (!identityEntries.some((e) => e.key === entry.key)) {
+      identityEntries.push(entry);
+    }
+  }
+
+  if (identityEntries.length > 0) {
+    const existing = readFile(identityFile);
+    const newEntries = identityEntries.filter(
+      (e) => !existing.includes(e.value)
+    );
+    if (newEntries.length > 0) {
+      let content = existing && !existing.startsWith("<!--") ? existing : "## Identite";
+      for (const e of newEntries) {
+        content += `\n- ${e.key}: ${e.value} [${e.source}]`;
+      }
+      writeFile(identityFile, content);
+    }
+  }
+
+  // --- projects.md ---
+  if (env.projects.length > 0) {
+    const existing = readFile(projectsFile);
+    const newProjects = env.projects.filter((p) => !existing.includes(p.name));
+    if (newProjects.length > 0) {
+      let content = existing && !existing.startsWith("<!--") ? existing : "## Projets";
+      for (const p of newProjects) {
+        content += `\n- ${p.name} [${p.source}, ${p.date}]`;
+      }
+      writeFile(projectsFile, content);
+    }
+  }
+
+  // --- preferences.md ---
+  const allPrefs = [...(ling.preferences || [])];
+  // Add tech stack as preferences
+  for (const tech of env.techStack) {
+    allPrefs.push({ key: "Tech", value: tech.name, source: tech.source });
+  }
+
+  if (allPrefs.length > 0) {
+    const existing = readFile(preferencesFile);
+    const newPrefs = allPrefs.filter((p) => !existing.includes(p.value));
+    if (newPrefs.length > 0) {
+      let content = existing && !existing.startsWith("<!--") ? existing : "## Preferences";
+      // Group by key for readability
+      const grouped: Record<string, ProfileEntry[]> = {};
+      for (const p of newPrefs) {
+        if (!grouped[p.key]) grouped[p.key] = [];
+        grouped[p.key].push(p);
+      }
+      for (const [, entries] of Object.entries(grouped)) {
+        for (const e of entries) {
+          content += `\n- ${e.key}: ${e.value} [${e.source}]`;
+        }
+      }
+      writeFile(preferencesFile, content);
+    }
+  }
+
+  // --- vocabulary.md ---
+  const vocab = ling.vocabulary || [];
+  if (vocab.length > 0) {
+    const existing = readFile(vocabularyFile);
+    const newVocab = vocab.filter((v) => !existing.includes(v));
+    if (newVocab.length > 0) {
+      let content = existing && !existing.startsWith("<!--") ? existing : "## Vocabulaire";
+      content += `\n- ${newVocab.join(", ")} [transcript, freq>=3]`;
+      writeFile(vocabularyFile, content);
+    }
+  }
+}
+
+// ========================================
+// Extraction des erreurs et lecons (v2)
 // ========================================
 
 interface FailureEntry {
-  timestamp: string;
-  session_id: string;
+  ts: string;
+  sid: string;
   type: "error" | "failure" | "blocage" | "correction";
   summary: string;
-  context: string;
-  sentiment: number; // 1-5 (1=frustre, 5=satisfait)
 }
 
 function extractFailures(transcript: string, sessionId: string): FailureEntry[] {
   const failures: FailureEntry[] = [];
   const lines = transcript.split("\n");
 
-  // Patterns d'erreurs dans les messages assistant
+  // Only scan USER messages, skip code blocks
+  let inCodeBlock = false;
+  const userContentLines: string[] = [];
+
+  for (const line of lines) {
+    // Track code blocks
+    if (line.includes("```")) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+
+    // Only user messages
+    if (line.startsWith("[user]:") || line.startsWith("[human]:")) {
+      userContentLines.push(line.replace(/^\[(?:user|human)\]:\s*/, ""));
+    }
+  }
+
+  // Conversational patterns (require context, not bare keywords)
   const errorPatterns = [
-    { pattern: /error|erreur|echoue|failed|echec/i, type: "error" as const },
-    { pattern: /bug|broken|casse|ne fonctionne pas|doesn't work/i, type: "failure" as const },
-    { pattern: /bloque|stuck|impossible|cannot|can't/i, type: "blocage" as const },
-    { pattern: /corrige|fixed|resolu|solved|repare/i, type: "correction" as const },
+    { pattern: /j'ai une erreur|j'ai eu une erreur|il y a une erreur|there'?s an error|i got an error|i have an error/i, type: "error" as const },
+    { pattern: /ca (?:ne )?(?:marche|fonctionne) (?:pas|plus)|doesn'?t work|it'?s broken|it broke|c'est casse/i, type: "failure" as const },
+    { pattern: /je suis bloque|je (?:n')?arrive pas|i'?m stuck|i can'?t figure|je ne comprends pas pourquoi/i, type: "blocage" as const },
+    { pattern: /c'est (?:corrige|repare|resolu|regle)|(?:it'?s|that'?s) (?:fixed|resolved|solved)|ca (?:re)?marche (?:maintenant|enfin)/i, type: "correction" as const },
   ];
 
-  // Scanner le transcript par blocs de ~5 lignes
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) continue;
+  for (const line of userContentLines) {
+    if (failures.length >= 5) break;
 
     for (const { pattern, type } of errorPatterns) {
       if (pattern.test(line)) {
-        // Capturer le contexte (2 lignes avant, 2 apres)
-        const contextStart = Math.max(0, i - 2);
-        const contextEnd = Math.min(lines.length, i + 3);
-        const context = lines.slice(contextStart, contextEnd).join("\n").slice(0, 500);
+        const summary = line.slice(0, 150);
 
-        // Extraire un resume court
-        const summary = line
-          .replace(/^\[(?:assistant|user|human)\]:\s*/, "")
-          .slice(0, 150);
-
-        // Eviter les doublons (meme type + meme debut de summary)
+        // Deduplicate
         const isDuplicate = failures.some(
           (f) => f.type === type && f.summary.slice(0, 50) === summary.slice(0, 50)
         );
 
         if (!isDuplicate && summary.length > 10) {
           failures.push({
-            timestamp: new Date().toISOString(),
-            session_id: sessionId,
+            ts: new Date().toISOString(),
+            sid: sessionId.slice(0, 8),
             type,
             summary,
-            context,
-            sentiment: type === "correction" ? 4 : type === "blocage" ? 2 : 3,
           });
         }
-        break; // Une seule correspondance par ligne
+        break;
       }
     }
   }
@@ -347,58 +613,97 @@ function analyzeSentiment(transcript: string): number {
 }
 
 // ========================================
-// Sauvegarde des learnings
+// Sauvegarde des learnings (JSONL)
 // ========================================
 
 function saveFailures(failures: FailureEntry[]): void {
   if (failures.length === 0) return;
-
-  const ym = yearMonth();
-  const dir = path.join(LEARNING_DIR, "FAILURES", ym);
-  fs.mkdirSync(dir, { recursive: true });
-
-  const ts = timestamp();
-  const slug = failures[0].summary
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .slice(0, 40);
-
-  const filename = `${ts}_${slug}.md`;
-  const filePath = path.join(dir, filename);
-
-  let content = `# Lecons de session — ${ts}\n\n`;
-  content += `**Nombre d'evenements** : ${failures.length}\n\n`;
-
   for (const f of failures) {
-    content += `## ${f.type.toUpperCase()} — ${f.summary.slice(0, 80)}\n\n`;
-    content += `- **Type** : ${f.type}\n`;
-    content += `- **Sentiment** : ${"*".repeat(f.sentiment)}/5\n`;
-    content += `- **Session** : ${f.session_id.slice(0, 8)}\n\n`;
-    content += `### Contexte\n\`\`\`\n${f.context}\n\`\`\`\n\n---\n\n`;
+    appendJsonl(FAILURES_LOG, f);
   }
-
-  content += `*Extrait automatiquement par HORA session-end*\n`;
-  writeFile(filePath, content);
 }
 
 function saveSentiment(sessionId: string, sentiment: number, messageCount: number): void {
-  const ym = yearMonth();
-  const dir = path.join(LEARNING_DIR, "ALGORITHM", ym);
-  fs.mkdirSync(dir, { recursive: true });
+  appendJsonl(SENTIMENT_LOG, {
+    sid: sessionId.slice(0, 8),
+    score: sentiment,
+    messages: messageCount,
+    ts: new Date().toISOString(),
+  });
+}
 
-  const ts = timestamp();
-  const filename = `${ts}_LEARNING_sentiment-rating-${sentiment}.md`;
-  const filePath = path.join(dir, filename);
+// ========================================
+// Cleanup flags + legacy migration
+// ========================================
 
-  writeFile(
-    filePath,
-    `# Sentiment de session\n\n` +
-      `- **Session** : ${sessionId.slice(0, 8)}\n` +
-      `- **Score** : ${sentiment}/5\n` +
-      `- **Messages** : ${messageCount}\n` +
-      `- **Date** : ${new Date().toISOString()}\n\n` +
-      `*Extrait automatiquement par HORA session-end*\n`
-  );
+function cleanupOldFlags(): void {
+  try {
+    const flagPrefix = ".extraction-done-";
+    const files = fs.readdirSync(MEMORY_DIR)
+      .filter((f) => f.startsWith(flagPrefix))
+      .map((f) => ({
+        name: f,
+        mtime: fs.statSync(path.join(MEMORY_DIR, f)).mtimeMs,
+      }))
+      .sort((a, b) => b.mtime - a.mtime);
+
+    // Keep only the 5 most recent
+    for (const file of files.slice(5)) {
+      try {
+        fs.unlinkSync(path.join(MEMORY_DIR, file.name));
+      } catch {}
+    }
+  } catch {}
+}
+
+function migrateLegacyPAI(): void {
+  // One-shot migration, gated by flag
+  if (fs.existsSync(MIGRATION_FLAG)) return;
+
+  const HORA_START = new Date("2026-02-19T00:00:00Z").getTime();
+
+  // Migrate ALGORITHM pre-19/02 → _legacy/
+  try {
+    const algoDir = path.join(LEARNING_DIR, "ALGORITHM", "2026-02");
+    if (fs.existsSync(algoDir)) {
+      const legacyDir = path.join(LEARNING_DIR, "ALGORITHM", "_legacy");
+      fs.mkdirSync(legacyDir, { recursive: true });
+      for (const f of fs.readdirSync(algoDir)) {
+        if (f.startsWith(".")) continue;
+        try {
+          const filePath = path.join(algoDir, f);
+          const stat = fs.statSync(filePath);
+          if (stat.mtimeMs < HORA_START) {
+            fs.renameSync(filePath, path.join(legacyDir, f));
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+
+  // Migrate FAILURES pre-19/02 → _legacy/
+  try {
+    const failDir = path.join(LEARNING_DIR, "FAILURES", "2026-02");
+    if (fs.existsSync(failDir)) {
+      const legacyDir = path.join(LEARNING_DIR, "FAILURES", "_legacy");
+      fs.mkdirSync(legacyDir, { recursive: true });
+      for (const f of fs.readdirSync(failDir)) {
+        if (f.startsWith(".")) continue;
+        try {
+          const filePath = path.join(failDir, f);
+          const stat = fs.statSync(filePath);
+          if (stat.mtimeMs < HORA_START) {
+            fs.renameSync(filePath, path.join(legacyDir, f));
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+
+  // Mark migration as done
+  try {
+    writeFile(MIGRATION_FLAG, new Date().toISOString());
+  } catch {}
 }
 
 // ========================================
@@ -445,12 +750,15 @@ async function main() {
           const transcript = parseTranscript(transcriptPath);
           if (transcript) {
             const tLines = transcript.split("\n").filter((l) => l.trim().length > 20);
-            const userLines = tLines.filter((l) => l.startsWith("[user]:") || l.startsWith("[human]:"));
+            const userLines = tLines.filter(
+              (l) => l.startsWith("[user]:") || l.startsWith("[human]:")
+            );
             const assistLines = tLines.filter((l) => l.startsWith("[assistant]:"));
             const summaryParts: string[] = [];
             if (userLines.length > 0) summaryParts.push(userLines[0].slice(0, 150));
             if (assistLines.length > 0) summaryParts.push(assistLines[0].slice(0, 150));
-            if (userLines.length > 1) summaryParts.push(userLines[userLines.length - 1].slice(0, 150));
+            if (userLines.length > 1)
+              summaryParts.push(userLines[userLines.length - 1].slice(0, 150));
             sessionSummary = summaryParts.join(" | ");
           }
         } catch {}
@@ -460,6 +768,7 @@ async function main() {
           THREAD_STATE_FILE,
           JSON.stringify({
             session_id: sessionId.slice(0, 8),
+            project: getProjectId(),
             timestamp: new Date().toISOString(),
             assistant_summary: summary,
             raw_length: lastAssistant.length,
@@ -499,45 +808,21 @@ async function main() {
   fs.mkdirSync(path.dirname(flagFile), { recursive: true });
   fs.writeFileSync(flagFile, new Date().toISOString());
 
-  // --- 1. Extraction de profil ---
-  const extracted = extractProfile(transcript);
+  // --- 1. Extraction de profil (hybride env + linguistique) ---
+  const envProfile = extractProfileEnv();
+  const lingProfile = extractProfileLinguistic(transcript);
+  writeProfileFiles(envProfile, lingProfile);
 
-  const identityFile = path.join(PROFILE_DIR, "identity.md");
-  const projectsFile = path.join(PROFILE_DIR, "projects.md");
-  const preferencesFile = path.join(PROFILE_DIR, "preferences.md");
-
-  if (extracted.identity.length > 0) {
-    const existing = readFile(identityFile);
-    const newInfo = extracted.identity.filter((i) => !existing.includes(i));
-    if (newInfo.length > 0) appendFile(identityFile, newInfo.join("\n"));
-  }
-
-  if (extracted.projects.length > 0) {
-    const existing = readFile(projectsFile);
-    const newInfo = extracted.projects.filter((p) => !existing.includes(p));
-    if (newInfo.length > 0)
-      appendFile(projectsFile, `\n### Session ${timestamp()}\n` + newInfo.join("\n"));
-  }
-
-  if (extracted.preferences.length > 0) {
-    const existing = readFile(preferencesFile);
-    const newInfo = extracted.preferences.filter((p) => !existing.includes(p));
-    if (newInfo.length > 0) appendFile(preferencesFile, newInfo.join("\n"));
-  }
-
-  // --- 2. Extraction des erreurs et lecons ---
+  // --- 2. Extraction des erreurs et lecons (JSONL) ---
   const failures = extractFailures(transcript, sessionId);
   saveFailures(failures);
 
-  // --- 3. Analyse de sentiment ---
+  // --- 3. Analyse de sentiment (JSONL) ---
   const sentiment = analyzeSentiment(transcript);
   saveSentiment(sessionId, sentiment, state.messageCount || 0);
 
   // --- 4. Archive de session ---
-  const sessionFile = path.join(
-    SESSIONS_DIR,
-    `${timestamp()}_${sessionId.slice(0, 8)}.md`
-  );
+  const sessionFile = path.join(SESSIONS_DIR, `${timestamp()}_${sessionId.slice(0, 8)}.md`);
   const sessionName = (() => {
     try {
       const names = JSON.parse(
@@ -553,12 +838,18 @@ async function main() {
     sessionFile,
     `# Session : ${sessionName}\n\n` +
       `- **ID** : ${sessionId}\n` +
+      `- **Projet** : ${PROJECT_DISPLAY}\n` +
+      `- **ProjetID** : ${getProjectId()}\n` +
       `- **Messages** : ${state.messageCount || "?"}\n` +
       `- **Sentiment** : ${sentiment}/5\n` +
       `- **Erreurs detectees** : ${failures.length}\n` +
       `- **Date** : ${new Date().toISOString()}\n\n` +
       `---\n\n${transcript.slice(0, 5000)}`
   );
+
+  // --- 5. Cleanup flags + legacy migration ---
+  cleanupOldFlags();
+  migrateLegacyPAI();
 
   // NE PAS supprimer le state file — il est utilise par prompt-submit
   // pour detecter isFirst. Il sera ecrase naturellement par la session suivante.
