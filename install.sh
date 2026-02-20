@@ -415,13 +415,34 @@ HAS_JQ=false
 if command -v jq &>/dev/null; then
   HAS_JQ=true
 else
-  echo "[INFO] jq absent (optionnel - HORA utilisera node a la place)"
-  echo "   Pour de meilleures performances (statusline + merge settings) :"
+  # Tenter l'installation automatique selon l'OS
   case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) echo "   winget install jqlang.jq" ;;
-    Darwin)               echo "   brew install jq" ;;
-    *)                    echo "   sudo apt install jq  # ou equivalent" ;;
+    Darwin)
+      if command -v brew &>/dev/null; then
+        echo "[INFO] Installation de jq via Homebrew..."
+        brew install jq 2>/dev/null && HAS_JQ=true
+      fi
+      ;;
+    Linux)
+      if command -v apt-get &>/dev/null && [ "$(id -u)" = "0" ]; then
+        echo "[INFO] Installation de jq via apt..."
+        apt-get install -y jq 2>/dev/null && HAS_JQ=true
+      elif command -v apk &>/dev/null; then
+        echo "[INFO] Installation de jq via apk..."
+        apk add --no-cache jq 2>/dev/null && HAS_JQ=true
+      fi
+      ;;
+    # Windows (Git Bash) : gere par install.ps1
   esac
+
+  if ! $HAS_JQ; then
+    echo "[INFO] jq absent (optionnel - HORA utilisera node a la place)"
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*) echo "   winget install jqlang.jq" ;;
+      Darwin)               echo "   brew install jq" ;;
+      *)                    echo "   sudo apt install jq" ;;
+    esac
+  fi
 fi
 
 # ─── Backup complet ────────────────────────────────────────────────────────

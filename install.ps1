@@ -97,9 +97,19 @@ if (-not $hasTsx -and -not (Get-Command tsx -ErrorAction SilentlyContinue)) {
 
 # 5. jq (optionnel mais recommande pour la performance statusline)
 if (-not (Get-Command jq -ErrorAction SilentlyContinue)) {
-    Write-Host "[INFO] jq absent (optionnel - la statusline utilisera node a la place)" -ForegroundColor Yellow
-    Write-Host "   Pour de meilleures performances : winget install jqlang.jq"
-    Write-Host ""
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Write-Host "[INFO] Installation de jq (performance statusline)..."
+        winget install jqlang.jq --accept-source-agreements --accept-package-agreements --silent 2>$null
+        if (Get-Command jq -ErrorAction SilentlyContinue) {
+            Write-Host "[OK] jq : $(jq --version)"
+        } else {
+            # winget installe mais PATH pas encore a jour dans cette session
+            Write-Host "[OK] jq installe (disponible au prochain terminal)"
+        }
+    } else {
+        Write-Host "[INFO] jq absent (optionnel - la statusline utilisera node)" -ForegroundColor Yellow
+        Write-Host "   Installer manuellement : https://jqlang.github.io/jq/download/"
+    }
 } else {
     Write-Host "[OK] jq : $(jq --version)"
 }
