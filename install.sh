@@ -1,56 +1,362 @@
 #!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════════════════
 # HORA — Install Script
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Backup versionnee, restore complet, nettoyage legacy (PAI), detection orphelins.
+#
+# Usage :
+#   bash install.sh                        # Installation
+#   bash install.sh --dry-run              # Simulation (rien modifie)
+#   bash install.sh --restore              # Restaurer le dernier backup
+#   bash install.sh --restore <timestamp>  # Restaurer un backup specifique
+#   bash install.sh --list-backups         # Lister les backups disponibles
+#
+# ═══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
 HORA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/claude"
 CLAUDE_DIR="$HOME/.claude"
-BACKUP_DIR="$HOME/.hora-install-backup"
+BACKUP_BASE="$HOME/.hora-install-backup"
+BACKUP_MAX=5
 DRY_RUN=false
 
-# Données Claude Code à ne jamais modifier
-CLAUDE_PROTECTED=(
-  "projects"        # sessions complètes (JSONL par projet)
-  "todos"           # todos par session
-  "history.jsonl"   # index global sessions
-  "session-env"     # vars d'env par session
+# ─────────────────────────────────────────────────────────────────────────────
+# INVENTAIRE
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Donnees Claude Code (jamais modifiees par HORA — sauvegardees pour securite)
+CLAUDE_SESSION_DATA=(
+  "projects"
+  "todos"
+  "history.jsonl"
+  "session-env"
   ".credentials.json"
   "settings.local.json"
-  "commands"        # slash commands existants
-  "plugins"         # plugins installés
-  "file-history"    # snapshots pre-edit
-  "statsig"         # cache analytics
+  "commands"
+  "plugins"
+  "file-history"
+  "statsig"
 )
 
-# --- Wrappers dry-run ---
+# Fichiers crees/modifies par HORA (sauvegardes pour rollback)
+HORA_MANAGED=(
+  "settings.json"
+  "CLAUDE.md"
+  "statusline.sh"
+  "hooks"
+  "agents"
+  "skills"
+  ".hora/patterns.yaml"
+)
+
+# Patterns legacy (PAI et predecesseurs) pour nettoyage
+LEGACY_PATTERNS=("PAI_DIR" "pai-" "PAI —" "pai_")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WRAPPERS DRY-RUN
+# ─────────────────────────────────────────────────────────────────────────────
+
 _cp()    { if $DRY_RUN; then echo "   [DRY-RUN] cp $*"; else cp "$@"; fi; }
 _mkdir() { if $DRY_RUN; then echo "   [DRY-RUN] mkdir $*"; else mkdir "$@"; fi; }
 _rm()    { if $DRY_RUN; then echo "   [DRY-RUN] rm $*"; else rm "$@"; fi; }
-_mv()    { if $DRY_RUN; then echo "   [DRY-RUN] mv $*"; else mv "$@"; fi; }
 _chmod() { if $DRY_RUN; then echo "   [DRY-RUN] chmod $*"; else chmod "$@"; fi; }
 _touch() { if $DRY_RUN; then echo "   [DRY-RUN] touch $*"; else touch "$@"; fi; }
-_write() {
-  # _write <content> <dest> — ecrit du contenu dans un fichier (ou affiche en dry-run)
-  if $DRY_RUN; then echo "   [DRY-RUN] write -> $2"; else echo "$1" > "$2"; fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BACKUP (versionnee, rotation automatique)
+# ─────────────────────────────────────────────────────────────────────────────
+
+backup_all() {
+  # Verifier s'il y a quelque chose a sauvegarder
+  local has_data=false
+  for item in "${CLAUDE_SESSION_DATA[@]}" "${HORA_MANAGED[@]}"; do
+    [ -e "$CLAUDE_DIR/$item" ] && has_data=true && break
+  done
+  $has_data || return 0
+
+  local ts
+  ts=$(date +%Y%m%d-%H%M%S)
+  local backup_dir="$BACKUP_BASE/$ts"
+
+  _mkdir -p "$backup_dir"
+  echo "[BACKUP] Snapshot $ts"
+
+  # Donnees de session Claude Code
+  for item in "${CLAUDE_SESSION_DATA[@]}"; do
+    if [ -e "$CLAUDE_DIR/$item" ]; then
+      _cp -r "$CLAUDE_DIR/$item" "$backup_dir/"
+      echo "   OK $item (session)"
+    fi
+  done
+
+  # Fichiers geres par HORA
+  for item in "${HORA_MANAGED[@]}"; do
+    if [ -e "$CLAUDE_DIR/$item" ]; then
+      local parent
+      parent=$(dirname "$item")
+      if [ "$parent" != "." ]; then
+        _mkdir -p "$backup_dir/$parent"
+      fi
+      _cp -r "$CLAUDE_DIR/$item" "$backup_dir/$item"
+      echo "   OK $item (config)"
+    fi
+  done
+
+  if ! $DRY_RUN; then
+    # Mettre a jour le symlink latest
+    rm -f "$BACKUP_BASE/latest"
+    ln -sf "$ts" "$BACKUP_BASE/latest"
+
+    # Rotation : garder les BACKUP_MAX derniers
+    local backups=()
+    while IFS= read -r d; do
+      backups+=("$d")
+    done < <(ls -1d "$BACKUP_BASE"/2* 2>/dev/null | sort)
+
+    local count=${#backups[@]}
+    if [ "$count" -gt "$BACKUP_MAX" ]; then
+      local to_remove=$((count - BACKUP_MAX))
+      for ((i=0; i<to_remove; i++)); do
+        rm -rf "${backups[$i]}"
+        echo "   [ROTATE] $(basename "${backups[$i]}") supprime"
+      done
+    fi
+  fi
+
+  echo "   -> $backup_dir"
+  echo ""
 }
 
-# --- Parsing des arguments ---
-case "${1:-}" in
-  --restore)
-    # Restauration rapide — pas de dry-run ici
-    if [ ! -d "$BACKUP_DIR" ]; then
-      echo "[ERREUR] Aucun backup trouve dans $BACKUP_DIR"
+# ─────────────────────────────────────────────────────────────────────────────
+# RESTORE (complet — session + config)
+# ─────────────────────────────────────────────────────────────────────────────
+
+do_restore() {
+  local target="${1:-latest}"
+
+  # --list-backups ou --restore list
+  if [ "$target" = "list" ]; then
+    echo ""
+    echo "[BACKUPS] Snapshots disponibles :"
+    if [ -d "$BACKUP_BASE" ] && ls -1d "$BACKUP_BASE"/2* &>/dev/null; then
+      for d in $(ls -1d "$BACKUP_BASE"/2* | sort -r); do
+        local name
+        name=$(basename "$d")
+        local marker=""
+        if [ -L "$BACKUP_BASE/latest" ]; then
+          [ "$(readlink "$BACKUP_BASE/latest")" = "$name" ] && marker=" <- latest"
+        fi
+        # Compter les elements dans le backup
+        local file_count
+        file_count=$(find "$d" -maxdepth 1 -not -name "$(basename "$d")" | wc -l | tr -d ' ')
+        echo "   $name  ($file_count elements)$marker"
+      done
+    else
+      echo "   (aucun backup)"
+    fi
+    echo ""
+    echo "Restaurer : bash install.sh --restore <timestamp>"
+    echo "           bash install.sh --restore   (= latest)"
+    exit 0
+  fi
+
+  # Resoudre "latest"
+  local restore_dir
+  if [ "$target" = "latest" ]; then
+    if [ ! -L "$BACKUP_BASE/latest" ]; then
+      echo "[ERREUR] Aucun backup 'latest' trouve."
+      echo "   Lance : bash install.sh --list-backups"
       exit 1
     fi
-    echo "[RESTORE] Restauration des donnees de session..."
-    for item in "${CLAUDE_PROTECTED[@]}"; do
-      if [ -e "$BACKUP_DIR/$item" ]; then
-        rm -rf "$CLAUDE_DIR/$item"
-        cp -r "$BACKUP_DIR/$item" "$CLAUDE_DIR/"
-        echo "   OK $item"
+    restore_dir="$BACKUP_BASE/$(readlink "$BACKUP_BASE/latest")"
+  else
+    restore_dir="$BACKUP_BASE/$target"
+  fi
+
+  if [ ! -d "$restore_dir" ]; then
+    echo "[ERREUR] Backup introuvable : $target"
+    echo "   Lance : bash install.sh --list-backups"
+    exit 1
+  fi
+
+  echo ""
+  echo "[RESTORE] Depuis $(basename "$restore_dir")"
+  echo ""
+
+  # Restaurer les donnees de session
+  for item in "${CLAUDE_SESSION_DATA[@]}"; do
+    if [ -e "$restore_dir/$item" ]; then
+      rm -rf "$CLAUDE_DIR/$item"
+      cp -r "$restore_dir/$item" "$CLAUDE_DIR/"
+      echo "   OK $item (session)"
+    fi
+  done
+
+  # Restaurer les fichiers HORA-managed
+  for item in "${HORA_MANAGED[@]}"; do
+    if [ -e "$restore_dir/$item" ]; then
+      # Supprimer l'actuel (fichier ou dossier)
+      rm -rf "$CLAUDE_DIR/$item"
+      # Creer le parent si besoin
+      local parent
+      parent=$(dirname "$CLAUDE_DIR/$item")
+      [ ! -d "$parent" ] && mkdir -p "$parent"
+      # Restaurer
+      cp -r "$restore_dir/$item" "$CLAUDE_DIR/$item"
+      echo "   OK $item (config restauree)"
+    elif [ -e "$CLAUDE_DIR/$item" ]; then
+      # L'item n'existait pas avant HORA → le supprimer
+      rm -rf "$CLAUDE_DIR/$item"
+      echo "   OK $item (supprime — absent du backup)"
+    fi
+  done
+
+  echo ""
+  echo "[RESTORE] Etat restaure : $(basename "$restore_dir")"
+  echo ""
+  echo "[INFO] Les donnees MEMORY/ ne sont pas affectees par le restore."
+  echo "[INFO] Pour reinstaller HORA : bash install.sh"
+  exit 0
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NETTOYAGE LEGACY (PAI et predecesseurs)
+# ─────────────────────────────────────────────────────────────────────────────
+
+cleanup_legacy() {
+  local cleaned=0
+  echo "[CLEAN] Recherche d'artefacts legacy..."
+
+  # 1. Hooks contenant des references PAI
+  for f in "$CLAUDE_DIR/hooks/"*.ts; do
+    [ -f "$f" ] || continue
+    for pattern in "${LEGACY_PATTERNS[@]}"; do
+      if grep -qi "$pattern" "$f" 2>/dev/null; then
+        echo "   [LEGACY] hooks/$(basename "$f") (contient '$pattern')"
+        _rm "$f"
+        cleaned=$((cleaned + 1))
+        break
       fi
     done
-    echo "   OK Restauration terminee."
-    exit 0
+  done
+
+  # 2. Agents contenant des references PAI
+  for f in "$CLAUDE_DIR/agents/"*.md; do
+    [ -f "$f" ] || continue
+    for pattern in "${LEGACY_PATTERNS[@]}"; do
+      if grep -qi "$pattern" "$f" 2>/dev/null; then
+        echo "   [LEGACY] agents/$(basename "$f") (contient '$pattern')"
+        _rm "$f"
+        cleaned=$((cleaned + 1))
+        break
+      fi
+    done
+  done
+
+  # 3. Skills legacy (dossiers non-HORA contenant des refs PAI)
+  for d in "$CLAUDE_DIR/skills/"*/; do
+    [ -d "$d" ] || continue
+    local skill_name
+    skill_name=$(basename "$d")
+    # Skip les skills HORA
+    [ -d "$HORA_DIR/skills/$skill_name" ] && continue
+    if [ -f "$d/SKILL.md" ]; then
+      for pattern in "${LEGACY_PATTERNS[@]}"; do
+        if grep -qi "$pattern" "$d/SKILL.md" 2>/dev/null; then
+          echo "   [LEGACY] skills/$skill_name/ (contient '$pattern')"
+          _rm -r "$d"
+          cleaned=$((cleaned + 1))
+          break
+        fi
+      done
+    fi
+  done
+
+  # 4. Bloc PAI dans CLAUDE.md
+  if [ -f "$CLAUDE_DIR/CLAUDE.md" ] && grep -qF "<!-- PAI:START" "$CLAUDE_DIR/CLAUDE.md" 2>/dev/null; then
+    if $DRY_RUN; then
+      echo "   [DRY-RUN] CLAUDE.md — bloc PAI serait supprime"
+    else
+      sed '/<!-- PAI:START/,/<!-- PAI:END/d' "$CLAUDE_DIR/CLAUDE.md" > "$CLAUDE_DIR/CLAUDE.md.tmp"
+      mv "$CLAUDE_DIR/CLAUDE.md.tmp" "$CLAUDE_DIR/CLAUDE.md"
+    fi
+    echo "   [LEGACY] CLAUDE.md — bloc PAI supprime"
+    cleaned=$((cleaned + 1))
+  fi
+
+  # 5. Hooks PAI dans settings.json (signalement — nettoyage fait au merge)
+  if [ -f "$CLAUDE_DIR/settings.json" ] && grep -q "PAI_DIR" "$CLAUDE_DIR/settings.json" 2>/dev/null; then
+    echo "   [LEGACY] settings.json — hooks PAI detectes (seront nettoyes au merge)"
+    cleaned=$((cleaned + 1))
+  fi
+
+  if [ "$cleaned" -gt 0 ]; then
+    echo "   $cleaned artefact(s) legacy nettoye(s)"
+  else
+    echo "   Aucun artefact legacy detecte"
+  fi
+  echo ""
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETECTION DES ORPHELINS (post-install)
+# ─────────────────────────────────────────────────────────────────────────────
+
+detect_orphans() {
+  local orphans=0
+
+  # Hooks non-HORA
+  for f in "$CLAUDE_DIR/hooks/"*.ts; do
+    [ -f "$f" ] || continue
+    local name
+    name=$(basename "$f")
+    if [ ! -f "$HORA_DIR/hooks/$name" ]; then
+      echo "   [ORPHELIN] hooks/$name"
+      orphans=$((orphans + 1))
+    fi
+  done
+
+  # Agents non-HORA
+  for f in "$CLAUDE_DIR/agents/"*.md; do
+    [ -f "$f" ] || continue
+    local name
+    name=$(basename "$f")
+    if [ ! -f "$HORA_DIR/agents/$name" ]; then
+      echo "   [ORPHELIN] agents/$name"
+      orphans=$((orphans + 1))
+    fi
+  done
+
+  # Skills non-HORA
+  for d in "$CLAUDE_DIR/skills/"*/; do
+    [ -d "$d" ] || continue
+    local name
+    name=$(basename "$d")
+    if [ ! -d "$HORA_DIR/skills/$name" ]; then
+      echo "   [ORPHELIN] skills/$name/"
+      orphans=$((orphans + 1))
+    fi
+  done
+
+  if [ "$orphans" -gt 0 ]; then
+    echo "   $orphans fichier(s) non-HORA detecte(s)"
+    echo "   Verifier et nettoyer manuellement si necessaire"
+  else
+    echo "   [OK] Aucun orphelin"
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PARSING DES ARGUMENTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+case "${1:-}" in
+  --restore)
+    do_restore "${2:-latest}"
+    ;;
+  --list-backups)
+    do_restore "list"
     ;;
   --dry-run)
     DRY_RUN=true
@@ -59,10 +365,20 @@ case "${1:-}" in
     ;;
   *)
     echo "[ERREUR] Flag inconnu: $1"
-    echo "Usage: bash install.sh [--dry-run | --restore]"
+    echo ""
+    echo "Usage :"
+    echo "  bash install.sh                        # Installation"
+    echo "  bash install.sh --dry-run              # Simulation"
+    echo "  bash install.sh --restore              # Restaurer (dernier backup)"
+    echo "  bash install.sh --restore <timestamp>  # Restaurer un backup specifique"
+    echo "  bash install.sh --list-backups         # Lister les backups"
     exit 1
     ;;
 esac
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INSTALLATION
+# ═══════════════════════════════════════════════════════════════════════════════
 
 echo ""
 echo "+===========================================+"
@@ -75,7 +391,8 @@ echo "+===========================================+"
 echo ""
 $DRY_RUN && echo "[DRY-RUN] Aucune modification ne sera effectuee." && echo ""
 
-# --- Prérequis ---
+# ─── Prerequis ──────────────────────────────────────────────────────────────
+
 if ! command -v claude &>/dev/null; then
   echo "[ERREUR] Claude Code introuvable. Installe : npm install -g @anthropic-ai/claude-code"
   exit 1
@@ -94,55 +411,37 @@ HAS_JQ=false
 if command -v jq &>/dev/null; then
   HAS_JQ=true
 else
-  echo "[WARN] jq non trouve — le merge settings.json sera simplifie (ecrasement au lieu de fusion)"
-  echo "   Pour un merge complet : brew install jq (macOS) / apt install jq (Linux) / choco install jq (Windows)"
+  echo "[INFO] jq absent — le merge settings.json utilisera node"
 fi
 
-# --- Sauvegarde des données de session Claude ---
-backup_sessions() {
-  local has_data=0
-  for item in "${CLAUDE_PROTECTED[@]}"; do
-    [ -e "$CLAUDE_DIR/$item" ] && has_data=1 && break
-  done
+# ─── Backup complet ────────────────────────────────────────────────────────
 
-  if [ $has_data -eq 0 ]; then
-    return 0
-  fi
+backup_all
 
-  _rm -rf "$BACKUP_DIR"
-  _mkdir -p "$BACKUP_DIR"
+# ─── Trap en cas d'erreur ──────────────────────────────────────────────────
 
-  echo "[BACKUP] Sauvegarde des donnees Claude..."
-  for item in "${CLAUDE_PROTECTED[@]}"; do
-    if [ -e "$CLAUDE_DIR/$item" ]; then
-      _cp -r "$CLAUDE_DIR/$item" "$BACKUP_DIR/"
-      echo "   OK $item"
-    fi
-  done
-  echo "   -> $BACKUP_DIR"
-  echo ""
-}
-
-# --- Restauration automatique en cas d'erreur (skip en dry-run) ---
 if ! $DRY_RUN; then
-  trap 'echo ""; echo "[ERREUR] Erreur pendant linstallation."; echo "   Lance: bash install.sh --restore"; exit 1' ERR
+  trap 'echo ""; echo "[ERREUR] Installation interrompue."; echo "   Restaurer : bash install.sh --restore"; exit 1' ERR
 fi
 
-# --- Backup sessions existantes ---
-backup_sessions
+# ─── Nettoyage legacy (PAI) ────────────────────────────────────────────────
 
-# --- Structure ---
+cleanup_legacy
+
+# ─── Structure de dossiers ─────────────────────────────────────────────────
+
 _mkdir -p "$CLAUDE_DIR"/{MEMORY/{PROFILE,SESSIONS,LEARNING/{FAILURES,ALGORITHM,SYSTEM},SECURITY,STATE,WORK},agents,hooks,skills,.hora/{sessions,snapshots}}
 
-# --- CLAUDE.md ---
-HORA_MARKER="<!-- HORA:START -->"
+# ─── CLAUDE.md ─────────────────────────────────────────────────────────────
+
 HORA_START_MARKER="<!-- HORA:START -->"
 HORA_END_MARKER="<!-- HORA:END -->"
 
 if [ -f "$CLAUDE_DIR/CLAUDE.md" ]; then
-  if grep -qF "$HORA_MARKER" "$CLAUDE_DIR/CLAUDE.md"; then
+  if grep -qF "$HORA_START_MARKER" "$CLAUDE_DIR/CLAUDE.md"; then
+    # Bloc HORA existant → mise a jour
     if $DRY_RUN; then
-      echo "   [DRY-RUN] CLAUDE.md — bloc Hora serait mis a jour"
+      echo "   [DRY-RUN] CLAUDE.md — bloc HORA serait mis a jour"
     else
       BEFORE=$(sed "/$HORA_START_MARKER/,/$HORA_END_MARKER/d" "$CLAUDE_DIR/CLAUDE.md")
       {
@@ -153,12 +452,12 @@ if [ -f "$CLAUDE_DIR/CLAUDE.md" ]; then
         echo "$HORA_END_MARKER"
       } > "$CLAUDE_DIR/CLAUDE.md.tmp" && mv "$CLAUDE_DIR/CLAUDE.md.tmp" "$CLAUDE_DIR/CLAUDE.md"
     fi
-    echo "[OK] CLAUDE.md (bloc Hora mis a jour)"
+    echo "[OK] CLAUDE.md (bloc HORA mis a jour)"
   else
+    # CLAUDE.md existant sans HORA → append
     if $DRY_RUN; then
-      echo "   [DRY-RUN] CLAUDE.md — Hora serait ajoute (existant conserve)"
+      echo "   [DRY-RUN] CLAUDE.md — HORA serait ajoute (existant conserve)"
     else
-      cp "$CLAUDE_DIR/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md.bak"
       {
         echo ""
         echo "$HORA_START_MARKER"
@@ -166,9 +465,10 @@ if [ -f "$CLAUDE_DIR/CLAUDE.md" ]; then
         echo "$HORA_END_MARKER"
       } >> "$CLAUDE_DIR/CLAUDE.md"
     fi
-    echo "[OK] CLAUDE.md (Hora ajoute, existant conserve -> .bak)"
+    echo "[OK] CLAUDE.md (HORA ajoute, contenu existant conserve)"
   fi
 else
+  # Pas de CLAUDE.md → creation
   if $DRY_RUN; then
     echo "   [DRY-RUN] CLAUDE.md — serait cree"
   else
@@ -181,79 +481,110 @@ else
   echo "[OK] CLAUDE.md (cree)"
 fi
 
-# --- settings.json : remplacer par Hora, nettoyer hooks tiers ---
+# ─── settings.json (merge intelligent) ────────────────────────────────────
+
 HORA_SETTINGS="$HORA_DIR/settings.json"
 TARGET_SETTINGS="$CLAUDE_DIR/settings.json"
 
+merge_settings_jq() {
+  jq -s '
+    .[0] as $existing | .[1] as $hora |
+    ($existing.hooks // {}) |
+    to_entries | map(
+      .key as $event |
+      {
+        key: $event,
+        value: [
+          .value[] |
+          select(.hooks[]?.command | (contains("PAI_DIR") or contains("pai-")) | not)
+        ]
+      }
+    ) | from_entries as $cleaned |
+    {
+      hooks: (
+        ($hora.hooks | keys) + ($cleaned | keys) | unique |
+        map(. as $k | {
+          key: $k,
+          value: (
+            (($cleaned[$k] // []) + ($hora.hooks[$k] // []))
+            | unique_by(.hooks[0].command)
+            | map(select(.hooks | length > 0))
+          )
+        }) | from_entries |
+        to_entries | map(select(.value | length > 0)) | from_entries
+      ),
+      statusLine: ($hora.statusLine // $existing.statusLine // null),
+      spinnerVerbs: ($hora.spinnerVerbs // $existing.spinnerVerbs // null)
+    } | with_entries(select(.value != null))
+  ' "$TARGET_SETTINGS" "$HORA_SETTINGS" > "$TARGET_SETTINGS.tmp" && mv "$TARGET_SETTINGS.tmp" "$TARGET_SETTINGS"
+}
+
+merge_settings_node() {
+  node -e "
+    const fs = require('fs');
+    const existing = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+    const hora = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+
+    // Nettoyer les hooks PAI de l'existant
+    const cleaned = {};
+    for (const [event, matchers] of Object.entries(existing.hooks || {})) {
+      cleaned[event] = matchers.filter(m =>
+        !m.hooks?.some(h => h.command?.includes('PAI_DIR') || h.command?.includes('pai-'))
+      );
+    }
+
+    // Merger : hooks existants (nettoyes) + hooks HORA (dedup par commande)
+    const merged = {};
+    const allEvents = [...new Set([...Object.keys(hora.hooks || {}), ...Object.keys(cleaned)])];
+    for (const event of allEvents) {
+      const combined = [...(cleaned[event] || []), ...(hora.hooks?.[event] || [])];
+      const seen = new Set();
+      const deduped = combined.filter(m => {
+        const cmd = m.hooks?.[0]?.command;
+        if (!cmd || seen.has(cmd)) return false;
+        seen.add(cmd);
+        return m.hooks?.length > 0;
+      });
+      if (deduped.length > 0) merged[event] = deduped;
+    }
+
+    const result = { hooks: merged };
+    if (hora.statusLine || existing.statusLine) result.statusLine = hora.statusLine || existing.statusLine;
+    if (hora.spinnerVerbs || existing.spinnerVerbs) result.spinnerVerbs = hora.spinnerVerbs || existing.spinnerVerbs;
+
+    fs.writeFileSync(process.argv[1], JSON.stringify(result, null, 2) + '\n');
+  " "$TARGET_SETTINGS" "$HORA_SETTINGS"
+}
+
 if [ -f "$TARGET_SETTINGS" ]; then
   if $DRY_RUN; then
-    if $HAS_JQ; then
-      echo "   [DRY-RUN] settings.json — merge Hora (hooks tiers nettoyes)"
-    else
-      echo "   [DRY-RUN] settings.json — ecrasement par Hora (jq absent)"
-    fi
+    echo "   [DRY-RUN] settings.json — merge HORA"
   elif $HAS_JQ; then
-    cp "$TARGET_SETTINGS" "$TARGET_SETTINGS.bak"
-
-    # Détecter et nettoyer les hooks legacy (PAI_DIR)
-    if jq -e '.hooks | to_entries[].value[] | .hooks[]?.command | contains("PAI_DIR")' "$TARGET_SETTINGS" &>/dev/null; then
-      echo "[INFO] Hooks legacy detectes -> nettoyage..."
-    fi
-
-    # Garder les hooks tiers + merger hooks Hora + conserver statusLine/spinnerVerbs
-    jq -s '
-      .[0] as $existing | .[1] as $hora |
-      ($existing.hooks // {}) |
-      to_entries | map(
-        .key as $event |
-        {
-          key: $event,
-          value: [
-            .value[] |
-            select(.hooks[]?.command | contains("PAI_DIR") | not)
-          ]
-        }
-      ) | from_entries as $cleaned |
-      {
-        hooks: (
-          ($hora.hooks | keys) + ($cleaned | keys) | unique |
-          map(. as $k | {
-            key: $k,
-            value: (
-              (($cleaned[$k] // []) + ($hora.hooks[$k] // []))
-              | unique_by(.hooks[0].command)
-              | map(select(.hooks | length > 0))
-            )
-          }) | from_entries |
-          to_entries | map(select(.value | length > 0)) | from_entries
-        ),
-        statusLine: ($hora.statusLine // $existing.statusLine // null),
-        spinnerVerbs: ($hora.spinnerVerbs // $existing.spinnerVerbs // null)
-      } | with_entries(select(.value != null))
-    ' "$TARGET_SETTINGS" "$HORA_SETTINGS" > "$TARGET_SETTINGS.tmp" && mv "$TARGET_SETTINGS.tmp" "$TARGET_SETTINGS"
+    merge_settings_jq
   else
-    # Sans jq : sauvegarder et ecraser
-    cp "$TARGET_SETTINGS" "$TARGET_SETTINGS.bak"
-    cp "$HORA_SETTINGS" "$TARGET_SETTINGS"
-    echo "[WARN] settings.json ecrase (jq absent — hooks tiers perdus, .bak conserve)"
+    merge_settings_node
   fi
 else
   _cp "$HORA_SETTINGS" "$TARGET_SETTINGS"
 fi
 echo "[OK] settings.json"
 
-# --- Statusline ---
+# ─── Statusline ────────────────────────────────────────────────────────────
+
 _cp "$HORA_DIR/statusline.sh" "$CLAUDE_DIR/statusline.sh"
 _chmod +x "$CLAUDE_DIR/statusline.sh"
 echo "[OK] statusline.sh"
 
-# --- Hooks / Agents / Skills ---
+# ─── Hooks ─────────────────────────────────────────────────────────────────
+
 if $DRY_RUN; then
-  echo "   [DRY-RUN] hooks/ — $(ls "$HORA_DIR/hooks/"*.ts | wc -l | tr -d ' ') fichiers seraient copies"
+  echo "   [DRY-RUN] hooks/ — $(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers seraient copies"
 else
   cp "$HORA_DIR/hooks/"*.ts "$CLAUDE_DIR/hooks/"
 fi
-echo "[OK] hooks/ ($(ls "$HORA_DIR/hooks/"*.ts | wc -l | tr -d ' ') fichiers)"
+echo "[OK] hooks/ ($(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers)"
+
+# ─── Agents ────────────────────────────────────────────────────────────────
 
 if $DRY_RUN; then
   echo "   [DRY-RUN] agents/ — fichiers seraient copies"
@@ -262,13 +593,15 @@ else
 fi
 echo "[OK] agents/"
 
-# Skills = dossiers avec SKILL.md (pas des fichiers .md plats)
-# Nettoyer les anciens fichiers .md plats si presents
+# ─── Skills ────────────────────────────────────────────────────────────────
+
+# Nettoyer les anciens fichiers .md plats
 for old_skill in "$CLAUDE_DIR/skills/"*.md; do
   [ -f "$old_skill" ] || continue
   _rm "$old_skill"
-  echo "   [CLEAN] $(basename "$old_skill") (ancien format)"
+  echo "   [CLEAN] $(basename "$old_skill") (ancien format .md plat)"
 done
+
 # Copier les dossiers de skills
 for skill_dir in "$HORA_DIR/skills/"*/; do
   [ -d "$skill_dir" ] || continue
@@ -276,13 +609,15 @@ for skill_dir in "$HORA_DIR/skills/"*/; do
   _mkdir -p "$CLAUDE_DIR/skills/$skill_name"
   _cp "$skill_dir"SKILL.md "$CLAUDE_DIR/skills/$skill_name/SKILL.md"
 done
-echo "[OK] skills/ ($(find "$HORA_DIR/skills" -name SKILL.md | wc -l | tr -d ' ') skills)"
+echo "[OK] skills/ ($(find "$HORA_DIR/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ') skills)"
 
-# --- Patterns de securite ---
+# ─── Patterns de securite ─────────────────────────────────────────────────
+
 _cp "$HORA_DIR/.hora/patterns.yaml" "$CLAUDE_DIR/.hora/patterns.yaml"
-echo "[OK] .hora/patterns.yaml (regles de securite)"
+echo "[OK] .hora/patterns.yaml"
 
-# --- MEMORY (ne pas écraser si déjà rempli) ---
+# ─── MEMORY (ne pas ecraser si deja rempli) ───────────────────────────────
+
 INSTALLED=0
 for f in identity projects preferences vocabulary; do
   TARGET="$CLAUDE_DIR/MEMORY/PROFILE/$f.md"
@@ -293,25 +628,42 @@ for f in identity projects preferences vocabulary; do
 done
 [ $INSTALLED -eq 1 ] && echo "[OK] MEMORY/PROFILE/ (vierge)" || echo "[INFO] MEMORY/PROFILE/ existant conserve"
 
-# --- Gitkeeps pour les répertoires vides ---
 for dir in SESSIONS LEARNING/FAILURES LEARNING/ALGORITHM LEARNING/SYSTEM SECURITY STATE WORK; do
   _touch "$CLAUDE_DIR/MEMORY/$dir/.gitkeep" 2>/dev/null || true
 done
 
-# --- Vérification intégrité données session ---
+# ─────────────────────────────────────────────────────────────────────────────
+# VERIFICATION POST-INSTALL
+# ─────────────────────────────────────────────────────────────────────────────
+
 echo ""
 echo "[CHECK] Verification integrite..."
 ISSUES=0
-for item in "${CLAUDE_PROTECTED[@]}"; do
-  BACKUP="$BACKUP_DIR/$item"
-  LIVE="$CLAUDE_DIR/$item"
-  if [ -e "$BACKUP" ] && [ ! -e "$LIVE" ]; then
-    echo "   [WARN] $item manquant -> restauration..."
-    _cp -r "$BACKUP" "$CLAUDE_DIR/"
-    ISSUES=$((ISSUES + 1))
-  fi
-done
-[ $ISSUES -eq 0 ] && echo "   [OK] Toutes les donnees de session intactes" || echo "   [OK] $ISSUES element(s) restaure(s)"
+
+# Verifier que les donnees de session n'ont pas ete perdues
+LATEST_BACKUP=""
+if [ -L "$BACKUP_BASE/latest" ] && [ -d "$BACKUP_BASE/$(readlink "$BACKUP_BASE/latest")" ]; then
+  LATEST_BACKUP="$BACKUP_BASE/$(readlink "$BACKUP_BASE/latest")"
+fi
+
+if [ -n "$LATEST_BACKUP" ]; then
+  for item in "${CLAUDE_SESSION_DATA[@]}"; do
+    if [ -e "$LATEST_BACKUP/$item" ] && [ ! -e "$CLAUDE_DIR/$item" ]; then
+      echo "   [WARN] $item manquant -> restauration depuis backup..."
+      _cp -r "$LATEST_BACKUP/$item" "$CLAUDE_DIR/"
+      ISSUES=$((ISSUES + 1))
+    fi
+  done
+fi
+[ $ISSUES -eq 0 ] && echo "   [OK] Donnees de session intactes" || echo "   [OK] $ISSUES element(s) restaure(s)"
+
+echo ""
+echo "[CHECK] Detection des orphelins..."
+detect_orphans
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RESUME
+# ─────────────────────────────────────────────────────────────────────────────
 
 echo ""
 echo "+===========================================+"
@@ -326,12 +678,15 @@ echo "-> Lance : claude"
 echo ""
 echo "Skills : /hora-plan | /hora-autopilot | /hora-parallel-code | /hora-parallel-research | /hora-backup"
 echo ""
-echo "Securite : .hora/patterns.yaml (personnalisable)"
-echo ""
-echo "Usage : bash install.sh [--dry-run | --restore]"
+echo "Usage :"
+echo "  bash install.sh                        # Installer / mettre a jour"
+echo "  bash install.sh --dry-run              # Simuler"
+echo "  bash install.sh --restore              # Restaurer le dernier backup"
+echo "  bash install.sh --restore <timestamp>  # Restaurer un backup specifique"
+echo "  bash install.sh --list-backups         # Lister les backups"
 echo ""
 if ! $DRY_RUN; then
-echo "[INFO] Backup sessions dans : $BACKUP_DIR"
-echo "[INFO] Restaurer si besoin  : bash install.sh --restore"
+echo "[INFO] Backup : $BACKUP_BASE/"
+echo "[INFO] Restore : bash install.sh --restore"
 echo ""
 fi
