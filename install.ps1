@@ -13,21 +13,43 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host ""
-Write-Host "+===========================================+"
-Write-Host "|       HORA - Windows Installation          |"
-Write-Host "+===========================================+"
-Write-Host ""
+# ─── UI Helpers ──────────────────────────────────────────────────────────────
+
+function Write-Logo {
+    Write-Host ""
+    Write-Host "   _  _  ___  ___    _   " -ForegroundColor Cyan
+    Write-Host "  | || |/ _ \| _ \  /_\  " -ForegroundColor Cyan
+    Write-Host "  | __ | (_) |   / / _ \ " -ForegroundColor Cyan
+    Write-Host "  |_||_|\___/|_|_\/_/ \_\" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Hybrid Orchestrated Reasoning Architecture" -ForegroundColor DarkGray
+    Write-Host "  ──────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ""
+}
+function Write-Step($msg) { Write-Host "  [$script:step/$script:totalSteps] $msg" -ForegroundColor White; $script:step++ }
+function Write-Ok($msg) { Write-Host "    $([char]0x2713) $msg" -ForegroundColor Green }
+function Write-Warn($msg) { Write-Host "    ! $msg" -ForegroundColor Yellow }
+function Write-Err($msg) { Write-Host "    $([char]0x2717) $msg" -ForegroundColor Red }
+function Write-Info($msg) { Write-Host "    · $msg" -ForegroundColor DarkGray }
+
+$script:step = 1
+$script:totalSteps = 4
+
+# ─── Header ──────────────────────────────────────────────────────────────────
+
+Write-Logo
 
 # --- Prerequisites ---
 
+Write-Step "Prerequis Windows"
+
 # 1. Claude Code
 if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
-    Write-Host "[ERREUR] Claude Code introuvable." -ForegroundColor Red
-    Write-Host "   Installe : winget install Anthropic.ClaudeCode"
-    Write-Host "   Ou      : irm https://claude.ai/install.ps1 | iex"
+    Write-Err "Claude Code introuvable"
+    Write-Info "winget install Anthropic.ClaudeCode"
     exit 1
 }
+Write-Ok "Claude Code"
 
 # 2. Git for Windows (fournit bash.exe)
 $bashPath = $null
@@ -65,24 +87,20 @@ if (-not $bashPath) {
 }
 
 if (-not $bashPath) {
-    Write-Host "[ERREUR] Git Bash introuvable." -ForegroundColor Red
-    Write-Host "   Claude Code sur Windows necessite Git for Windows."
-    Write-Host "   Installe : https://git-scm.com/download/win"
-    Write-Host ""
-    Write-Host "   Si Git est installe dans un emplacement non standard :"
-    Write-Host '   $env:CLAUDE_CODE_GIT_BASH_PATH = "C:\chemin\vers\bash.exe"'
+    Write-Err "Git Bash introuvable"
+    Write-Info "https://git-scm.com/download/win"
     exit 1
 }
 
-Write-Host "[OK] Git Bash : $bashPath"
+Write-Ok "Git Bash"
 
 # 3. Node.js (pour npx tsx - hooks TypeScript)
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Write-Host "[ERREUR] Node.js introuvable (requis pour les hooks TypeScript)." -ForegroundColor Red
-    Write-Host "   Installe : https://nodejs.org/"
+    Write-Err "Node.js introuvable"
+    Write-Info "https://nodejs.org/"
     exit 1
 }
-Write-Host "[OK] Node.js : $(node --version)"
+Write-Ok "Node.js $(node --version)"
 
 # 4. tsx
 $hasTsx = $false
@@ -91,39 +109,39 @@ try {
     $hasTsx = $true
 } catch {}
 if (-not $hasTsx -and -not (Get-Command tsx -ErrorAction SilentlyContinue)) {
-    Write-Host "[INFO] Installation de tsx..."
+    Write-Info "Installation de tsx..."
     npm install -g tsx
 }
 
 # 5. jq (optionnel mais recommande pour la performance statusline)
 if (-not (Get-Command jq -ErrorAction SilentlyContinue)) {
     if (Get-Command winget -ErrorAction SilentlyContinue) {
-        Write-Host "[INFO] Installation de jq (performance statusline)..."
+        Write-Info "Installation de jq..."
         winget install jqlang.jq --accept-source-agreements --accept-package-agreements --silent 2>$null
         if (Get-Command jq -ErrorAction SilentlyContinue) {
-            Write-Host "[OK] jq : $(jq --version)"
+            Write-Ok "jq $(jq --version)"
         } else {
-            # winget installe mais PATH pas encore a jour dans cette session
-            Write-Host "[OK] jq installe (disponible au prochain terminal)"
+            Write-Ok "jq installe (disponible au prochain terminal)"
         }
     } else {
-        Write-Host "[INFO] jq absent (optionnel - la statusline utilisera node)" -ForegroundColor Yellow
-        Write-Host "   Installer manuellement : https://jqlang.github.io/jq/download/"
+        Write-Warn "jq absent (optionnel)"
     }
 } else {
-    Write-Host "[OK] jq : $(jq --version)"
+    Write-Ok "jq $(jq --version)"
 }
 
 # --- Set CLAUDE_CODE_GIT_BASH_PATH permanently ---
+
+Write-Step "Environnement"
+
 $currentEnv = [System.Environment]::GetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', 'User')
 if (-not $currentEnv -or -not (Test-Path $currentEnv)) {
-    Write-Host "[CONFIG] CLAUDE_CODE_GIT_BASH_PATH -> $bashPath"
     [System.Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', $bashPath, 'User')
     $env:CLAUDE_CODE_GIT_BASH_PATH = $bashPath
-    Write-Host "[OK] Variable d'environnement definie (session + permanent)"
+    Write-Ok "CLAUDE_CODE_GIT_BASH_PATH"
 } else {
-    Write-Host "[OK] CLAUDE_CODE_GIT_BASH_PATH : $currentEnv"
     $env:CLAUDE_CODE_GIT_BASH_PATH = $currentEnv
+    Write-Ok "CLAUDE_CODE_GIT_BASH_PATH"
 }
 
 # --- Delegate to bash install.sh ---
@@ -131,7 +149,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $installSh = Join-Path $scriptDir "install.sh"
 
 if (-not (Test-Path $installSh)) {
-    Write-Host "[ERREUR] install.sh introuvable dans $scriptDir" -ForegroundColor Red
+    Write-Err "install.sh introuvable dans $scriptDir"
     exit 1
 }
 
@@ -139,8 +157,7 @@ $bashArgs = @()
 if ($DryRun) { $bashArgs += "--dry-run" }
 if ($Restore) { $bashArgs += "--restore" }
 
-Write-Host ""
-Write-Host "[INFO] Delegation a bash install.sh..."
+Write-Step "Installation (bash)"
 Write-Host ""
 
 # Convert Windows path to Git Bash path
@@ -151,42 +168,38 @@ $exitCode = $LASTEXITCODE
 
 if ($exitCode -ne 0) {
     Write-Host ""
-    Write-Host "[ERREUR] Installation echouee (exit code: $exitCode)" -ForegroundColor Red
+    Write-Err "Installation echouee (exit code: $exitCode)"
     exit $exitCode
 }
 
 # --- Post-install: verify hooks work ---
-Write-Host ""
-Write-Host "[CHECK] Verification des hooks..."
+
+Write-Step "Verification hooks"
 
 $hookTs = Join-Path $env:USERPROFILE ".claude\hooks\prompt-submit.ts"
 if (Test-Path $hookTs) {
     try {
-        # Test via cmd.exe (comme Claude Code le fera)
         $hookResult = echo '{}' | cmd /c "npx tsx `"$hookTs`"" 2>$null
         if ($hookResult -and $hookResult -match "hookSpecificOutput") {
-            Write-Host "[OK] Hooks fonctionnels (test via cmd.exe)"
+            Write-Ok "Hooks fonctionnels (cmd.exe)"
         } else {
-            Write-Host "[INFO] Test cmd.exe non concluant, test via Git Bash..."
             $hookResult2 = & $bashPath -c "echo '{}' | npx tsx ~/.claude/hooks/prompt-submit.ts 2>&1" 2>$null
             if ($hookResult2 -match "hookSpecificOutput") {
-                Write-Host "[OK] Hooks fonctionnels (test via Git Bash)"
+                Write-Ok "Hooks fonctionnels (Git Bash)"
             } else {
-                Write-Host "[WARN] Les hooks n'ont pas retourne le format attendu" -ForegroundColor Yellow
+                Write-Warn "Hooks: format de retour inattendu"
             }
         }
     } catch {
-        Write-Host "[WARN] Erreur test hooks : $($_.Exception.Message)" -ForegroundColor Yellow
-        Write-Host "   Essayer : npm install -g tsx" -ForegroundColor Yellow
+        Write-Warn "Erreur test hooks : $($_.Exception.Message)"
     }
 }
 
 Write-Host ""
-Write-Host "+===========================================+"
-Write-Host "|       Installation HORA terminee !         |"
-Write-Host "+===========================================+"
+Write-Host "  ──────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "  Lancez Claude Code dans un projet :"
-Write-Host "    cd votre-projet"
-Write-Host "    claude"
+Write-Host "  $([char]0x2713) Installation Windows terminee" -ForegroundColor Green
+Write-Host ""
+Write-Host "  Demarrer   " -NoNewline; Write-Host "claude" -ForegroundColor Cyan
+Write-Host "  Skills     " -NoNewline; Write-Host "/hora-forge  /hora-plan  /hora-autopilot" -ForegroundColor DarkGray
 Write-Host ""

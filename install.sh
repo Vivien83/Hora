@@ -64,6 +64,106 @@ _chmod() { if $DRY_RUN; then echo "   [DRY-RUN] chmod $*"; else chmod "$@"; fi; 
 _touch() { if $DRY_RUN; then echo "   [DRY-RUN] touch $*"; else touch "$@"; fi; }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# UI SYSTEM
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Colors (disabled if not terminal or NO_COLOR set)
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
+  BOLD='\033[1m'
+  DIM='\033[2m'
+  RESET='\033[0m'
+  RED='\033[31m'
+  GREEN='\033[32m'
+  YELLOW='\033[33m'
+  CYAN='\033[36m'
+  WHITE='\033[97m'
+  GRAY='\033[90m'
+  # Unicode symbols
+  SYM_OK="✓"
+  SYM_ERR="✗"
+  SYM_WARN="!"
+  SYM_INFO="·"
+  SYM_ARROW="→"
+  SYM_DOT="●"
+else
+  BOLD='' DIM='' RESET='' RED='' GREEN='' YELLOW='' CYAN='' WHITE='' GRAY=''
+  SYM_OK="OK"
+  SYM_ERR="X"
+  SYM_WARN="!"
+  SYM_INFO="-"
+  SYM_ARROW="->"
+  SYM_DOT="*"
+fi
+
+STEP_CURRENT=0
+STEP_TOTAL=8
+
+ui_header() {
+  printf "\n"
+  printf "${CYAN}${BOLD}"
+  printf "   _  _  ___  ___    _   \n"
+  printf "  | || |/ _ \\| _ \\  /_\\\\  \n"
+  printf "  | __ | (_) |   / / _ \\\\ \n"
+  printf "  |_||_|\\___/|_|_\\\\/_/ \\\\_\\\\\n"
+  printf "${RESET}\n"
+  printf "  ${DIM}Hybrid Orchestrated Reasoning Architecture${RESET}\n"
+  printf "  ${DIM}──────────────────────────────────────────${RESET}\n"
+  printf "\n"
+  if $DRY_RUN; then
+    printf "  ${YELLOW}${BOLD}DRY RUN${RESET} ${DIM}— aucune modification ne sera effectuee${RESET}\n\n"
+  fi
+}
+
+ui_step() {
+  STEP_CURRENT=$((STEP_CURRENT + 1))
+  printf "\n  ${BOLD}${WHITE}[${STEP_CURRENT}/${STEP_TOTAL}]${RESET} ${BOLD}$1${RESET}\n"
+}
+
+ui_ok() {
+  printf "  ${GREEN}  ${SYM_OK}${RESET} $1\n"
+}
+
+ui_warn() {
+  printf "  ${YELLOW}  ${SYM_WARN}${RESET} $1\n"
+}
+
+ui_err() {
+  printf "  ${RED}  ${SYM_ERR}${RESET} $1\n"
+}
+
+ui_info() {
+  printf "  ${DIM}  ${SYM_INFO} $1${RESET}\n"
+}
+
+ui_detail() {
+  printf "  ${DIM}    $1${RESET}\n"
+}
+
+ui_summary() {
+  local skills_count hooks_count agents_count
+  skills_count=$(find "$HORA_DIR/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')
+  hooks_count=$(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ')
+  agents_count=$(ls "$HORA_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ')
+
+  printf "\n"
+  printf "  ${DIM}──────────────────────────────────────────${RESET}\n"
+  printf "\n"
+  if $DRY_RUN; then
+    printf "  ${YELLOW}${BOLD}DRY RUN termine${RESET} ${DIM}— rien n'a ete modifie${RESET}\n"
+  else
+    printf "  ${GREEN}${BOLD}${SYM_OK} Installation terminee${RESET}\n"
+  fi
+  printf "\n"
+  printf "  ${DIM}Composants installes :${RESET}\n"
+  printf "    ${SYM_DOT} ${BOLD}${hooks_count}${RESET} hooks  ${DIM}|${RESET}  ${BOLD}${agents_count}${RESET} agents  ${DIM}|${RESET}  ${BOLD}${skills_count}${RESET} skills\n"
+  printf "\n"
+  printf "  ${BOLD}Demarrer${RESET}   ${CYAN}claude${RESET}\n"
+  printf "  ${BOLD}Skills${RESET}     ${DIM}/hora-forge  /hora-plan  /hora-autopilot${RESET}\n"
+  printf "  ${BOLD}Backup${RESET}     ${DIM}bash install.sh --restore${RESET}\n"
+  printf "\n"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # BACKUP (versionnee, rotation automatique)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -85,13 +185,13 @@ backup_all() {
   local backup_dir="$BACKUP_BASE/$ts"
 
   _mkdir -p "$backup_dir"
-  echo "[BACKUP] Snapshot $ts"
+  ui_info "Snapshot ${BOLD}$ts${RESET}"
 
   # Donnees de session Claude Code
   for item in "${CLAUDE_SESSION_DATA[@]}"; do
     if [ -e "$CLAUDE_DIR/$item" ]; then
       _cp -r "$CLAUDE_DIR/$item" "$backup_dir/"
-      echo "   OK $item (session)"
+      ui_detail "$item"
     fi
   done
 
@@ -104,7 +204,7 @@ backup_all() {
         _mkdir -p "$backup_dir/$parent"
       fi
       _cp -r "$CLAUDE_DIR/$item" "$backup_dir/$item"
-      echo "   OK $item (config)"
+      ui_detail "$item"
     fi
   done
 
@@ -123,7 +223,7 @@ backup_all() {
       local to_remove=$((count - BACKUP_MAX))
       for ((i=0; i<to_remove; i++)); do
         rm -rf "${backups[$i]}"
-        echo "   [ROTATE] $(basename "${backups[$i]}") supprime"
+        ui_detail "rotation: $(basename "${backups[$i]}")"
       done
     fi
   fi
@@ -141,27 +241,25 @@ do_restore() {
 
   # --list-backups ou --restore list
   if [ "$target" = "list" ]; then
-    echo ""
-    echo "[BACKUPS] Snapshots disponibles :"
+    ui_header
+    printf "  ${BOLD}Snapshots disponibles${RESET}\n\n"
     if [ -d "$BACKUP_BASE" ] && ls -1d "$BACKUP_BASE"/2* &>/dev/null; then
       for d in $(ls -1d "$BACKUP_BASE"/2* | sort -r); do
         local name
         name=$(basename "$d")
         local marker=""
         if [ -f "$BACKUP_BASE/latest" ]; then
-          [ "$(cat "$BACKUP_BASE/latest" 2>/dev/null | tr -d '[:space:]')" = "$name" ] && marker=" <- latest"
+          [ "$(cat "$BACKUP_BASE/latest" 2>/dev/null | tr -d '[:space:]')" = "$name" ] && marker=" ${CYAN}${SYM_ARROW} latest${RESET}"
         fi
         # Compter les elements dans le backup
         local file_count
         file_count=$(find "$d" -maxdepth 1 -not -name "$(basename "$d")" | wc -l | tr -d ' ')
-        echo "   $name  ($file_count elements)$marker"
+        printf "    ${SYM_DOT} ${BOLD}$name${RESET}  ${DIM}($file_count elements)${RESET}$marker\n"
       done
     else
-      echo "   (aucun backup)"
+      ui_info "aucun backup"
     fi
-    echo ""
-    echo "Restaurer : bash install.sh --restore <timestamp>"
-    echo "           bash install.sh --restore   (= latest)"
+    printf "\n  ${DIM}Restaurer : bash install.sh --restore <timestamp>${RESET}\n\n"
     exit 0
   fi
 
@@ -169,8 +267,8 @@ do_restore() {
   local restore_dir
   if [ "$target" = "latest" ]; then
     if [ ! -f "$BACKUP_BASE/latest" ]; then
-      echo "[ERREUR] Aucun backup 'latest' trouve."
-      echo "   Lance : bash install.sh --list-backups"
+      ui_err "Aucun backup 'latest' trouve"
+      ui_detail "bash install.sh --list-backups"
       exit 1
     fi
     restore_dir="$BACKUP_BASE/$(cat "$BACKUP_BASE/latest" | tr -d '[:space:]')"
@@ -179,21 +277,20 @@ do_restore() {
   fi
 
   if [ ! -d "$restore_dir" ]; then
-    echo "[ERREUR] Backup introuvable : $target"
-    echo "   Lance : bash install.sh --list-backups"
+    ui_err "Backup introuvable : $target"
+    ui_detail "bash install.sh --list-backups"
     exit 1
   fi
 
-  echo ""
-  echo "[RESTORE] Depuis $(basename "$restore_dir")"
-  echo ""
+  ui_header
+  printf "  ${BOLD}Restauration depuis ${CYAN}$(basename "$restore_dir")${RESET}\n\n"
 
   # Restaurer les donnees de session
   for item in "${CLAUDE_SESSION_DATA[@]}"; do
     if [ -e "$restore_dir/$item" ]; then
       rm -rf "$CLAUDE_DIR/$item"
       cp -r "$restore_dir/$item" "$CLAUDE_DIR/"
-      echo "   OK $item (session)"
+      ui_detail "$item"
     fi
   done
 
@@ -208,19 +305,19 @@ do_restore() {
       [ ! -d "$parent" ] && mkdir -p "$parent"
       # Restaurer
       cp -r "$restore_dir/$item" "$CLAUDE_DIR/$item"
-      echo "   OK $item (config restauree)"
+      ui_ok "$item"
     elif [ -e "$CLAUDE_DIR/$item" ]; then
       # L'item n'existait pas avant HORA → le supprimer
       rm -rf "$CLAUDE_DIR/$item"
-      echo "   OK $item (supprime — absent du backup)"
+      ui_detail "$item supprime"
     fi
   done
 
-  echo ""
-  echo "[RESTORE] Etat restaure : $(basename "$restore_dir")"
-  echo ""
-  echo "[INFO] Les donnees MEMORY/ ne sont pas affectees par le restore."
-  echo "[INFO] Pour reinstaller HORA : bash install.sh"
+  printf "\n"
+  printf "  ${GREEN}${BOLD}${SYM_OK} Etat restaure${RESET}\n\n"
+  ui_info "MEMORY/ non affecte par le restore"
+  ui_info "Reinstaller : bash install.sh"
+  printf "\n"
   exit 0
 }
 
@@ -230,14 +327,14 @@ do_restore() {
 
 cleanup_legacy() {
   local cleaned=0
-  echo "[CLEAN] Recherche d'artefacts legacy..."
+  ui_info "Recherche d'artefacts legacy..."
 
   # 1. Hooks contenant des references PAI
   for f in "$CLAUDE_DIR/hooks/"*.ts; do
     [ -f "$f" ] || continue
     for pattern in "${LEGACY_PATTERNS[@]}"; do
       if grep -qi "$pattern" "$f" 2>/dev/null; then
-        echo "   [LEGACY] hooks/$(basename "$f") (contient '$pattern')"
+        ui_detail "hooks/$(basename "$f")"
         _rm "$f"
         cleaned=$((cleaned + 1))
         break
@@ -250,7 +347,7 @@ cleanup_legacy() {
     [ -f "$f" ] || continue
     for pattern in "${LEGACY_PATTERNS[@]}"; do
       if grep -qi "$pattern" "$f" 2>/dev/null; then
-        echo "   [LEGACY] agents/$(basename "$f") (contient '$pattern')"
+        ui_detail "agents/$(basename "$f")"
         _rm "$f"
         cleaned=$((cleaned + 1))
         break
@@ -268,7 +365,7 @@ cleanup_legacy() {
     if [ -f "$d/SKILL.md" ]; then
       for pattern in "${LEGACY_PATTERNS[@]}"; do
         if grep -qi "$pattern" "$d/SKILL.md" 2>/dev/null; then
-          echo "   [LEGACY] skills/$skill_name/ (contient '$pattern')"
+          ui_detail "skills/$skill_name/"
           _rm -r "$d"
           cleaned=$((cleaned + 1))
           break
@@ -280,18 +377,18 @@ cleanup_legacy() {
   # 4. Bloc PAI dans CLAUDE.md
   if [ -f "$CLAUDE_DIR/CLAUDE.md" ] && grep -qF "<!-- PAI:START" "$CLAUDE_DIR/CLAUDE.md" 2>/dev/null; then
     if $DRY_RUN; then
-      echo "   [DRY-RUN] CLAUDE.md — bloc PAI serait supprime"
+      ui_detail "[DRY-RUN] CLAUDE.md — bloc PAI serait supprime"
     else
       sed '/<!-- PAI:START/,/<!-- PAI:END/d' "$CLAUDE_DIR/CLAUDE.md" > "$CLAUDE_DIR/CLAUDE.md.tmp"
       mv "$CLAUDE_DIR/CLAUDE.md.tmp" "$CLAUDE_DIR/CLAUDE.md"
     fi
-    echo "   [LEGACY] CLAUDE.md — bloc PAI supprime"
+    ui_detail "CLAUDE.md — bloc PAI supprime"
     cleaned=$((cleaned + 1))
   fi
 
   # 5. Hooks PAI dans settings.json (signalement — nettoyage fait au merge)
   if [ -f "$CLAUDE_DIR/settings.json" ] && grep -q "PAI_DIR" "$CLAUDE_DIR/settings.json" 2>/dev/null; then
-    echo "   [LEGACY] settings.json — hooks PAI detectes (seront nettoyes au merge)"
+    ui_detail "settings.json — hooks PAI detectes"
     cleaned=$((cleaned + 1))
   fi
 
@@ -316,7 +413,7 @@ detect_orphans() {
     local name
     name=$(basename "$f")
     if [ ! -f "$HORA_DIR/hooks/$name" ]; then
-      echo "   [ORPHELIN] hooks/$name"
+      ui_warn "hooks/$name ${DIM}(orphelin)${RESET}"
       orphans=$((orphans + 1))
     fi
   done
@@ -327,7 +424,7 @@ detect_orphans() {
     local name
     name=$(basename "$f")
     if [ ! -f "$HORA_DIR/agents/$name" ]; then
-      echo "   [ORPHELIN] agents/$name"
+      ui_warn "agents/$name ${DIM}(orphelin)${RESET}"
       orphans=$((orphans + 1))
     fi
   done
@@ -338,7 +435,7 @@ detect_orphans() {
     local name
     name=$(basename "$d")
     if [ ! -d "$HORA_DIR/skills/$name" ]; then
-      echo "   [ORPHELIN] skills/$name/"
+      ui_warn "skills/$name/ ${DIM}(orphelin)${RESET}"
       orphans=$((orphans + 1))
     fi
   done
@@ -347,7 +444,7 @@ detect_orphans() {
     echo "   $orphans fichier(s) non-HORA detecte(s)"
     echo "   Verifier et nettoyer manuellement si necessaire"
   else
-    echo "   [OK] Aucun orphelin"
+    ui_ok "Aucun orphelin"
   fi
 }
 
@@ -368,7 +465,7 @@ case "${1:-}" in
   "")
     ;;
   *)
-    echo "[ERREUR] Flag inconnu: $1"
+    ui_err "Flag inconnu: $1"
     echo ""
     echo "Usage :"
     echo "  bash install.sh                        # Installation"
@@ -384,29 +481,24 @@ esac
 # INSTALLATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-echo ""
-echo "+===========================================+"
-if $DRY_RUN; then
-echo "|       HORA — Installation (DRY RUN)        |"
-else
-echo "|           HORA — Installation              |"
-fi
-echo "+===========================================+"
-echo ""
-$DRY_RUN && echo "[DRY-RUN] Aucune modification ne sera effectuee." && echo ""
+ui_header
 
 # ─── Prerequis ──────────────────────────────────────────────────────────────
 
+ui_step "Prerequis"
+
 if ! command -v claude &>/dev/null; then
-  echo "[ERREUR] Claude Code introuvable. Installe : npm install -g @anthropic-ai/claude-code"
+  ui_err "Claude Code introuvable"
+  ui_detail "npm install -g @anthropic-ai/claude-code"
   exit 1
 fi
+ui_ok "Claude Code"
 
 if ! node -e "require('tsx')" &>/dev/null 2>&1 && ! command -v tsx &>/dev/null; then
   if $DRY_RUN; then
-    echo "   [DRY-RUN] npm install -g tsx"
+    ui_detail "[DRY-RUN] npm install -g tsx"
   else
-    echo "[INFO] Installation de tsx..."
+    ui_info "Installation de tsx..."
     npm install -g tsx
   fi
 fi
@@ -419,16 +511,16 @@ else
   case "$(uname -s)" in
     Darwin)
       if command -v brew &>/dev/null; then
-        echo "[INFO] Installation de jq via Homebrew..."
+        ui_info "Installation de jq via Homebrew..."
         brew install jq 2>/dev/null && HAS_JQ=true
       fi
       ;;
     Linux)
       if command -v apt-get &>/dev/null && [ "$(id -u)" = "0" ]; then
-        echo "[INFO] Installation de jq via apt..."
+        ui_info "Installation de jq via apt..."
         apt-get install -y jq 2>/dev/null && HAS_JQ=true
       elif command -v apk &>/dev/null; then
-        echo "[INFO] Installation de jq via apk..."
+        ui_info "Installation de jq via apk..."
         apk add --no-cache jq 2>/dev/null && HAS_JQ=true
       fi
       ;;
@@ -436,31 +528,30 @@ else
   esac
 
   if ! $HAS_JQ; then
-    echo "[INFO] jq absent (optionnel - HORA utilisera node a la place)"
-    case "$(uname -s)" in
-      MINGW*|MSYS*|CYGWIN*) echo "   winget install jqlang.jq" ;;
-      Darwin)               echo "   brew install jq" ;;
-      *)                    echo "   sudo apt install jq" ;;
-    esac
+    ui_warn "jq absent ${DIM}(optionnel — node sera utilise)${RESET}"
   fi
 fi
 
 # ─── Backup complet ────────────────────────────────────────────────────────
 
+ui_step "Backup"
 backup_all
+ui_ok "Snapshot sauvegarde"
 
 # ─── Trap en cas d'erreur ──────────────────────────────────────────────────
 
 if ! $DRY_RUN; then
-  trap 'echo ""; echo "[ERREUR] Installation interrompue."; echo "   Restaurer : bash install.sh --restore"; exit 1' ERR
+  trap 'printf "\n"; ui_err "Installation interrompue"; ui_detail "Restaurer : bash install.sh --restore"; exit 1' ERR
 fi
 
 # ─── Nettoyage legacy (PAI) ────────────────────────────────────────────────
 
+ui_step "Nettoyage"
 cleanup_legacy
 
 # ─── Structure de dossiers ─────────────────────────────────────────────────
 
+ui_step "Configuration"
 _mkdir -p "$CLAUDE_DIR"/{MEMORY/{PROFILE,SESSIONS,LEARNING/{FAILURES,ALGORITHM,SYSTEM},SECURITY,STATE,WORK},agents,hooks,skills,.hora/{sessions,snapshots}}
 
 # ─── CLAUDE.md ─────────────────────────────────────────────────────────────
@@ -472,7 +563,7 @@ if [ -f "$CLAUDE_DIR/CLAUDE.md" ]; then
   if grep -qF "$HORA_START_MARKER" "$CLAUDE_DIR/CLAUDE.md"; then
     # Bloc HORA existant → mise a jour
     if $DRY_RUN; then
-      echo "   [DRY-RUN] CLAUDE.md — bloc HORA serait mis a jour"
+      ui_detail "[DRY-RUN] CLAUDE.md — bloc HORA serait mis a jour"
     else
       BEFORE=$(sed "/$HORA_START_MARKER/,/$HORA_END_MARKER/d" "$CLAUDE_DIR/CLAUDE.md")
       {
@@ -483,11 +574,11 @@ if [ -f "$CLAUDE_DIR/CLAUDE.md" ]; then
         echo "$HORA_END_MARKER"
       } > "$CLAUDE_DIR/CLAUDE.md.tmp" && mv "$CLAUDE_DIR/CLAUDE.md.tmp" "$CLAUDE_DIR/CLAUDE.md"
     fi
-    echo "[OK] CLAUDE.md (bloc HORA mis a jour)"
+    ui_ok "CLAUDE.md ${DIM}(bloc HORA mis a jour)${RESET}"
   else
     # CLAUDE.md existant sans HORA → append
     if $DRY_RUN; then
-      echo "   [DRY-RUN] CLAUDE.md — HORA serait ajoute (existant conserve)"
+      ui_detail "[DRY-RUN] CLAUDE.md — HORA serait ajoute"
     else
       {
         echo ""
@@ -496,12 +587,12 @@ if [ -f "$CLAUDE_DIR/CLAUDE.md" ]; then
         echo "$HORA_END_MARKER"
       } >> "$CLAUDE_DIR/CLAUDE.md"
     fi
-    echo "[OK] CLAUDE.md (HORA ajoute, contenu existant conserve)"
+    ui_ok "CLAUDE.md ${DIM}(HORA ajoute, existant conserve)${RESET}"
   fi
 else
   # Pas de CLAUDE.md → creation
   if $DRY_RUN; then
-    echo "   [DRY-RUN] CLAUDE.md — serait cree"
+    ui_detail "[DRY-RUN] CLAUDE.md serait cree"
   else
     {
       echo "$HORA_START_MARKER"
@@ -509,7 +600,7 @@ else
       echo "$HORA_END_MARKER"
     } > "$CLAUDE_DIR/CLAUDE.md"
   fi
-  echo "[OK] CLAUDE.md (cree)"
+  ui_ok "CLAUDE.md ${DIM}(cree)${RESET}"
 fi
 
 # ─── settings.json (merge intelligent) ────────────────────────────────────
@@ -613,7 +704,7 @@ merge_settings_node() {
 
 if [ -f "$TARGET_SETTINGS" ]; then
   if $DRY_RUN; then
-    echo "   [DRY-RUN] settings.json — merge HORA"
+    ui_detail "[DRY-RUN] settings.json — merge HORA"
   elif $HAS_JQ; then
     merge_settings_jq
   else
@@ -622,22 +713,24 @@ if [ -f "$TARGET_SETTINGS" ]; then
 else
   _cp "$HORA_SETTINGS" "$TARGET_SETTINGS"
 fi
-echo "[OK] settings.json (merge)"
+ui_ok "settings.json"
 
 # ─── Statusline ────────────────────────────────────────────────────────────
 
 _cp "$HORA_DIR/statusline.sh" "$CLAUDE_DIR/statusline.sh"
 _chmod +x "$CLAUDE_DIR/statusline.sh"
-echo "[OK] statusline.sh"
+ui_ok "statusline.sh"
 
 # ─── Hooks ─────────────────────────────────────────────────────────────────
 
+ui_step "Hooks & Agents"
+
 if $DRY_RUN; then
-  echo "   [DRY-RUN] hooks/ — $(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers seraient copies"
+  ui_detail "[DRY-RUN] hooks/ — $(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers"
 else
   cp "$HORA_DIR/hooks/"*.ts "$CLAUDE_DIR/hooks/"
 fi
-echo "[OK] hooks/ ($(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers)"
+ui_ok "hooks/ ${DIM}($(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers)${RESET}"
 
 # ─── settings.json : nettoyage orphelins + Windows paths ─────────────────
 # (apres copie des hooks pour ne pas supprimer les hooks HORA pas encore installes)
@@ -681,7 +774,7 @@ case "$(uname -s)" in
         s = s.replace(/\\\$HOME\//g, h + '/');
         fs.writeFileSync(process.argv[1], s);
       " "$TARGET_SETTINGS" "$WIN_HOME"
-      echo "   [WIN] Chemins absolus resolus dans settings.json"
+      ui_detail "Chemins Windows resolus dans settings.json"
     fi
     ;;
 esac
@@ -689,19 +782,21 @@ esac
 # ─── Agents ────────────────────────────────────────────────────────────────
 
 if $DRY_RUN; then
-  echo "   [DRY-RUN] agents/ — fichiers seraient copies"
+  ui_detail "[DRY-RUN] agents/ — fichiers seraient copies"
 else
   cp "$HORA_DIR/agents/"*.md "$CLAUDE_DIR/agents/"
 fi
-echo "[OK] agents/"
+ui_ok "agents/ ${DIM}($(ls "$HORA_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ') agents)${RESET}"
 
 # ─── Skills ────────────────────────────────────────────────────────────────
+
+ui_step "Skills & Securite"
 
 # Nettoyer les anciens fichiers .md plats
 for old_skill in "$CLAUDE_DIR/skills/"*.md; do
   [ -f "$old_skill" ] || continue
   _rm "$old_skill"
-  echo "   [CLEAN] $(basename "$old_skill") (ancien format .md plat)"
+  ui_detail "$(basename "$old_skill") supprime (ancien format)"
 done
 
 # Copier les dossiers de skills
@@ -711,14 +806,16 @@ for skill_dir in "$HORA_DIR/skills/"*/; do
   _mkdir -p "$CLAUDE_DIR/skills/$skill_name"
   _cp "$skill_dir"SKILL.md "$CLAUDE_DIR/skills/$skill_name/SKILL.md"
 done
-echo "[OK] skills/ ($(find "$HORA_DIR/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ') skills)"
+ui_ok "skills/ ${DIM}($(find "$HORA_DIR/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ') skills)${RESET}"
 
 # ─── Patterns de securite ─────────────────────────────────────────────────
 
 _cp "$HORA_DIR/.hora/patterns.yaml" "$CLAUDE_DIR/.hora/patterns.yaml"
-echo "[OK] .hora/patterns.yaml"
+ui_ok "patterns.yaml ${DIM}(securite)${RESET}"
 
 # ─── MEMORY (ne pas ecraser si deja rempli) ───────────────────────────────
+
+ui_step "Memory"
 
 INSTALLED=0
 PROFILE_TEMPLATE="<!-- vide - sera complete automatiquement a l'usage -->"
@@ -728,14 +825,14 @@ for f in identity projects preferences vocabulary; do
     if [ -f "$HORA_DIR/MEMORY/PROFILE/$f.md" ]; then
       _cp "$HORA_DIR/MEMORY/PROFILE/$f.md" "$TARGET"
     elif $DRY_RUN; then
-      echo "   [DRY-RUN] create $TARGET"
+      ui_detail "[DRY-RUN] create $f.md"
     else
       echo "$PROFILE_TEMPLATE" > "$TARGET"
     fi
     INSTALLED=1
   fi
 done
-[ $INSTALLED -eq 1 ] && echo "[OK] MEMORY/PROFILE/ (vierge)" || echo "[INFO] MEMORY/PROFILE/ existant conserve"
+[ $INSTALLED -eq 1 ] && ui_ok "MEMORY/PROFILE/ ${DIM}(initialise)${RESET}" || ui_info "MEMORY/PROFILE/ existant conserve"
 
 for dir in SESSIONS LEARNING/FAILURES LEARNING/ALGORITHM LEARNING/SYSTEM SECURITY STATE WORK; do
   _touch "$CLAUDE_DIR/MEMORY/$dir/.gitkeep" 2>/dev/null || true
@@ -745,8 +842,7 @@ done
 # VERIFICATION POST-INSTALL
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo ""
-echo "[CHECK] Verification integrite..."
+ui_step "Verification"
 ISSUES=0
 
 # Verifier que les donnees de session n'ont pas ete perdues
@@ -758,44 +854,18 @@ fi
 if [ -n "$LATEST_BACKUP" ]; then
   for item in "${CLAUDE_SESSION_DATA[@]}"; do
     if [ -e "$LATEST_BACKUP/$item" ] && [ ! -e "$CLAUDE_DIR/$item" ]; then
-      echo "   [WARN] $item manquant -> restauration depuis backup..."
+      ui_warn "$item manquant ${SYM_ARROW} restauration depuis backup..."
       _cp -r "$LATEST_BACKUP/$item" "$CLAUDE_DIR/"
       ISSUES=$((ISSUES + 1))
     fi
   done
 fi
-[ $ISSUES -eq 0 ] && echo "   [OK] Donnees de session intactes" || echo "   [OK] $ISSUES element(s) restaure(s)"
+[ $ISSUES -eq 0 ] && ui_ok "Donnees de session intactes" || ui_ok "$ISSUES element(s) restaure(s)"
 
-echo ""
-echo "[CHECK] Detection des orphelins..."
 detect_orphans
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RESUME
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo ""
-echo "+===========================================+"
-if $DRY_RUN; then
-echo "|       DRY RUN termine (rien modifie)       |"
-else
-echo "|         Installation terminee !            |"
-fi
-echo "+===========================================+"
-echo ""
-echo "-> Lance : claude"
-echo ""
-echo "Skills : /hora-plan | /hora-autopilot | /hora-parallel-code | /hora-parallel-research | /hora-backup"
-echo ""
-echo "Usage :"
-echo "  bash install.sh                        # Installer / mettre a jour"
-echo "  bash install.sh --dry-run              # Simuler"
-echo "  bash install.sh --restore              # Restaurer le dernier backup"
-echo "  bash install.sh --restore <timestamp>  # Restaurer un backup specifique"
-echo "  bash install.sh --list-backups         # Lister les backups"
-echo ""
-if ! $DRY_RUN; then
-echo "[INFO] Backup : $BACKUP_BASE/"
-echo "[INFO] Restore : bash install.sh --restore"
-echo ""
-fi
+ui_summary
