@@ -28,10 +28,11 @@ Repondre dans la langue de l'utilisateur. Francais par defaut si profil MEMORY c
 
 ### Delegation automatique des skills
 Ne pas attendre que l'utilisateur invoque un skill. Activer automatiquement :
+- Implementation / feature / bug fix → `/hora-forge` (zero untested delivery)
 - Multi-fichiers / refactor → `/hora-parallel-code`
 - Recherche / comparaison → `/hora-parallel-research`
 - Tache complexe bout-en-bout → `/hora-autopilot`
-- Toute feature non-triviale → `/hora-plan`
+- Planification seule (sans code) → `/hora-plan`
 
 ---
 
@@ -389,6 +390,7 @@ Quand un skill est invoque, lire son fichier dans `~/.claude/skills/` pour le pr
 
 | Commande | Fichier | Description |
 |---|---|---|
+| `/hora-forge` | `~/.claude/skills/hora-forge/SKILL.md` | Zero Untested Delivery — implementation avec tests obligatoires |
 | `/hora-plan` | `~/.claude/skills/plan.md` | Planification + ISC |
 | `/hora-autopilot` | `~/.claude/skills/autopilot.md` | Execution autonome |
 | `/hora-parallel-code` | `~/.claude/skills/parallel-code.md` | Multi-agents codebase |
