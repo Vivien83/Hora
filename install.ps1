@@ -201,5 +201,5 @@ Write-Host ""
 Write-Host "  $([char]0x2713) Installation Windows terminee" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Demarrer   " -NoNewline; Write-Host "claude" -ForegroundColor Cyan
-Write-Host "  Skills     " -NoNewline; Write-Host "/hora-design  /hora-forge  /hora-plan  /hora-autopilot" -ForegroundColor DarkGray
+Write-Host "  Skills     " -NoNewline; Write-Host "/hora-design  /hora-forge  /hora-refactor  /hora-plan" -ForegroundColor DarkGray
 Write-Host ""

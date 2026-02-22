@@ -403,6 +403,7 @@ Quand un skill est invoque, lire son fichier dans `~/.claude/skills/` pour le pr
 |---|---|---|
 | `/hora-design` | `~/.claude/skills/hora-design/SKILL.md` | Anti-AI web design — design intentionnel et premium |
 | `/hora-forge` | `~/.claude/skills/hora-forge/SKILL.md` | Zero Untested Delivery — implementation avec tests obligatoires |
+| `/hora-refactor` | `~/.claude/skills/hora-refactor/SKILL.md` | Refactoring systematique — Fowler + Feathers + Jidoka |
 | `/hora-plan` | `~/.claude/skills/plan.md` | Planification + ISC |
 | `/hora-autopilot` | `~/.claude/skills/autopilot.md` | Execution autonome |
 | `/hora-parallel-code` | `~/.claude/skills/parallel-code.md` | Multi-agents codebase |
