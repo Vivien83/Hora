@@ -28,11 +28,22 @@ Repondre dans la langue de l'utilisateur. Francais par defaut si profil MEMORY c
 
 ### Delegation automatique des skills
 Ne pas attendre que l'utilisateur invoque un skill. Activer automatiquement :
-- Implementation / feature / bug fix → `/hora-forge` (zero untested delivery)
 - Multi-fichiers / refactor → `/hora-parallel-code`
 - Recherche / comparaison → `/hora-parallel-research`
 - Tache complexe bout-en-bout → `/hora-autopilot`
 - Planification seule (sans code) → `/hora-plan`
+
+### Choix du mode d'implementation
+Quand une tache d'implementation est detectee (feature, bug fix, refactor, nouveau composant),
+**proposer le choix** via AskUserQuestion AVANT de commencer :
+
+| Mode | Description |
+|------|-------------|
+| **HORA** (defaut) | Workflow classique EXPLORE → PLAN → AUDIT → CODE → COMMIT. Rapide et efficace. |
+| **Forge** | Zero Untested Delivery. TDD, 7 gates, tests obligatoires a chaque phase. Pour le code critique ou quand la qualite maximale est requise. |
+
+Ne PAS auto-deleguer vers Forge. L'utilisateur choisit.
+Si l'utilisateur invoque directement `/hora-forge`, ne pas reposer la question.
 
 ---
 
