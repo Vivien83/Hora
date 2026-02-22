@@ -401,6 +401,7 @@ Quand un skill est invoque, lire son fichier dans `~/.claude/skills/` pour le pr
 
 | Commande | Fichier | Description |
 |---|---|---|
+| `/hora-design` | `~/.claude/skills/hora-design/SKILL.md` | Anti-AI web design — design intentionnel et premium |
 | `/hora-forge` | `~/.claude/skills/hora-forge/SKILL.md` | Zero Untested Delivery — implementation avec tests obligatoires |
 | `/hora-plan` | `~/.claude/skills/plan.md` | Planification + ISC |
 | `/hora-autopilot` | `~/.claude/skills/autopilot.md` | Execution autonome |

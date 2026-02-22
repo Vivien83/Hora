@@ -158,7 +158,7 @@ ui_summary() {
   printf "    ${SYM_DOT} ${BOLD}${hooks_count}${RESET} hooks  ${DIM}|${RESET}  ${BOLD}${agents_count}${RESET} agents  ${DIM}|${RESET}  ${BOLD}${skills_count}${RESET} skills\n"
   printf "\n"
   printf "  ${BOLD}Demarrer${RESET}   ${CYAN}claude${RESET}\n"
-  printf "  ${BOLD}Skills${RESET}     ${DIM}/hora-forge  /hora-plan  /hora-autopilot${RESET}\n"
+  printf "  ${BOLD}Skills${RESET}     ${DIM}/hora-design  /hora-forge  /hora-plan  /hora-autopilot${RESET}\n"
   printf "  ${BOLD}Backup${RESET}     ${DIM}bash install.sh --restore${RESET}\n"
   printf "\n"
 }
