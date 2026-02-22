@@ -367,6 +367,17 @@ if [ -f "$SNAP_MANIFEST" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# COMPTEUR DE SKILLS
+# ─────────────────────────────────────────────────────────────────────────────
+
+skills_count=0
+SKILLS_DIR="${HOME}/.claude/skills"
+if [ -d "$SKILLS_DIR" ]; then
+    skills_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
+    [ -z "$skills_count" ] && skills_count=0
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LARGEUR DU TERMINAL & MODE
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -581,14 +592,17 @@ case "$MODE" in
                 printf " ${SLATE_400}${b_icon}:${b_str}${b_warn}${RST}"
             fi
             [ "$snap_count" -gt 0 ] && printf " ${HORA_DIM}${snap_count}snap${RST}"
+            [ "$skills_count" -gt 0 ] && printf " ${HORA_DIM}${skills_count}sk${RST}"
             # Usage compact
             if [ "$usage_5h_int" -gt 0 ]; then
                 u5_c=$(get_usage_color "$usage_5h_int")
                 printf " ${u5_c}${usage_5h_int}%%${RST}${USAGE_RESET_CLR}↻${reset_5h_str}${RST}"
             fi
             printf "\n"
-        elif [ "$snap_count" -gt 0 ]; then
-            printf "${HORA_DIM}${snap_count}snap${RST}\n"
+        elif [ "$snap_count" -gt 0 ] || [ "$skills_count" -gt 0 ]; then
+            [ "$snap_count" -gt 0 ] && printf "${HORA_DIM}${snap_count}snap${RST} "
+            [ "$skills_count" -gt 0 ] && printf "${HORA_DIM}${skills_count}sk${RST}"
+            printf "\n"
         fi
         ;;
 
@@ -612,9 +626,12 @@ case "$MODE" in
                 printf " ${SLATE_600}|${RST} ${SLATE_500}bak:${RST} ${SLATE_400}${b_icon}:${b_str}${b_warn}${RST}"
             fi
             [ "$snap_count" -gt 0 ] && printf " ${SLATE_600}|${RST} ${HORA_DIM}snap:${snap_count}${RST}"
+            [ "$skills_count" -gt 0 ] && printf " ${SLATE_600}|${RST} ${HORA_DIM}sk:${skills_count}${RST}"
             printf "\n"
-        elif [ "$snap_count" -gt 0 ]; then
-            printf "${HORA_DIM}snap:${snap_count}${RST}\n"
+        elif [ "$snap_count" -gt 0 ] || [ "$skills_count" -gt 0 ]; then
+            [ "$snap_count" -gt 0 ] && printf "${HORA_DIM}snap:${snap_count}${RST} "
+            [ "$skills_count" -gt 0 ] && printf "${HORA_DIM}sk:${skills_count}${RST}"
+            printf "\n"
         fi
 
         # Ligne commits
@@ -700,10 +717,12 @@ case "$MODE" in
             fi
         fi
 
-        # Ligne 4 : Snap + Modele
+        # Ligne 4 : Snap + Modele + Skills
         printf "${HORA_PRIMARY}◈${RST} "
         [ "$snap_count" -gt 0 ] && printf "${HORA_DIM}SNAP:${RST} ${SLATE_400}${snap_count} proteges${RST} ${SLATE_600}|${RST} "
-        printf "${SLATE_500}MODELE :${RST} ${HORA_ACCENT}${model_name}${RST}\n"
+        printf "${SLATE_500}MODELE :${RST} ${HORA_ACCENT}${model_name}${RST}"
+        [ "$skills_count" -gt 0 ] && printf " ${SLATE_600}|${RST} ${SLATE_500}SKILLS :${RST} ${HORA_ACCENT}${skills_count}${RST}"
+        printf "\n"
 
         # Separateur footer (fixe 80 cols)
         printf "${SLATE_600}──────────────────────────────────────────────────────────────────────────────────${RST}\n"

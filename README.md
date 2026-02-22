@@ -454,8 +454,9 @@ The HORA algorithm (EXPLORE → PLAN → AUDIT → CODE → COMMIT) runs on **ev
 | Complex (multi-file, archi) | EXPLORE → full PLAN with ISC → AUDIT → CODE |
 | Critical (auth, data, migration) | Full algorithm + **user validation required** |
 
-Skills are activated automatically — no need to type `/hora-plan` or `/hora-autopilot`:
+Skills are activated automatically or proposed as choices:
 
+- Implementation task → HORA proposes **Normal** vs **Forge** mode
 - Multi-file task → `/hora-parallel-code` auto-triggered
 - Research/comparison → `/hora-parallel-research` auto-triggered
 - Complex end-to-end → `/hora-autopilot` auto-triggered
@@ -544,13 +545,30 @@ Useful for understanding your workflow patterns over time.
 
 ### Skills (slash commands)
 
-| Command | What it does | Protocol |
+| Command | What it does | Methodology |
 |:---|:---|:---|
-| `/hora-plan "objective"` | Full planning with verifiable ISC criteria | OBSERVE -> THINK -> PLAN -> AUDIT -> Validation |
-| `/hora-autopilot "objective"` | Autonomous end-to-end execution | OBSERVE -> THINK -> PLAN -> AUDIT -> BUILD -> VERIFY |
-| `/hora-parallel-code "task"` | Multi-agent codebase work | Architect decomposes -> AUDIT -> Executors in parallel -> Review |
-| `/hora-parallel-research "topic"` | Multi-angle research | 3-5 angles -> AUDIT -> Researchers in parallel -> Synthesizer |
+| `/hora-design` | Anti-AI web design — intentional, premium UI | Dieter Rams, Bauhaus, Swiss Style, Ma, OKLCH |
+| `/hora-forge` | Zero Untested Delivery — TDD with 7 mandatory gates | NASA Cleanroom, TDD, DO-178C, Jidoka |
+| `/hora-refactor` | Systematic refactoring with safety nets | Martin Fowler (70+ catalog), Michael Feathers |
+| `/hora-security` | OWASP Top 10 2025 audit with CWE references | OWASP 2025, CWE/SANS Top 25, Microsoft SDL |
+| `/hora-perf` | Core Web Vitals + Lighthouse performance audit | Google CWV, RAIL model, Lighthouse |
+| `/hora-plan` | Full planning with verifiable ISC criteria | EXPLORE -> PLAN -> AUDIT -> Validation |
+| `/hora-autopilot` | Autonomous end-to-end execution | PLAN -> AUDIT -> BUILD -> VERIFY |
+| `/hora-parallel-code` | Multi-agent codebase work | Architect -> AUDIT -> Executors in parallel |
+| `/hora-parallel-research` | Multi-angle research | 3-5 angles -> Researchers -> Synthesizer |
 | `/hora-backup` | Immediate backup | Delegates to backup agent |
+
+#### Specialized workflows
+
+**`/hora-design`** — Every UI choice is intentional. 13-point anti-AI checklist catches generic patterns (indigo gradients, symmetric grids, glassmorphism). OKLCH color system, fluid typography, asymmetric layouts. Gates: anti-AI, a11y, dark mode, responsive.
+
+**`/hora-forge`** — No deliverable ships without tests. 9 phases (CLASSIFY → SPEC → ANALYZE → PLAN → TEST FIRST → BUILD → VERIFY → EXAMINE → DELIVER), 7 gates, 6 criticality classes (F-A). Jidoka: red test = stop immediately.
+
+**`/hora-refactor`** — Code smells detected from Fowler's catalog (5 categories, 22 smells). Characterization tests written BEFORE any modification (Feathers). One refactoring at a time, micro-commits, metrics before/after.
+
+**`/hora-security`** — All 10 OWASP 2025 categories scanned systematically. Every finding gets a CWE reference and severity. Fixes require reproduction tests. Defense-in-depth hardening (headers, validation, env, dependencies).
+
+**`/hora-perf`** — Baseline measurement first (Lighthouse, bundle analysis, Core Web Vitals). Diagnose by category (LCP/INP/CLS/bundle). Quick wins prioritized. Every optimization measured before/after. RAIL model budgets.
 
 > Every skill includes an **AUDIT step** that identifies ghost failures (silent failure modes) before any code is written.
 
@@ -773,7 +791,12 @@ hora/
     |   |-- synthesizer.md        #   Haiku: multi-source aggregation
     |   |-- backup.md             #   Haiku: git backup
     |
-    |-- skills/                   # 5 skills (directory/SKILL.md format)
+    |-- skills/                   # 10 skills (directory/SKILL.md format)
+    |   |-- hora-design/SKILL.md       #   Anti-AI web design (Dieter Rams, OKLCH)
+    |   |-- hora-forge/SKILL.md        #   Zero Untested Delivery (NASA, TDD)
+    |   |-- hora-refactor/SKILL.md     #   Systematic refactoring (Fowler, Feathers)
+    |   |-- hora-security/SKILL.md     #   OWASP 2025 audit (CWE, SANS)
+    |   |-- hora-perf/SKILL.md         #   Performance (Core Web Vitals, RAIL)
     |   |-- hora-plan/SKILL.md
     |   |-- hora-autopilot/SKILL.md
     |   |-- hora-parallel-code/SKILL.md
@@ -810,6 +833,7 @@ hora/
 | **Compact recovery** | Auto-detection + checkpoint injection |
 | **Pre-edit snapshots** | Every edit, with or without git |
 | **Auto backup** | Mirror branch or local bundle |
+| **10 skills** | Design, Forge, Refactor, Security, Perf, Plan, Autopilot, Parallel-Code, Parallel-Research, Backup |
 | **Multi-agents** | 6 agents across 3 models |
 | **Model routing** | Opus / Sonnet / Haiku |
 | **Ghost failure detection** | Built into the Algorithm (AUDIT step) |
