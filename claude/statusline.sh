@@ -367,14 +367,17 @@ if [ -f "$SNAP_MANIFEST" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# COMPTEUR DE SKILLS
+# COMPTEUR DE SKILLS (HORA vs ALL)
 # ─────────────────────────────────────────────────────────────────────────────
 
-skills_count=0
+hora_skills=0
+all_skills=0
 SKILLS_DIR="${HOME}/.claude/skills"
 if [ -d "$SKILLS_DIR" ]; then
-    skills_count=$(find "$SKILLS_DIR" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
-    [ -z "$skills_count" ] && skills_count=0
+    all_skills=$(find "$SKILLS_DIR" -name "SKILL.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+    hora_skills=$(find "$SKILLS_DIR" -path "*/hora-*/SKILL.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+    [ -z "$all_skills" ] && all_skills=0
+    [ -z "$hora_skills" ] && hora_skills=0
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -592,16 +595,16 @@ case "$MODE" in
                 printf " ${SLATE_400}${b_icon}:${b_str}${b_warn}${RST}"
             fi
             [ "$snap_count" -gt 0 ] && printf " ${HORA_DIM}${snap_count}snap${RST}"
-            [ "$skills_count" -gt 0 ] && printf " ${HORA_DIM}${skills_count}sk${RST}"
+            [ "$hora_skills" -gt 0 ] && printf " ${HORA_ACCENT}${hora_skills}h${RST}${SLATE_600}/${RST}${SLATE_400}${all_skills}sk${RST}"
             # Usage compact
             if [ "$usage_5h_int" -gt 0 ]; then
                 u5_c=$(get_usage_color "$usage_5h_int")
                 printf " ${u5_c}${usage_5h_int}%%${RST}${USAGE_RESET_CLR}↻${reset_5h_str}${RST}"
             fi
             printf "\n"
-        elif [ "$snap_count" -gt 0 ] || [ "$skills_count" -gt 0 ]; then
+        elif [ "$snap_count" -gt 0 ] || [ "$all_skills" -gt 0 ]; then
             [ "$snap_count" -gt 0 ] && printf "${HORA_DIM}${snap_count}snap${RST} "
-            [ "$skills_count" -gt 0 ] && printf "${HORA_DIM}${skills_count}sk${RST}"
+            [ "$hora_skills" -gt 0 ] && printf "${HORA_ACCENT}${hora_skills}h${RST}${SLATE_600}/${RST}${SLATE_400}${all_skills}sk${RST}"
             printf "\n"
         fi
         ;;
@@ -626,11 +629,11 @@ case "$MODE" in
                 printf " ${SLATE_600}|${RST} ${SLATE_500}bak:${RST} ${SLATE_400}${b_icon}:${b_str}${b_warn}${RST}"
             fi
             [ "$snap_count" -gt 0 ] && printf " ${SLATE_600}|${RST} ${HORA_DIM}snap:${snap_count}${RST}"
-            [ "$skills_count" -gt 0 ] && printf " ${SLATE_600}|${RST} ${HORA_DIM}sk:${skills_count}${RST}"
+            [ "$hora_skills" -gt 0 ] && printf " ${SLATE_600}|${RST} ${HORA_ACCENT}hora:${hora_skills}${RST}${SLATE_600}/${RST}${SLATE_400}${all_skills}sk${RST}"
             printf "\n"
-        elif [ "$snap_count" -gt 0 ] || [ "$skills_count" -gt 0 ]; then
+        elif [ "$snap_count" -gt 0 ] || [ "$all_skills" -gt 0 ]; then
             [ "$snap_count" -gt 0 ] && printf "${HORA_DIM}snap:${snap_count}${RST} "
-            [ "$skills_count" -gt 0 ] && printf "${HORA_DIM}sk:${skills_count}${RST}"
+            [ "$hora_skills" -gt 0 ] && printf "${HORA_ACCENT}hora:${hora_skills}${RST}${SLATE_600}/${RST}${SLATE_400}${all_skills}sk${RST}"
             printf "\n"
         fi
 
@@ -721,7 +724,7 @@ case "$MODE" in
         printf "${HORA_PRIMARY}◈${RST} "
         [ "$snap_count" -gt 0 ] && printf "${HORA_DIM}SNAP:${RST} ${SLATE_400}${snap_count} proteges${RST} ${SLATE_600}|${RST} "
         printf "${SLATE_500}MODELE :${RST} ${HORA_ACCENT}${model_name}${RST}"
-        [ "$skills_count" -gt 0 ] && printf " ${SLATE_600}|${RST} ${SLATE_500}SKILLS :${RST} ${HORA_ACCENT}${skills_count}${RST}"
+        [ "$hora_skills" -gt 0 ] && printf " ${SLATE_600}|${RST} ${SLATE_500}SKILLS :${RST} ${HORA_ACCENT}${hora_skills} hora${RST}${SLATE_600}/${RST}${SLATE_400}${all_skills} total${RST}"
         printf "\n"
 
         # Separateur footer (fixe 80 cols)
