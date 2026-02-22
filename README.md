@@ -94,22 +94,27 @@ That's it. No config files to edit. No API keys to set. HORA learns silently fro
 ### Install options
 
 ```bash
-bash install.sh              # Full install
-bash install.sh --dry-run    # Preview what would happen (no changes)
-bash install.sh --restore    # Rollback to pre-install state
+bash install.sh                        # Full install
+bash install.sh --dry-run              # Preview what would happen (no changes)
+bash install.sh --restore              # Rollback to latest backup
+bash install.sh --restore <timestamp>  # Rollback to a specific backup
+bash install.sh --list-backups         # List available backups
 ```
 
 ### What install.sh does
 
-1. **Backs up** your existing Claude Code data (sessions, todos, history, credentials)
-2. **Creates** the `~/.claude/` tree (MEMORY/, hooks/, agents/, skills/, .hora/)
-3. **Merges** CLAUDE.md (preserves your existing content, inserts HORA block between markers)
-4. **Merges** settings.json (merges without overwriting third-party hooks)
-5. **Copies** hooks, agents, skills, security patterns, statusline
-6. **Cleans orphan hooks** (removes hooks pointing to non-existent files from other frameworks)
-7. **Resolves paths** on Windows (`~` and `$HOME` replaced with absolute `C:/Users/...` paths)
-8. **Preserves** your MEMORY/ profile if already populated (never resets)
-9. **Verifies** Claude data integrity after installation
+The installer runs 8 steps with a visual UI (ASCII header, progress counter, colored output):
+
+1. **Prerequisites** — checks Claude Code, installs tsx/jq if missing
+2. **Backup** — versioned snapshot of all Claude Code data + HORA files (rotation: keeps last 5)
+3. **Cleanup** — removes legacy artifacts (PAI and predecessors)
+4. **Configuration** — creates directory tree, merges CLAUDE.md (between `<!-- HORA:START/END -->` markers), merges settings.json (preserves third-party hooks, deduplicates)
+5. **Hooks & Agents** — copies TypeScript hooks and agent definitions, cleans orphan hooks pointing to non-existent files, resolves Windows paths (`~` → `C:/Users/...`)
+6. **Skills & Security** — copies skill directories (SKILL.md format), installs security patterns
+7. **Memory** — initializes MEMORY/PROFILE/ if empty (never overwrites existing data)
+8. **Verification** — checks session data integrity, detects orphan files
+
+Ends with a summary showing installed component counts and available skills.
 
 > In case of error: `bash install.sh --restore` restores the backup.
 
@@ -303,41 +308,42 @@ git clone .hora/backups/LATEST.bundle ./restored
 
 ### 7. Rich Statusline
 
-A live status bar at the bottom of Claude Code with 3 responsive modes:
+A live status bar at the bottom of Claude Code with 3 responsive modes using gradient diamond bars (`◆◇`) and push-aware commit indicators (`●` unpushed / `✓` pushed):
 
 ```
 Full mode (>= 80 cols):
--- | HORA | -------------------------------------------------------
- CONTEXTE : [==============        ] 68%  | 23m
- USAGE    : 5H: 42% (reset 2h31) | WK: 18%
- GIT      : feat/auth | ~/project | Modif:3 Nouv:1 | Backup: R 5min
- COMMITS  : * a1b2c3d Add auth middleware
-            * e4f5g6h Fix token validation
-            * i7j8k9l Update tests
- SNAP: 12 proteges | MODELE : claude-sonnet-4-5-20250514
----------------------------------------------------------------
+── | HORA | ──────────────────────────────────────────────────────────────────────
+◈ CONTEXTE : ◆◆◆◆◆◆◆◆◆◆◆◆◆◆◇◇◇◇◇◇ 68% | 23m
+◈ USAGE : 5H: 42% (reset 2h31) | WK: 18%
+◈ GIT : feat/auth | ~/project | Modif:3 Nouv:1 | Backup: R 5min
+◈ COMMITS : ● a1b2c3d Add auth middleware
+◈            ● e4f5g6h Fix token validation
+◈            ✓ i7j8k9l Update tests
+◈ SNAP: 12 proteges | MODELE : claude-sonnet-4-5 | SKILLS : 5 hora/10 total
+──────────────────────────────────────────────────────────────────────────────────
 
 Normal mode (55-79 cols):
--- | HORA | --------------------
- CTX: [========    ] 68% | 23m
- 5H: 42% (2h31) | WK: 18%
- feat/auth | M:3 N:1 | Bk:R 5m
-------------------------------
+HORA ctx: ◆◆◆◆◆◆◆◇◇◇ 68% | 23m
+git: feat/auth *3 +1 | bak: R:5min | snap:12 | hora:5/10sk
+log: ●a1b2c3d Add auth middle ✓e4f5g6h Fix token valid ✓i7j8k9l Update tests
+▰ 5H: 42% ↻2h31 | WK: 18%
 
 Compact mode (< 55 cols):
-HORA | 68% | 42% | feat/auth
+HORA ◆◆◆◆◇◇◇ 68% 23m
+feat/auth *3 R:5min 12snap 5h/10sk 42%↻2h31
 ```
 
 | Data | Source | Platform |
 |:---|:---|:---|
 | Context window % | Claude Code API (JSON stdin) | All |
-| Gradient bar | Emerald -> Gold -> Terracotta -> Rose | All |
-| API usage (5h/7d) | Anthropic OAuth API via macOS Keychain | macOS only |
-| Git status | `git status --porcelain` (cached 15s) | All |
-| Last 3 commits | `git log --oneline -3` | All |
+| Gradient bar (◆◇) | Emerald -> Gold -> Terracotta -> Rose | All |
+| API usage (5h/7d) | Anthropic OAuth API (Keychain / credentials file / secret-tool) | All |
+| Git status | `git status --porcelain` (cached 5s) | All |
+| Last 3 commits | `git log` with push status vs `origin/branch` | All |
 | Backup status | `.hora/backup-state.json` | All |
 | Snapshot count | `.hora/snapshots/manifest.jsonl` | All |
 | Active model | Claude Code API (JSON stdin) | All |
+| Skills count | HORA skills vs total in `~/.claude/skills/` | All |
 
 ---
 
@@ -719,7 +725,7 @@ Hooks can't see both the user message and assistant response simultaneously. HOR
 | Orphan hook cleanup | Full | Full | Full |
 | Path resolution | N/A | N/A | Auto (`~` → `C:/Users/...`) |
 
-> \* API usage display requires macOS Keychain. On Windows/Linux, the statusline gracefully degrades — all other data (context %, git, backup, commits) works everywhere. The statusline uses `jq` when available and falls back to Node.js.
+> \* API usage works cross-platform: macOS Keychain, `~/.claude/.credentials.json` (Windows/Linux), Linux GNOME Keyring (`secret-tool`), or `CLAUDE_CODE_OAUTH_TOKEN` env var (CI). The statusline uses `jq` when available and falls back to Node.js.
 
 ---
 
