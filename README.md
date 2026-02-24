@@ -45,7 +45,8 @@ Session N:  Rich       --> Increasingly relevant responses, your vocabulary, you
 | **New session** | "I have no context" | "Last time we were working on X. Continue?" |
 | **New project** | Re-explore the codebase every time | Auto-audit stored in `.hora/project-knowledge.md` |
 | **Dangerous command** | Executes silently | Blocked or confirmed before execution |
-| **Context compaction** | Lost train of thought | Auto-detected, checkpoint injected |
+| **Context compaction** | Lost train of thought | Auto-detected, project-scoped checkpoint injected |
+| **Multiple terminals** | Sessions overwrite each other's state | Full session isolation, project-scoped checkpoints |
 | **File edited by mistake** | Hope you have git | Snapshot saved automatically before every edit |
 | **Multi-file refactor** | One file at a time | Parallel agents, coordinated execution |
 | **Library choice** | "Let me write a custom date picker" | Library-first: use battle-tested packages |
@@ -375,24 +376,58 @@ When Claude Code compresses context (compaction), HORA detects and recovers auto
 **How it works:**
 
 ```
-statusline.sh          -->  Writes context-pct.txt (atomic write, >0 only)
+statusline.sh          -->  Writes context-pct.txt (session-scoped, atomic)
                              |
 context-checkpoint.ts  -->  PreToolUse: reads context-pct.txt
                              |  Detects >40pt drop from stored state
+                             |  Reads <project>/.hora/checkpoint.md
                              |  Injects recovery via additionalContext
                              |
 prompt-submit.ts       -->  At 70% context: asks Claude to write a
-                             |  semantic checkpoint to MEMORY/WORK/checkpoint.md
+                             |  semantic checkpoint to <project>/.hora/checkpoint.md
                              |
-checkpoint.md          -->  Contains: objective, current state,
-                                decisions made, next steps
+checkpoint.md          -->  Project-scoped: lives in the project's .hora/
+                             |  Contains: session, objective, current state,
+                             |  decisions made, next steps
+                             |  New sessions inherit the previous session's checkpoint
 ```
 
-**Ghost failures addressed:** false positives at startup (GF-2), session boundary (GF-3), stale checkpoints (GF-4), race conditions (GF-6), double injection (GF-11), missing file (GF-12).
+**Project-scoped, not session-scoped:** The checkpoint lives in the project's `.hora/` directory. This means:
+- Different projects (e.g., project A and project B) each have their own checkpoint — no cross-contamination
+- A new session on the same project automatically picks up where the last session left off
+- Concurrent sessions on different projects never interfere with each other
+
+**Ghost failures addressed:** false positives at startup (GF-2), stale checkpoints >30min (GF-4), race conditions (GF-6), double injection cooldown (GF-11), missing file (GF-12).
 
 ---
 
-### 10. Auto Project Audit
+### 10. Session Isolation
+
+HORA supports **concurrent sessions** — multiple Claude Code terminals working on different projects simultaneously without interference.
+
+```
+Terminal 1 (project-A):  ~/.claude/.hora/sessions/a1b2c3d4/  (own state)
+Terminal 2 (project-B):  ~/.claude/.hora/sessions/e5f6g7h8/  (own state)
+                         project-A/.hora/checkpoint.md        (own checkpoint)
+                         project-B/.hora/checkpoint.md        (own checkpoint)
+```
+
+**What's isolated per session** (using first 8 chars of `session_id`):
+- Context percentage tracking (`context-pct.txt`)
+- Compact detection state (`context-state.json`)
+- Recovery cooldown flag (`.compact-recovered`)
+- Doc sync state, backup state, sentiment state
+
+**What's scoped per project** (in `<project>/.hora/`):
+- Checkpoint (`checkpoint.md`) — inherited by new sessions on the same project
+- Project knowledge (`project-knowledge.md`)
+- Project ID (`project-id`)
+
+**Path traversal protection:** Session IDs are sanitized to `[a-zA-Z0-9_-]` only — no `../` injection possible.
+
+---
+
+### 11. Auto Project Audit
 
 When HORA detects a **new project** (no `.hora/project-knowledge.md`), it automatically proposes a full codebase audit before any work begins.
 
@@ -445,7 +480,7 @@ TypeScript 5.7, React 19, Tailwind CSS 4, Drizzle ORM, PostgreSQL...
 
 ---
 
-### 11. Web/SaaS Conventions (Built-in)
+### 12. Web/SaaS Conventions (Built-in)
 
 HORA ships with **opinionated conventions** for modern web/SaaS development. These are enforced automatically through the CLAUDE.md guidelines — not optional suggestions.
 
@@ -523,7 +558,7 @@ HORA explicitly **bans the generic "AI look"** in all UI work:
 
 ---
 
-### 12. Custom Spinner Verbs
+### 13. Custom Spinner Verbs
 
 50 French messages replace the generic Claude Code spinners:
 
@@ -533,7 +568,7 @@ Customizable in the `spinnerVerbs` section of `~/.claude/settings.json`.
 
 ---
 
-### 13. Tool Usage Analytics
+### 14. Tool Usage Analytics
 
 Every tool call is silently logged to `MEMORY/.tool-usage.jsonl`:
 
@@ -544,6 +579,72 @@ Every tool call is silently logged to `MEMORY/.tool-usage.jsonl`:
 ```
 
 Useful for understanding your workflow patterns over time.
+
+---
+
+### 15. Doc Sync
+
+The `doc-sync.ts` hook (PostToolUse) tracks structuring file changes during a session and reminds Claude to keep `.hora/project-knowledge.md` up to date.
+
+**Trigger:** 5+ structuring files modified in the current session (files in `src/`, `lib/`, `app/`, `components/`, `services/`, `api/`, or config files like `package.json`, `tsconfig.json`).
+
+**Staleness check:** If `project-knowledge.md` is older than 7 days, the hook flags it for a full refresh.
+
+**Safety:** The hook never writes to `project-knowledge.md` directly — it only injects an instruction for Claude to do it at the right moment. Skips if context > 80% or project-knowledge is absent.
+
+---
+
+### 16. Librarian Agent
+
+A `PreToolUse` hook (`librarian-check.ts`) enforces HORA's **library-first** philosophy at file creation time.
+
+When Claude creates a new file in `utils/`, `helpers/`, or `lib/` directories, the hook injects a verification instruction: "Before writing custom code, check if a maintained library already does this."
+
+The **librarian agent** (Haiku model) evaluates npm packages against HORA criteria: TypeScript native, >10k downloads/week, published within 12 months, MIT/Apache license.
+
+---
+
+### 17. Sentiment Predict
+
+Heuristic analysis of user tone integrated into `prompt-submit.ts`. Scores each message from 1 (frustrated) to 5 (satisfied) based on conversational signals.
+
+**Anti-false-positive:** Code blocks, file paths, and technical identifiers are stripped before analysis — `error` in a stack trace doesn't count as frustration.
+
+**Output:**
+- Real-time alerts injected when score drops to 1-2 ("User may be frustrated — slow down, clarify, validate")
+- Session-scoped state in `.hora/sessions/<sid8>/sentiment-predict.json`
+- Persistent log appended to `MEMORY/LEARNING/ALGORITHM/sentiment-log.jsonl`
+
+---
+
+### 18. Vision Audit (`/hora-vision`)
+
+Multimodal screenshot analysis skill with a **23-point checklist** across 5 categories:
+
+| Category | Checks | Examples |
+|:---|:---:|:---|
+| Anti-patterns AI | 5 | Indigo gradients, glassmorphism, blob SVGs |
+| Typography | 5 | Font pairing, weight hierarchy, line-height |
+| Accessibility | 5 | Contrast ratio, focus rings, touch targets |
+| Spacing | 4 | 8px grid, section gaps, visual hierarchy |
+| Colors | 4 | Semantic tokens, dark mode, status colors |
+
+Supports `--compare` mode for before/after analysis. No external API — uses Claude's native multimodal capabilities.
+
+---
+
+### 19. Dashboard UI
+
+A standalone React 19 + Vite 6 app in `claude/dashboard/` that visualizes HORA's collected data.
+
+```bash
+cd claude/dashboard && npm install && npm run collect && npm run dev
+# Opens at http://localhost:3847
+```
+
+**Components:** 4 stat cards (sessions, sentiment, tools, files), sessions table, sentiment trend chart (Recharts), tool usage distribution chart.
+
+**Data pipeline:** `scripts/collect-data.ts` reads from `MEMORY/` (sessions, sentiment logs, tool usage) and produces `public/data.json`. Dark-first design (`#0A0A0B`), zinc palette.
 
 ---
 
@@ -563,6 +664,8 @@ Useful for understanding your workflow patterns over time.
 | `/hora-parallel-code` | Multi-agent codebase work | Architect -> AUDIT -> Executors in parallel |
 | `/hora-parallel-research` | Multi-angle research | 3-5 angles -> Researchers -> Synthesizer |
 | `/hora-backup` | Immediate backup | Delegates to backup agent |
+| `/hora-vision` | Visual UI audit — detects anti-patterns from screenshots | 23-point checklist, 5 categories, multimodal |
+| `/hora-dashboard` | HORA analytics dashboard | React 19, Vite 6, Recharts |
 
 #### Specialized workflows
 
@@ -588,6 +691,7 @@ Useful for understanding your workflow patterns over time.
 | **reviewer** | Haiku | Quick review, PASS/FAIL verdict, Critical/Warning/OK severity | Code review, validation |
 | **synthesizer** | Haiku | Multi-source aggregation, deduplication | Combining research from multiple angles |
 | **backup** | Haiku | Silent git backup (mirror branch or local bundle) | Automated by backup-monitor hook |
+| **librarian** | Haiku | Library-first verification (npm search, criteria check) | Triggered by librarian-check.ts hook |
 
 > Agents are only activated when needed. Simple tasks get direct responses — no over-delegation.
 
@@ -656,16 +760,19 @@ HORA follows a structured reasoning process for **every task** — it's not opti
     UserPromptSubmit    PreToolUse    PostToolUse    Stop
            |                 |         |              |
     prompt-submit.ts   snapshot.ts  backup-monitor  session-end.ts
-    hora-session-name  hora-security     .ts          |
+    hora-session-name  hora-security doc-sync.ts      |
            .ts         tool-use.ts                 Extract:
            |           context-                    - Profile
     Injects:           checkpoint.ts               - Errors
-    - MEMORY/                |                     - Sentiment
-    - Thread history   Validates:                  - Archive
-    - Routing hints    - Security rules
-    - Checkpoint       - Pre-edit snapshot
-      reminder         - Tool logging
+    - MEMORY/          librarian-                  - Sentiment
+    - Thread history   check.ts                    - Archive
+    - Routing hints         |
+    - Checkpoint       Validates:
+      reminder         - Security rules
+    - Sentiment        - Pre-edit snapshot
+      alert            - Tool logging
                        - Compact detection
+                       - Library-first check
 ```
 
 ### Data flow
@@ -690,11 +797,13 @@ vocab    system
                          |
                        .hora/
                          |
-              +----------+----------+
-              |                     |
-        project-id         project-knowledge.md
-     (stable UUID,          (auto-audit results,
-      survives rename)       injected every session)
+              +----------+----------+----------+
+              |          |                     |
+        project-id  checkpoint.md    project-knowledge.md
+     (stable UUID,  (last session's     (auto-audit results,
+      survives       work context,       injected every session)
+      rename)        inherited by
+                     new sessions)
 ```
 
 ### Zero runtime dependencies
@@ -734,7 +843,7 @@ Hooks can't see both the user message and assistant response simultaneously. HOR
 ```
 UserPromptSubmit (fires on every user message)
   |-- prompt-submit.ts         Injects MEMORY/, routing hints, thread continuity,
-  |                            checkpoint reminder at 70% context
+  |                            checkpoint reminder at 70%, sentiment analysis
   |-- hora-session-name.ts     Names the session on first prompt
 
 PreToolUse (fires before every tool call)
@@ -742,9 +851,11 @@ PreToolUse (fires before every tool call)
   |-- hora-security.ts         Bash|Edit|Write|Read|MultiEdit: security validation
   |-- tool-use.ts              *: silent usage logging
   |-- context-checkpoint.ts    *: compact detection + recovery injection
+  |-- librarian-check.ts       Write: library-first verification on new utility files
 
 PostToolUse (fires after every tool call)
   |-- backup-monitor.ts        Write|Edit|MultiEdit: monitors changes, triggers backup
+  |-- doc-sync.ts              Write|Edit|MultiEdit: tracks structuring changes
 
 Stop (fires at session end)
   |-- session-end.ts           Extracts profile + errors + sentiment + archive
@@ -767,6 +878,7 @@ hora/
 |-- .hora/                        # Project runtime state (git-ignored)
 |   |-- project-id                # Stable project ID (survives folder renames)
 |   |-- project-knowledge.md      # Auto-audit results (versioned with git)
+|   |-- checkpoint.md             # Last session's work context (inherited by new sessions)
 |   |-- snapshots/                # Pre-edit file backups
 |   |-- backups/                  # Git bundles (when no remote)
 |
@@ -779,35 +891,47 @@ hora/
     |-- .hora/
     |   |-- patterns.yaml         # Security rules (17 blocked, 18 confirm, 6 alert)
     |
-    |-- hooks/                    # 8 TypeScript lifecycle hooks
+    |-- hooks/                    # 10 TypeScript lifecycle hooks
     |   |-- snapshot.ts           #   PreToolUse: pre-edit file backup
     |   |-- hora-security.ts      #   PreToolUse: security validation (custom YAML parser)
     |   |-- tool-use.ts           #   PreToolUse: silent usage logging
     |   |-- context-checkpoint.ts #   PreToolUse: compact detection + recovery
+    |   |-- librarian-check.ts    #   PreToolUse: library-first verification
     |   |-- backup-monitor.ts     #   PostToolUse: auto-backup trigger
-    |   |-- prompt-submit.ts      #   UserPromptSubmit: context + routing + thread + checkpoint
+    |   |-- doc-sync.ts           #   PostToolUse: project-knowledge staleness tracking
+    |   |-- prompt-submit.ts      #   UserPromptSubmit: context + routing + thread + checkpoint + sentiment
     |   |-- hora-session-name.ts  #   UserPromptSubmit: auto session naming
     |   |-- session-end.ts        #   Stop: profile + errors + sentiment + archive extraction
+    |   |-- lib/                  #   Shared utilities
+    |       |-- session-paths.ts  #     Session-scoped file paths (isolation)
     |
-    |-- agents/                   # 6 specialized agents
+    |-- agents/                   # 7 specialized agents
     |   |-- architect.md          #   Opus: architecture, system design
     |   |-- executor.md           #   Sonnet: implementation, debug
     |   |-- researcher.md         #   Sonnet: research, analysis
     |   |-- reviewer.md           #   Haiku: review, validation
     |   |-- synthesizer.md        #   Haiku: multi-source aggregation
     |   |-- backup.md             #   Haiku: git backup
+    |   |-- librarian.md          #   Haiku: library-first verification
     |
-    |-- skills/                   # 10 skills (directory/SKILL.md format)
+    |-- skills/                   # 12 skills (directory/SKILL.md format)
     |   |-- hora-design/SKILL.md       #   Anti-AI web design (Dieter Rams, OKLCH)
     |   |-- hora-forge/SKILL.md        #   Zero Untested Delivery (NASA, TDD)
     |   |-- hora-refactor/SKILL.md     #   Systematic refactoring (Fowler, Feathers)
     |   |-- hora-security/SKILL.md     #   OWASP 2025 audit (CWE, SANS)
     |   |-- hora-perf/SKILL.md         #   Performance (Core Web Vitals, RAIL)
+    |   |-- hora-vision/SKILL.md       #   Visual UI audit (23-point checklist)
+    |   |-- hora-dashboard/SKILL.md    #   Analytics dashboard (React 19 + Vite 6)
     |   |-- hora-plan/SKILL.md
     |   |-- hora-autopilot/SKILL.md
     |   |-- hora-parallel-code/SKILL.md
     |   |-- hora-parallel-research/SKILL.md
     |   |-- hora-backup/SKILL.md
+    |
+    |-- dashboard/                # Standalone analytics app
+    |   |-- package.json          #   React 19, Recharts, Vite 6
+    |   |-- src/                  #   App.tsx, StatCard, SessionsTable, SentimentChart, ToolUsageChart
+    |   |-- scripts/collect-data.ts  # MEMORY/ reader → public/data.json
     |
     |-- MEMORY/                   # Persistent memory (empty at start)
         |-- PROFILE/              #   identity.md, projects.md, preferences.md, vocabulary.md
@@ -818,7 +942,6 @@ hora/
         |-- SESSIONS/             #   Session archives
         |-- SECURITY/             #   Security audit trail
         |-- STATE/                #   Current state (session names, thread state)
-        |-- WORK/                 #   Work in progress (checkpoints)
 ```
 
 ---
@@ -836,11 +959,15 @@ hora/
 | **Web/SaaS conventions** | Opinionated TypeScript/React stack, library-first, anti "AI look" design |
 | **Session naming** | Deterministic (fast regex, no AI) |
 | **Statusline** | Rich (context %, git, API usage, backup) |
-| **Compact recovery** | Auto-detection + checkpoint injection |
+| **Compact recovery** | Auto-detection + project-scoped checkpoint injection |
+| **Session isolation** | Concurrent sessions on different projects without interference |
 | **Pre-edit snapshots** | Every edit, with or without git |
 | **Auto backup** | Mirror branch or local bundle |
-| **10 skills** | Design, Forge, Refactor, Security, Perf, Plan, Autopilot, Parallel-Code, Parallel-Research, Backup |
-| **Multi-agents** | 6 agents across 3 models |
+| **Doc sync** | Auto-reminder to update project-knowledge.md after structuring changes |
+| **Librarian** | Library-first enforcement on new utility files |
+| **Sentiment predict** | Real-time frustration detection (score 1-5) with anti-false-positive |
+| **12 skills** | Design, Forge, Refactor, Security, Perf, Vision, Dashboard, Plan, Autopilot, Parallel-Code, Parallel-Research, Backup |
+| **Multi-agents** | 7 agents across 3 models |
 | **Model routing** | Opus / Sonnet / Haiku |
 | **Ghost failure detection** | Built into the Algorithm (AUDIT step) |
 | **Library-first** | Never reimplement what a maintained library does |

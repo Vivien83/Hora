@@ -27,7 +27,10 @@ const MEMORY_DIR = path.join(homedir(), ".claude", "MEMORY");
 
 let CONTEXT_PCT_FILE = "";
 let CONTEXT_STATE_FILE = "";
-const CHECKPOINT_FILE = path.join(MEMORY_DIR, "WORK", "checkpoint.md");
+// Project-scoped checkpoint — lives in <cwd>/.hora/checkpoint.md
+// Any session on the same project reads/writes the same file.
+// No cross-project contamination (each project has its own .hora/).
+let CHECKPOINT_FILE = "";
 const ACTIVITY_LOG = path.join(HORA_STATE_DIR, "activity-log.jsonl");
 let COMPACT_FLAG = "";
 
@@ -180,6 +183,10 @@ async function main() {
   CONTEXT_PCT_FILE = horaSessionFile(sessionId, "context-pct.txt");
   CONTEXT_STATE_FILE = horaSessionFile(sessionId, "context-state.json");
   COMPACT_FLAG = horaSessionFile(sessionId, ".compact-recovered");
+  // Project-scoped: <cwd>/.hora/checkpoint.md — shared across sessions on same project
+  const horaDir = path.join(process.cwd(), ".hora");
+  fs.mkdirSync(horaDir, { recursive: true });
+  CHECKPOINT_FILE = path.join(horaDir, "checkpoint.md");
 
   const currentPct = readContextPct();
 

@@ -758,7 +758,8 @@ async function main() {
     const pctRaw = fs.readFileSync(CTX_PCT_FILE, "utf-8").trim();
     const pctVal = parseInt(pctRaw, 10);
     if (!isNaN(pctVal) && pctVal >= CHECKPOINT_THRESHOLD) {
-      const checkpointPath = path.join(MEMORY_DIR, "WORK", "checkpoint.md");
+      // Project-scoped: <cwd>/.hora/checkpoint.md — new sessions inherit previous session's context
+      const checkpointPath = path.join(process.cwd(), ".hora", "checkpoint.md");
       parts.push(
         `[HORA CHECKPOINT] Contexte a ${pctVal}%. INSTRUCTION OBLIGATOIRE : ecris un checkpoint semantique dans ${checkpointPath} avec ce format :\n` +
         `---\n` +
