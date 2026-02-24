@@ -11,6 +11,15 @@
         ]
       },
       {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/librarian-check.ts"
+          }
+        ]
+      },
+      {
         "matcher": "Bash|Edit|Write|Read|MultiEdit",
         "hooks": [
           {
@@ -27,6 +36,15 @@
             "command": "npx tsx ~/.claude/hooks/tool-use.ts"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/context-checkpoint.ts"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -36,6 +54,15 @@
           {
             "type": "command",
             "command": "npx tsx ~/.claude/hooks/backup-monitor.ts"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/doc-sync.ts"
           }
         ]
       }

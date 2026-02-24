@@ -323,6 +323,173 @@ function formatThreadForInjection(entries: ThreadEntry[], currentProject: string
   return parts.join("\n");
 }
 
+// ========================================
+// Sentiment Predict
+// ========================================
+
+interface SentimentEntry {
+  ts: string;
+  score: number;
+  msgPreview: string;
+}
+
+interface SentimentFile {
+  scores: SentimentEntry[];
+}
+
+/**
+ * Sanitise le texte avant scoring : retire les blocs de code, paths, variables, balises XML/HTML.
+ * Fonction pure — pas d'I/O.
+ */
+function sanitizeForSentiment(text: string): string {
+  return text
+    // Blocs de code fenced (``` ... ```)
+    .replace(/```[\s\S]*?```/g, " ")
+    // Inline code (`...`)
+    .replace(/`[^`]*`/g, " ")
+    // Chemins de fichiers absolus ou relatifs (/path/to/FILE ou ./path)
+    .replace(/(?:\/|\.\/|\.\.\/)\S+/g, " ")
+    // Variables UPPER_SNAKE_CASE
+    .replace(/\b[A-Z][A-Z0-9_]{2,}\b/g, " ")
+    // CamelCase identifiers (contiennent au moins une majuscule interne : myVar, useState)
+    .replace(/\b[a-z][a-z0-9]*[A-Z][a-zA-Z0-9]*\b/g, " ")
+    // Balises XML/HTML <TAG> ou </TAG>
+    .replace(/<\/?[A-Za-z][A-Za-z0-9_:-]*(?:\s[^>]*)?\/?>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Analyse le sentiment d'un message. Retourne un score 1-5 (5 = très frustré).
+ * Fonction pure — pas d'I/O.
+ */
+export function analyzeSentiment(message: string): number {
+  const clean = sanitizeForSentiment(message);
+  const lower = clean.toLowerCase();
+  let score = 0;
+
+  // Mots négatifs FR (max 3)
+  const negFR = [
+    "encore", "toujours pas", "j'ai dit", "je t'ai dit", "relis",
+    "non", "stop", "arrête", "mauvais", "nul", "pire", "horrible",
+    "n'importe quoi", "rien ne marche", "ça marche pas",
+  ];
+  let countFR = 0;
+  for (const w of negFR) {
+    if (lower.includes(w)) {
+      countFR++;
+      if (countFR >= 3) break;
+    }
+  }
+  score += countFR;
+
+  // Mots négatifs EN (max 2)
+  const negEN = [
+    "wrong", "broken", "terrible", "useless", "doesn't work",
+    "still not", "i said", "again", "stop",
+  ];
+  let countEN = 0;
+  for (const w of negEN) {
+    if (lower.includes(w)) {
+      countEN++;
+      if (countEN >= 2) break;
+    }
+  }
+  score += countEN;
+
+  // Ponctuation agressive (!!!  ou ???  = 3+ identiques)
+  if (/[!?]{3,}/.test(clean)) score += 1;
+
+  // MAJUSCULES > 30% du message et message > 20 chars
+  if (clean.length > 20) {
+    const letters = clean.replace(/[^a-zA-Z]/g, "");
+    if (letters.length > 0) {
+      const upperCount = (clean.match(/[A-Z]/g) || []).length;
+      if (upperCount / letters.length > 0.3) score += 1;
+    }
+  }
+
+  // Message court + négatif (< 30 chars avec un mot négatif = frustration concentrée)
+  if (clean.length < 30 && (countFR > 0 || countEN > 0)) score += 1;
+
+  return Math.max(1, Math.min(5, score));
+}
+
+function readSentimentFile(filePath: string): SentimentFile {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as SentimentFile;
+  } catch {
+    return { scores: [] };
+  }
+}
+
+function writeSentimentFile(filePath: string, data: SentimentFile): void {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+  } catch {}
+}
+
+function appendSentimentLog(logPath: string, sessionId: string, score: number): void {
+  try {
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    const entry = JSON.stringify({
+      sid: sessionId.slice(0, 8),
+      score,
+      ts: new Date().toISOString(),
+      trigger: "predict",
+    });
+    fs.appendFileSync(logPath, entry + "\n", "utf-8");
+  } catch {}
+}
+
+/**
+ * Retourne le message d'alerte à injecter, ou null si aucune alerte nécessaire.
+ * Fonction pure — pas d'I/O.
+ */
+export function buildSentimentAlert(currentScore: number, recentScores: number[]): string | null {
+  const last3 = recentScores.slice(-3);
+  const avg = last3.length > 0
+    ? last3.reduce((a, b) => a + b, 0) / last3.length
+    : currentScore;
+
+  const isTrend = last3.length >= 2 &&
+    last3.every((v, i, arr) => i === 0 || v >= arr[i - 1]);
+
+  const reinforced = avg >= 3.5 || isTrend;
+
+  if (currentScore >= 4 && reinforced) {
+    return "[HORA] Frustration detectee sur plusieurs messages. STOP — relis TOUT le contexte depuis le debut. Identifie ce qui ne va pas. Propose une approche differente au lieu de reessayer la meme chose.";
+  }
+  if (currentScore >= 4) {
+    return "[HORA] L'utilisateur semble frustre. Ralentis, relis sa demande attentivement, confirme ta comprehension avant d'agir. Ne repete pas les memes erreurs.";
+  }
+  return null;
+}
+
+function processSentiment(sessionId: string, message: string): string | null {
+  if (!message || message.trim().length === 0) return null;
+
+  const score = analyzeSentiment(message);
+  const msgPreview = message.slice(0, 50);
+  const ts = new Date().toISOString();
+
+  // Persister dans le fichier session-scoped
+  const predictFile = horaSessionFile(sessionId, "sentiment-predict.json");
+  const data = readSentimentFile(predictFile);
+  data.scores.push({ ts, score, msgPreview });
+  if (data.scores.length > 10) data.scores = data.scores.slice(-10);
+  writeSentimentFile(predictFile, data);
+
+  // Appender dans le sentiment-log MEMORY global
+  const logPath = path.join(MEMORY_DIR, "LEARNING", "ALGORITHM", "sentiment-log.jsonl");
+  appendSentimentLog(logPath, sessionId, score);
+
+  // Calculer l'alerte basée sur les scores récents (hors actuel)
+  const previousScores = data.scores.slice(0, -1).map((e) => e.score);
+  return buildSentimentAlert(score, previousScores);
+}
+
 function detectMode(message: string): string | null {
   const msg = message.toLowerCase();
 
@@ -435,6 +602,10 @@ async function main() {
 
   const sessionId = hookData.session_id || "unknown";
   const message = hookData.prompt || hookData.message || "";
+
+  // --- Sentiment Predict ---
+  const sentimentAlert = processSentiment(sessionId, message);
+
   const state = updateSessionState(sessionId);
   const isFirst = state.messageCount <= 1;
 
@@ -564,6 +735,11 @@ async function main() {
       const threadText = formatThreadForInjection(thread, getProjectId());
       if (threadText) parts.push(threadText);
     }
+  }
+
+  // --- Sentiment alert (chaque message, si score >= 4) ---
+  if (sentimentAlert) {
+    parts.push(sentimentAlert);
   }
 
   // --- Routing hint (chaque message) ---

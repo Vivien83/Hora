@@ -301,6 +301,7 @@ Patterns definis dans `.hora/patterns.yaml`.
 | Review rapide, validation | reviewer | haiku | Lire `~/.claude/agents/reviewer.md` |
 | Agregation multi-sources | synthesizer | haiku | Lire `~/.claude/agents/synthesizer.md` |
 | Backup git | backup | haiku | Lire `~/.claude/agents/backup.md` |
+| Verification library-first | librarian | haiku | Lire `~/.claude/agents/librarian.md` |
 
 Ne pas sur-deleguer. Tache simple → repondre directement.
 Quand un agent est active, lire son fichier `.md` pour connaitre son protocol complet.
@@ -329,6 +330,27 @@ A la fin de chaque session significative (3+ messages), le hook `session-end` :
 
 Tout est silencieux. L'utilisateur n'est jamais interrompu.
 Contexte scope par projet via `.hora/project-id`.
+
+---
+
+## DOC SYNC (mise a jour automatique de project-knowledge)
+
+Le hook `doc-sync.ts` (PostToolUse) detecte les changements structurants pendant le travail
+et rappelle de maintenir `.hora/project-knowledge.md` a jour.
+
+**Declenchement** : 5+ fichiers structurants modifies dans la session courante.
+**Fichiers structurants** : tout fichier dans `src/`, `lib/`, `app/`, `pages/`, `components/`,
+`services/`, `api/`, ainsi que `package.json`, `tsconfig.json`, `*.config.{ts,js}`.
+
+**Conditions de non-injection** :
+- `.hora/project-knowledge.md` absent (le prompt-submit gere l'audit initial)
+- Contexte > 80% (evite de polluer un contexte sature)
+
+**Staleness check** : si project-knowledge.md date de plus de 7 jours, l'instruction
+le signale et recommande une mise a jour complete.
+
+**Important** : le hook n'ecrit jamais dans project-knowledge.md directement.
+Il injecte seulement une instruction pour que Claude le fasse au bon moment.
 
 ---
 
