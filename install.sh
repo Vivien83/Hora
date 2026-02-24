@@ -725,12 +725,19 @@ ui_ok "statusline.sh"
 
 ui_step "Hooks & Agents"
 
+HOOKS_COUNT=$(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ')
+LIB_COUNT=$(ls "$HORA_DIR/hooks/lib/"*.ts 2>/dev/null | wc -l | tr -d ' ')
 if $DRY_RUN; then
-  ui_detail "[DRY-RUN] hooks/ — $(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers"
+  ui_detail "[DRY-RUN] hooks/ — $HOOKS_COUNT fichiers + lib/ ($LIB_COUNT)"
 else
   cp "$HORA_DIR/hooks/"*.ts "$CLAUDE_DIR/hooks/"
+  # Copy lib/ subdirectory (session-paths shared utility)
+  if [ -d "$HORA_DIR/hooks/lib" ]; then
+    mkdir -p "$CLAUDE_DIR/hooks/lib"
+    cp "$HORA_DIR/hooks/lib/"*.ts "$CLAUDE_DIR/hooks/lib/"
+  fi
 fi
-ui_ok "hooks/ ${DIM}($(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ') fichiers)${RESET}"
+ui_ok "hooks/ ${DIM}($HOOKS_COUNT hooks + lib/$LIB_COUNT)${RESET}"
 
 # ─── settings.json : nettoyage orphelins + Windows paths ─────────────────
 # (apres copie des hooks pour ne pas supprimer les hooks HORA pas encore installes)

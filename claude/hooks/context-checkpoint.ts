@@ -20,15 +20,16 @@
 import * as fs from "fs";
 import * as path from "path";
 import { homedir } from "os";
+import { horaSessionFile } from "./lib/session-paths.js";
 
 const HORA_STATE_DIR = path.join(homedir(), ".claude", ".hora");
 const MEMORY_DIR = path.join(homedir(), ".claude", "MEMORY");
 
-const CONTEXT_PCT_FILE = path.join(HORA_STATE_DIR, "context-pct.txt");
-const CONTEXT_STATE_FILE = path.join(HORA_STATE_DIR, "context-state.json");
+let CONTEXT_PCT_FILE = "";
+let CONTEXT_STATE_FILE = "";
 const CHECKPOINT_FILE = path.join(MEMORY_DIR, "WORK", "checkpoint.md");
 const ACTIVITY_LOG = path.join(HORA_STATE_DIR, "activity-log.jsonl");
-const COMPACT_FLAG = path.join(HORA_STATE_DIR, ".compact-recovered");
+let COMPACT_FLAG = "";
 
 const DROP_THRESHOLD = 40;
 const STALE_CHECKPOINT_MS = 30 * 60 * 1000; // 30 min
@@ -174,6 +175,12 @@ async function main() {
   try { hookData = JSON.parse(input); } catch {}
 
   const sessionId = hookData.session_id || "unknown";
+
+  // Session-scoped paths — each session writes to its own files (no cross-session collision)
+  CONTEXT_PCT_FILE = horaSessionFile(sessionId, "context-pct.txt");
+  CONTEXT_STATE_FILE = horaSessionFile(sessionId, "context-state.json");
+  COMPACT_FLAG = horaSessionFile(sessionId, ".compact-recovered");
+
   const currentPct = readContextPct();
 
   // GF-2 / GF-12: pas de donnees → exit
@@ -181,16 +188,7 @@ async function main() {
 
   const prevState = readState();
 
-  // GF-3: session differente → reset state, pas de faux positif
-  if (prevState && prevState.session_id !== sessionId) {
-    writeState({
-      session_id: sessionId,
-      last_pct: currentPct,
-      last_update: new Date().toISOString(),
-      compact_count: 0,
-    });
-    process.exit(0);
-  }
+  // GF-3: No longer needed — each session has its own state file
 
   // Premiere observation pour cette session
   if (!prevState) {

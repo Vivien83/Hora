@@ -11,13 +11,13 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 import { homedir } from "os";
+import { horaSessionFile, memorySessionFile, stateSessionFile, findLatestFile, readLatestAndClean, cleanupExpiredSessions } from "./lib/session-paths.js";
 
 const CLAUDE_DIR = path.join(homedir(), ".claude");
 const MEMORY_DIR = path.join(CLAUDE_DIR, "MEMORY");
 const PROFILE_DIR = path.join(MEMORY_DIR, "PROFILE");
 const STATE_DIR = path.join(MEMORY_DIR, "STATE");
 const SESSIONS_DIR = path.join(MEMORY_DIR, "SESSIONS");
-const STATE_FILE = path.join(MEMORY_DIR, ".session-state.json");
 
 /**
  * Retourne un ID stable pour le projet courant.
@@ -40,8 +40,6 @@ function getProjectId(): string {
 }
 
 // Thread continuity files
-const PENDING_USER_MSG = path.join(STATE_DIR, ".pending-user-msg.json");
-const THREAD_STATE_FILE = path.join(STATE_DIR, "thread-state.json");
 const SESSION_THREAD_FILE = path.join(STATE_DIR, "session-thread.json");
 const THREAD_ARCHIVE_FILE = path.join(STATE_DIR, "session-thread-archive.json");
 
@@ -158,9 +156,26 @@ interface LastSessionInfo {
 
 function getLastSessionSummary(currentProject: string): LastSessionInfo | null {
   try {
+    // Cross-session: try reading thread-state from any previous session
+    const threadStateContent = findLatestFile(STATE_DIR, "thread-state-");
+    if (threadStateContent) {
+      try {
+        const threadState = JSON.parse(fs.readFileSync(threadStateContent, "utf-8"));
+        if (threadState.session_name && threadState.session_summary &&
+            (!threadState.project || threadState.project === currentProject)) {
+          return {
+            name: threadState.session_name,
+            sid: threadState.session_id || "?",
+            date: threadState.timestamp?.slice(0, 10) || "?",
+            summary: threadState.session_summary,
+          };
+        }
+      } catch {}
+    }
+    // Legacy fallback: try the old singleton file
     try {
-      const threadState = JSON.parse(fs.readFileSync(THREAD_STATE_FILE, "utf-8"));
-      // Only use if same project (or no project field = legacy)
+      const legacyFile = path.join(STATE_DIR, "thread-state.json");
+      const threadState = JSON.parse(fs.readFileSync(legacyFile, "utf-8"));
       if (threadState.session_name && threadState.session_summary &&
           (!threadState.project || threadState.project === currentProject)) {
         return {
@@ -384,18 +399,26 @@ function getCurrentBranch(): string {
 }
 
 function getSessionState(sessionId: string): any {
+  const stateFile = memorySessionFile(sessionId, "session-state");
   try {
-    const s = JSON.parse(fs.readFileSync(STATE_FILE, "utf-8"));
+    const s = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+    if (s.sessionId === sessionId) return s;
+  } catch {}
+  // GF-3 backward compat: try legacy singleton
+  try {
+    const legacyFile = path.join(MEMORY_DIR, ".session-state.json");
+    const s = JSON.parse(fs.readFileSync(legacyFile, "utf-8"));
     if (s.sessionId === sessionId) return s;
   } catch {}
   return null;
 }
 
 function updateSessionState(sessionId: string) {
+  const stateFile = memorySessionFile(sessionId, "session-state");
   const s = getSessionState(sessionId) || { sessionId, startedAt: new Date().toISOString(), messageCount: 0, branchSuggestionMade: false };
   const next = { ...s, messageCount: s.messageCount + 1 };
-  fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
-  fs.writeFileSync(STATE_FILE, JSON.stringify(next));
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  fs.writeFileSync(stateFile, JSON.stringify(next));
   return next;
 }
 
@@ -415,17 +438,24 @@ async function main() {
   const state = updateSessionState(sessionId);
   const isFirst = state.messageCount <= 1;
 
+  if (isFirst) {
+    cleanupExpiredSessions();
+  }
+
   // --- Deferred Pairing: pairer l'echange precedent ---
   try {
-    let prevUser: { session_id: string; message: string; timestamp: string } | null = null;
+    const pendingFile = stateSessionFile(sessionId, "pending-user-msg");
+    let prevUser: { session_id: string; message: string; timestamp: string; project?: string } | null = null;
     try {
-      prevUser = JSON.parse(fs.readFileSync(PENDING_USER_MSG, "utf-8"));
+      prevUser = JSON.parse(fs.readFileSync(pendingFile, "utf-8"));
     } catch {}
 
-    let prevAssistant: { session_id: string; assistant_summary: string; timestamp: string } | null = null;
-    try {
-      prevAssistant = JSON.parse(fs.readFileSync(THREAD_STATE_FILE, "utf-8"));
-    } catch {}
+    // Cross-session: read the most recent thread-state from any session
+    let prevAssistant: { session_id: string; assistant_summary: string; timestamp: string; project?: string } | null = null;
+    const threadStateContent = readLatestAndClean(STATE_DIR, "thread-state-");
+    if (threadStateContent) {
+      try { prevAssistant = JSON.parse(threadStateContent); } catch {}
+    }
 
     if (prevUser && prevAssistant && prevAssistant.assistant_summary.length > 10) {
       const entry: ThreadEntry = {
@@ -444,8 +474,8 @@ async function main() {
     }
 
     if (message && message.trim().length > 0) {
-      fs.mkdirSync(path.dirname(PENDING_USER_MSG), { recursive: true });
-      fs.writeFileSync(PENDING_USER_MSG, JSON.stringify({
+      fs.mkdirSync(path.dirname(pendingFile), { recursive: true });
+      fs.writeFileSync(pendingFile, JSON.stringify({
         session_id: sessionId,
         project: getProjectId(),
         message: message,
@@ -453,7 +483,7 @@ async function main() {
       }), "utf-8");
     }
 
-    try { fs.unlinkSync(THREAD_STATE_FILE); } catch {}
+    // No need for unlinkSync — readLatestAndClean already cleans up
   } catch {}
 
   const parts: string[] = [];
@@ -547,7 +577,7 @@ async function main() {
 
   // --- Checkpoint reminder (contexte >= 70%) ---
   const CHECKPOINT_THRESHOLD = 70;
-  const CTX_PCT_FILE = path.join(CLAUDE_DIR, ".hora", "context-pct.txt");
+  const CTX_PCT_FILE = horaSessionFile(sessionId, "context-pct.txt");
   try {
     const pctRaw = fs.readFileSync(CTX_PCT_FILE, "utf-8").trim();
     const pctVal = parseInt(pctRaw, 10);
@@ -571,8 +601,9 @@ async function main() {
     if (isGitRepo() && hasUncommittedChanges()) {
       const branch = getCurrentBranch();
       parts.push(`[HORA] L'utilisateur commence un nouveau chantier et il y a des modifications non commitees sur "${branch}". Propose de sauvegarder l'etat actuel (commit + nouvelle branche) avant de continuer.`);
+      const stateFile = memorySessionFile(sessionId, "session-state");
       const updated = { ...state, branchSuggestionMade: true };
-      fs.writeFileSync(STATE_FILE, JSON.stringify(updated));
+      fs.writeFileSync(stateFile, JSON.stringify(updated));
     }
   }
 

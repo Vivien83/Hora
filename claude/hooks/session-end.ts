@@ -16,15 +16,14 @@ import * as fs from "fs";
 import * as path from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
+import { stateSessionFile, memorySessionFile } from "./lib/session-paths.js";
 
 const CLAUDE_DIR = path.join(homedir(), ".claude");
 const MEMORY_DIR = path.join(CLAUDE_DIR, "MEMORY");
 const PROFILE_DIR = path.join(MEMORY_DIR, "PROFILE");
 const LEARNING_DIR = path.join(MEMORY_DIR, "LEARNING");
 const SESSIONS_DIR = path.join(MEMORY_DIR, "SESSIONS");
-const STATE_FILE = path.join(MEMORY_DIR, ".session-state.json");
 const EXTRACTED_FLAG = path.join(MEMORY_DIR, ".extraction-done");
-const THREAD_STATE_FILE = path.join(MEMORY_DIR, "STATE", "thread-state.json");
 const SENTIMENT_LOG = path.join(LEARNING_DIR, "ALGORITHM", "sentiment-log.jsonl");
 const FAILURES_LOG = path.join(LEARNING_DIR, "FAILURES", "failures-log.jsonl");
 const MIGRATION_FLAG = path.join(MEMORY_DIR, ".migration-hora-v2-done");
@@ -763,9 +762,10 @@ async function main() {
           }
         } catch {}
 
-        fs.mkdirSync(path.dirname(THREAD_STATE_FILE), { recursive: true });
+        const threadFile = stateSessionFile(sessionId, "thread-state");
+        fs.mkdirSync(path.dirname(threadFile), { recursive: true });
         fs.writeFileSync(
-          THREAD_STATE_FILE,
+          threadFile,
           JSON.stringify({
             session_id: sessionId.slice(0, 8),
             project: getProjectId(),
@@ -784,7 +784,8 @@ async function main() {
   // Lire l'etat de session
   let state: any = {};
   try {
-    state = JSON.parse(fs.readFileSync(STATE_FILE, "utf-8"));
+    const sessionStateFile = memorySessionFile(sessionId, "session-state");
+    state = JSON.parse(fs.readFileSync(sessionStateFile, "utf-8"));
   } catch {}
 
   // Si pas de transcript ou session trop courte, skip extraction complete

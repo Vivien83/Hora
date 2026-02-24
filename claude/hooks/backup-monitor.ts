@@ -13,6 +13,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+import { projectSessionFile } from "./lib/session-paths.js";
 
 const BACKUP_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const EVENT_THRESHOLD = 3; // fichiers modifiés pour trigger événement
@@ -42,7 +43,6 @@ interface SessionBackupState {
 
 const HORA_DIR = ".hora";
 const BACKUP_STATE_FILE = path.join(HORA_DIR, "backup-state.json");
-const SESSION_STATE_FILE = path.join(HORA_DIR, "session-backup-state.json");
 const BACKUP_LOG = path.join(
   HORA_DIR,
   "backup-log.md"
@@ -95,9 +95,10 @@ function readBackupState(): BackupState | null {
 }
 
 function readSessionState(sessionId: string): SessionBackupState {
+  const stateFile = projectSessionFile(sessionId, "session-backup-state", ".json");
   try {
-    if (fs.existsSync(SESSION_STATE_FILE)) {
-      const state = JSON.parse(fs.readFileSync(SESSION_STATE_FILE, "utf-8"));
+    if (fs.existsSync(stateFile)) {
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
       if (state.sessionId === sessionId) return state;
     }
   } catch {}
@@ -111,8 +112,9 @@ function readSessionState(sessionId: string): SessionBackupState {
 
 function writeSessionState(state: SessionBackupState) {
   try {
-    fs.mkdirSync(HORA_DIR, { recursive: true });
-    fs.writeFileSync(SESSION_STATE_FILE, JSON.stringify(state, null, 2));
+    const stateFile = projectSessionFile(state.sessionId, "session-backup-state", ".json");
+    fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+    fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
   } catch {}
 }
 
@@ -353,7 +355,7 @@ async function main() {
   const toolName = hookData.tool_name || "";
 
   // Rate limiting : éviter les git ops sur chaque outil
-  const LAST_CHECK_FILE = path.join(HORA_DIR, ".last-check");
+  const LAST_CHECK_FILE = projectSessionFile(sessionId, "last-check");
   const isWrite = isWriteTool(toolName);
   if (!isWrite) {
     try {

@@ -16,12 +16,12 @@
 import * as fs from "fs";
 import * as path from "path";
 import { homedir } from "os";
+import { stateSessionFile } from "./lib/session-paths.js";
 
 const CLAUDE_DIR = path.join(homedir(), ".claude");
 const MEMORY_DIR = path.join(CLAUDE_DIR, "MEMORY");
 const STATE_DIR = path.join(MEMORY_DIR, "STATE");
 const NAMES_FILE = path.join(STATE_DIR, "session-names.json");
-const CACHE_FILE = path.join(STATE_DIR, "session-name-cache.sh");
 
 interface HookInput {
   session_id?: string;
@@ -76,9 +76,10 @@ function writeNames(names: SessionNames): void {
 }
 
 function writeCache(sessionId: string, label: string): void {
-  fs.mkdirSync(STATE_DIR, { recursive: true });
+  const cacheFile = stateSessionFile(sessionId, "session-name-cache", ".sh");
+  fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
   fs.writeFileSync(
-    CACHE_FILE,
+    cacheFile,
     `cached_session_id='${sessionId}'\ncached_session_label='${label}'\n`,
     "utf-8"
   );

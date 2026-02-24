@@ -104,8 +104,8 @@ function cleanup() {
       } catch {}
     }
 
-    // Reecrire le manifest avec rename atomique
-    const tmpFile = MANIFEST_FILE + ".tmp";
+    // Reecrire le manifest avec rename atomique (Date.now() pour isolation concurrente)
+    const tmpFile = MANIFEST_FILE + `.tmp.${Date.now()}`;
     fs.writeFileSync(tmpFile, toKeep.join("\n") + "\n");
     fs.renameSync(tmpFile, MANIFEST_FILE);
 
