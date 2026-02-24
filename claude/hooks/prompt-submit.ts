@@ -735,6 +735,17 @@ async function main() {
       const threadText = formatThreadForInjection(thread, getProjectId());
       if (threadText) parts.push(threadText);
     }
+
+    // --- Dashboard availability ---
+    const dashboardDir = path.join(homedir(), ".claude", "dashboard");
+    try {
+      if (fs.existsSync(path.join(dashboardDir, "package.json"))) {
+        parts.push(
+          `[HORA] Dashboard disponible. Propose a l'utilisateur : "Le dashboard HORA est disponible — souhaites-tu l'ouvrir ?" ` +
+          `Si oui, execute : cd ${dashboardDir} && npm run collect && npm run dev`
+        );
+      }
+    } catch {}
   }
 
   // --- Sentiment alert (chaque message, si score >= 4) ---

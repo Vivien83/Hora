@@ -310,11 +310,11 @@ Quand un agent est active, lire son fichier `.md` pour connaitre son protocol co
 
 ## SNAPSHOTS (protection fichiers)
 
-Chaque Write/Edit/MultiEdit sauvegarde le fichier AVANT modification dans `.hora/snapshots/`.
-Fonctionne avec ou sans git. Filet de securite universel.
+Chaque Write/Edit/MultiEdit sauvegarde le fichier AVANT modification dans `<projet>/.hora/snapshots/`.
+Project-scoped : chaque projet a son propre historique de snapshots. Fonctionne avec ou sans git.
 
-- **Manifest** : `.hora/snapshots/manifest.jsonl` — index append-only (JSONL)
-- **Fichiers** : `.hora/snapshots/YYYY-MM-DD/HH-MM-SS-mmm_fichier.ext.bak`
+- **Manifest** : `<projet>/.hora/snapshots/manifest.jsonl` — index append-only (JSONL)
+- **Fichiers** : `<projet>/.hora/snapshots/YYYY-MM-DD/HH-MM-SS-mmm_fichier.ext.bak`
 - **Restaurer** : lire manifest.jsonl → trouver path → lire .bak → ecrire
 - **Limites** : 100 derniers snapshots, max 5 Mo par fichier, skip binaires
 

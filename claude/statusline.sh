@@ -361,7 +361,8 @@ fi
 # ETAT DES SNAPSHOTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-SNAP_MANIFEST="${HORA_STATE_DIR}/snapshots/manifest.jsonl"
+# Project-scoped: snapshots live in <cwd>/.hora/snapshots/
+SNAP_MANIFEST=".hora/snapshots/manifest.jsonl"
 snap_count=0
 if [ -f "$SNAP_MANIFEST" ]; then
     snap_count=$(wc -l < "$SNAP_MANIFEST" 2>/dev/null | tr -d ' ')

@@ -251,7 +251,7 @@ No AI inference — fast regex extraction. Stored in `MEMORY/STATE/session-names
 Every `Write` / `Edit` / `MultiEdit` saves the file **BEFORE** modification.
 
 ```
-.hora/snapshots/
+<project>/.hora/snapshots/
   manifest.jsonl                           <-- append-only index (JSONL)
   2026-02-20/
     10-32-15-042_auth-middleware.ts.bak     <-- timestamped backup
@@ -266,13 +266,15 @@ Every `Write` / `Edit` / `MultiEdit` saves the file **BEFORE** modification.
 | Binary files | Skipped |
 | Git required | No — works with or without git |
 
+Snapshots are **project-scoped** — each project has its own snapshot history in `<project>/.hora/snapshots/`. No cross-project mixing.
+
 **How to restore:**
 ```bash
-# Find the snapshot
-grep "filename" ~/.claude/.hora/snapshots/manifest.jsonl | tail -1
+# Find the snapshot (from project root)
+grep "filename" .hora/snapshots/manifest.jsonl | tail -1
 
 # Read the backup
-cat ~/.claude/.hora/snapshots/2026-02-20/10-32-15-042_auth-middleware.ts.bak
+cat .hora/snapshots/2026-02-20/10-32-15-042_auth-middleware.ts.bak
 ```
 
 ---
@@ -646,6 +648,8 @@ cd claude/dashboard && npm install && npm run collect && npm run dev
 
 **Data pipeline:** `scripts/collect-data.ts` reads from `MEMORY/` (sessions, sentiment logs, tool usage) and produces `public/data.json`. Dark-first design (`#0A0A0B`), zinc palette.
 
+**Auto-prompt:** At session startup, HORA detects if the dashboard is installed and asks if you want to open it.
+
 ---
 
 ## Skills & Agents
@@ -786,24 +790,24 @@ HORA follows a structured reasoning process for **every task** — it's not opti
         |                                  |
    +----+----+                    +--------+--------+--------+
    |    |    |                    |        |        |        |
-PROFILE/ LEARNING/ SESSIONS/  snapshots/ backups/ state/  patterns.yaml
-   |       |          |           |                  |
-identity errors    archives    manifest.jsonl   context-pct.txt
-projects failures  summaries   timestamped       backup-state
-prefs    sentiment             .bak files        session-state
+PROFILE/ LEARNING/ SESSIONS/  sessions/  state/  patterns.yaml
+   |       |          |           |          |
+identity errors    archives   <sid8>/    context-pct.txt
+projects failures  summaries  (per-session  backup-state
+prefs    sentiment             state)      session-state
 vocab    system
 
                     <project>/
                          |
                        .hora/
                          |
-              +----------+----------+----------+
-              |          |                     |
-        project-id  checkpoint.md    project-knowledge.md
-     (stable UUID,  (last session's     (auto-audit results,
-      survives       work context,       injected every session)
-      rename)        inherited by
-                     new sessions)
+              +----------+----------+----------+----------+
+              |          |          |                     |
+        project-id  checkpoint  snapshots/    project-knowledge.md
+     (stable UUID,   .md        manifest.jsonl  (auto-audit results,
+      survives     (inherited   + .bak files     injected every session)
+      rename)       by new      (per-project
+                    sessions)    history)
 ```
 
 ### Zero runtime dependencies
@@ -879,7 +883,9 @@ hora/
 |   |-- project-id                # Stable project ID (survives folder renames)
 |   |-- project-knowledge.md      # Auto-audit results (versioned with git)
 |   |-- checkpoint.md             # Last session's work context (inherited by new sessions)
-|   |-- snapshots/                # Pre-edit file backups
+|   |-- snapshots/                # Pre-edit file backups (project-scoped)
+|   |   |-- manifest.jsonl        #   Append-only index
+|   |   |-- YYYY-MM-DD/           #   Timestamped .bak files by day
 |   |-- backups/                  # Git bundles (when no remote)
 |
 |-- claude/                       # SOURCE — everything deployed to ~/.claude/
@@ -961,7 +967,7 @@ hora/
 | **Statusline** | Rich (context %, git, API usage, backup) |
 | **Compact recovery** | Auto-detection + project-scoped checkpoint injection |
 | **Session isolation** | Concurrent sessions on different projects without interference |
-| **Pre-edit snapshots** | Every edit, with or without git |
+| **Pre-edit snapshots** | Every edit, project-scoped, with or without git |
 | **Auto backup** | Mirror branch or local bundle |
 | **Doc sync** | Auto-reminder to update project-knowledge.md after structuring changes |
 | **Librarian** | Library-first enforcement on new utility files |
