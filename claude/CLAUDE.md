@@ -433,4 +433,6 @@ Quand un skill est invoque, lire son fichier dans `~/.claude/skills/` pour le pr
 | `/hora-parallel-code` | `~/.claude/skills/parallel-code.md` | Multi-agents codebase |
 | `/hora-parallel-research` | `~/.claude/skills/parallel-research.md` | Recherche multi-angles |
 | `/hora-backup` | `~/.claude/skills/backup.md` | Sauvegarde immediate |
+| `/hora-vision` | `~/.claude/skills/hora-vision/SKILL.md` | Audit visuel UI — detection anti-patterns design |
+| `/hora-dashboard` | `~/.claude/skills/hora-dashboard/SKILL.md` | Dashboard visuel HORA — sessions, sentiment, usage |
 <!-- HORA:END -->

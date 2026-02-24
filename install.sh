@@ -815,6 +815,18 @@ for skill_dir in "$HORA_DIR/skills/"*/; do
 done
 ui_ok "skills/ ${DIM}($(find "$HORA_DIR/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ') skills)${RESET}"
 
+# ─── Dashboard ─────────────────────────────────────────────────────────────
+
+if [ -d "$HORA_DIR/dashboard" ]; then
+  _mkdir -p "$CLAUDE_DIR/dashboard"
+  if $DRY_RUN; then
+    ui_detail "[DRY-RUN] dashboard/ serait copie"
+  else
+    cp -r "$HORA_DIR/dashboard/"* "$CLAUDE_DIR/dashboard/"
+  fi
+  ui_ok "dashboard/"
+fi
+
 # ─── Patterns de securite ─────────────────────────────────────────────────
 
 _cp "$HORA_DIR/.hora/patterns.yaml" "$CLAUDE_DIR/.hora/patterns.yaml"
