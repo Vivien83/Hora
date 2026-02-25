@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+if (process.env.HORA_SKIP_HOOKS === "1") process.exit(0);
 /**
  * HORA — hook: hora-session-name (UserPromptSubmit)
  * Nomme automatiquement chaque session avec un slug descriptif

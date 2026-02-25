@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+if (process.env.HORA_SKIP_HOOKS === "1") process.exit(0);
 /**
  * HORA — hook: librarian-check (PreToolUse)
  * Enforce le principe library-first avant la création d'un fichier utilitaire.

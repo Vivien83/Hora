@@ -100,6 +100,45 @@ export interface MemoryHealth {
   alerts: string[];
 }
 
+// ─── Knowledge Graph ─────────────────────────────────────────────────────────
+
+export interface GraphNode {
+  id: string;
+  type: "project" | "tool" | "error_pattern" | "preference" | "concept" | "person" | "file" | "library";
+  name: string;
+  properties: Record<string, string | number | boolean>;
+  created_at: string;
+  last_seen: string;
+  connections: number;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: string;
+  description: string;
+  valid_at: string;
+  invalid_at: string | null;
+  expired_at: string | null;
+  confidence: number;
+}
+
+export interface GraphData {
+  entities: GraphNode[];
+  facts: GraphEdge[];
+  episodes: number;
+  stats: {
+    totalEntities: number;
+    totalFacts: number;
+    activeFacts: number;
+    embeddedRatio: number;
+    topHub: string | null;
+    lastEnrichment: string | null;
+    contradictions: number;
+  };
+}
+
 export interface DashboardData {
   generatedAt: string;
   profile: ProfileData;
@@ -114,4 +153,5 @@ export interface DashboardData {
   projectContext: ProjectContext | null;
   toolTimeline: ToolUsageDay[];
   memoryHealth: MemoryHealth | null;
+  graphData: GraphData | null;
 }

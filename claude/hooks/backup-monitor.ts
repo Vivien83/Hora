@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+if (process.env.HORA_SKIP_HOOKS === "1") process.exit(0);
 /**
  * HORA — hook: backup-monitor
  * Détecte si un backup est nécessaire (trigger temps ou événement).

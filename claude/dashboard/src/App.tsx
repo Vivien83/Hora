@@ -11,6 +11,7 @@ import { ThreadHistory } from "./ThreadHistory";
 import { SecurityEvents } from "./SecurityEvents";
 import { MemoryHealth } from "./MemoryHealth";
 import { NeuralMemoryMap } from "./NeuralMemoryMap";
+import { NeuralPage } from "./NeuralPage";
 
 const C = {
   bg: "#0A0A0B",
@@ -420,6 +421,29 @@ export function App() {
           <Section title="Usage des outils">
             <ToolTimeline timeline={data.toolTimeline} toolUsage={data.toolUsage} />
           </Section>
+        )}
+
+        {/* Neural section */}
+        {section === "neural" && (
+          data.graphData ? (
+            <NeuralPage graphData={data.graphData} />
+          ) : (
+            <Section title="Knowledge Graph">
+              <div
+                style={{
+                  background: "#18181b",
+                  border: `1px solid ${C.border}`,
+                  borderRadius: "8px",
+                  padding: "48px 24px",
+                  textAlign: "center",
+                  color: C.dim,
+                  fontSize: "14px",
+                }}
+              >
+                Le knowledge graph est vide. Il sera enrichi automatiquement a chaque fin de session.
+              </div>
+            </Section>
+          )
         )}
       </main>
 

@@ -10,7 +10,7 @@ const C = {
   accent: "#14b8a6",
 };
 
-type NavSection = "overview" | "project" | "memory" | "security" | "tools";
+type NavSection = "overview" | "project" | "memory" | "neural" | "security" | "tools";
 
 interface ProfileSidebarProps {
   profile: ProfileData;
@@ -37,6 +37,7 @@ const NAV_ITEMS: Array<{ key: NavSection; label: string }> = [
   { key: "overview", label: "Vue d'ensemble" },
   { key: "project", label: "Projet" },
   { key: "memory", label: "Memoire" },
+  { key: "neural", label: "Neural" },
   { key: "security", label: "Securite" },
   { key: "tools", label: "Outils" },
 ];

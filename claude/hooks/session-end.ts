@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+if (process.env.HORA_SKIP_HOOKS === "1") process.exit(0);
 /**
  * HORA — hook: session-end (Stop)
  * A la fin de chaque session significative :
@@ -18,6 +19,9 @@ import { homedir } from "os";
 import { execSync } from "child_process";
 import { stateSessionFile, memorySessionFile } from "./lib/session-paths.js";
 import { runMemoryLifecycle } from "./lib/memory-tiers.js";
+import { HoraGraph } from "./lib/knowledge-graph.js";
+import { buildGraphFromSession } from "./lib/graph-builder.js";
+import { migrateExistingData } from "./lib/graph-migration.js";
 
 const CLAUDE_DIR = path.join(homedir(), ".claude");
 const MEMORY_DIR = path.join(CLAUDE_DIR, "MEMORY");
@@ -144,6 +148,142 @@ function summarizeAssistantResponse(text: string): string {
 
   return truncateAtBoundary(clean, 200);
 }
+
+// ========================================
+// Thread: extract ALL user/assistant pairs from transcript
+// ========================================
+
+interface ThreadEntry {
+  ts: string;
+  sid: string;
+  u: string;
+  a: string;
+  project?: string;
+}
+
+const SESSION_THREAD_FILE = path.join(MEMORY_DIR, "STATE", "session-thread.json");
+const THREAD_ARCHIVE_FILE = path.join(MEMORY_DIR, "STATE", "session-thread-archive.json");
+const MAX_THREAD_ENTRIES = 20;
+
+function summarizeUserMsg(msg: string): string {
+  if (!msg) return "";
+  let clean = msg
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\/[\w./-]{20,}/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[^\S\n]+/g, " ")
+    .trim();
+  if (clean.length <= 200) return clean;
+  const cut = clean.slice(0, 200);
+  const lastSpace = cut.lastIndexOf(" ");
+  if (lastSpace > 100) return cut.slice(0, lastSpace) + "...";
+  return cut + "...";
+}
+
+function extractAllExchanges(transcriptPath: string, sessionId: string, projectId: string): ThreadEntry[] {
+  try {
+    const raw = fs.readFileSync(transcriptPath, "utf-8");
+    const lines = raw.split("\n").filter(Boolean);
+
+    // Parse all messages from the JSONL transcript
+    const messages: Array<{ role: string; text: string; ts?: string }> = [];
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        const msg = entry.message || entry;
+        const role = msg.role || "";
+        if (role !== "user" && role !== "human" && role !== "assistant") continue;
+
+        let text = "";
+        const content = msg.content;
+        if (Array.isArray(content)) {
+          text = content
+            .filter((c: any) => c.type === "text")
+            .map((c: any) => c.text)
+            .join(" ");
+        } else if (typeof content === "string") {
+          text = content;
+        }
+        if (!text || text.trim().length < 5) continue;
+        messages.push({
+          role: role === "human" ? "user" : role,
+          text,
+          ts: entry.timestamp || entry.ts,
+        });
+      } catch {}
+    }
+
+    // Pair consecutive user → assistant messages
+    const entries: ThreadEntry[] = [];
+    const sid8 = sessionId.slice(0, 8);
+    for (let i = 0; i < messages.length - 1; i++) {
+      if (messages[i].role === "user" && messages[i + 1].role === "assistant") {
+        const userSummary = summarizeUserMsg(messages[i].text);
+        const assistSummary = summarizeAssistantResponse(messages[i + 1].text);
+        if (userSummary.length > 0 && assistSummary.length > 10) {
+          entries.push({
+            ts: messages[i + 1].ts || new Date().toISOString(),
+            sid: sid8,
+            u: userSummary,
+            a: assistSummary,
+            project: projectId,
+          });
+        }
+        i++; // skip the assistant message
+      }
+    }
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+function writeAllThreadEntries(newEntries: ThreadEntry[]): void {
+  if (newEntries.length === 0) return;
+  try {
+    // Read existing thread file
+    let existing: ThreadEntry[] = [];
+    try {
+      const raw = fs.readFileSync(SESSION_THREAD_FILE, "utf-8").trim();
+      if (raw) existing = JSON.parse(raw);
+    } catch {}
+
+    // Deduplicate: by ts+sid AND by sid+u_prefix (catch near-duplicates from prompt-submit)
+    const seenTs = new Set(existing.map(e => `${e.ts}-${e.sid}`));
+    const seenContent = new Set(existing.map(e => `${e.sid}-${(e.u || "").slice(0, 50)}`));
+    const toAdd = newEntries.filter(e =>
+      !seenTs.has(`${e.ts}-${e.sid}`) && !seenContent.has(`${e.sid}-${(e.u || "").slice(0, 50)}`)
+    );
+    if (toAdd.length === 0) return;
+
+    existing.push(...toAdd);
+
+    // Archive if too many
+    if (existing.length > MAX_THREAD_ENTRIES) {
+      const toArchive = existing.slice(0, existing.length - MAX_THREAD_ENTRIES);
+      existing = existing.slice(existing.length - MAX_THREAD_ENTRIES);
+      try {
+        let archive: ThreadEntry[] = [];
+        try {
+          archive = JSON.parse(fs.readFileSync(THREAD_ARCHIVE_FILE, "utf-8"));
+        } catch {}
+        archive.push(...toArchive);
+        if (archive.length > 500) archive = archive.slice(archive.length - 500);
+        fs.mkdirSync(path.dirname(THREAD_ARCHIVE_FILE), { recursive: true });
+        fs.writeFileSync(THREAD_ARCHIVE_FILE, JSON.stringify(archive, null, 2), "utf-8");
+      } catch {}
+    }
+
+    fs.mkdirSync(path.dirname(SESSION_THREAD_FILE), { recursive: true });
+    fs.writeFileSync(SESSION_THREAD_FILE, JSON.stringify(existing, null, 2), "utf-8");
+  } catch {}
+}
+
+// ========================================
+// Transcript parsing
+// ========================================
 
 function extractLastAssistantMessage(transcriptPath: string): string {
   try {
@@ -802,16 +942,32 @@ async function main() {
     state = JSON.parse(fs.readFileSync(sessionStateFile, "utf-8"));
   } catch {}
 
+  // --- Thread: extraire TOUTES les paires user/assistant du transcript ---
+  if (transcriptPath) {
+    try {
+      const allExchanges = extractAllExchanges(transcriptPath, sessionId, getProjectId());
+      writeAllThreadEntries(allExchanges);
+    } catch {}
+  }
+
   // Si pas de transcript ou session trop courte, skip extraction complete
   if (!transcriptPath || (state.messageCount || 0) < 3) {
     process.exit(0);
   }
 
-  // Verifier si extraction deja faite pour cette session
+  // Verifier si extraction recente pour cette session (re-extraction toutes les 2h)
+  const EXTRACTION_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes
   const flagFile = `${EXTRACTED_FLAG}-${sessionId.slice(0, 8)}`;
-  if (fs.existsSync(flagFile)) {
-    process.exit(0);
-  }
+  let isReExtraction = false;
+  try {
+    if (fs.existsSync(flagFile)) {
+      const lastExtraction = new Date(fs.readFileSync(flagFile, "utf-8").trim()).getTime();
+      if (Date.now() - lastExtraction < EXTRACTION_INTERVAL_MS) {
+        process.exit(0); // Extraction recente, skip
+      }
+      isReExtraction = true; // Extraction perimee, on re-extrait
+    }
+  } catch {}
 
   // Lire le transcript
   const transcript = parseTranscript(transcriptPath);
@@ -819,7 +975,7 @@ async function main() {
     process.exit(0);
   }
 
-  // Marquer l'extraction comme faite
+  // Marquer l'extraction comme faite (timestamp, pas booleen)
   fs.mkdirSync(path.dirname(flagFile), { recursive: true });
   fs.writeFileSync(flagFile, new Date().toISOString());
 
@@ -836,8 +992,18 @@ async function main() {
   const sentiment = analyzeSentiment(transcript);
   saveSentiment(sessionId, sentiment, state.messageCount || 0);
 
-  // --- 4. Archive de session ---
-  const sessionFile = path.join(SESSIONS_DIR, `${timestamp()}_${sessionId.slice(0, 8)}.md`);
+  // --- 4. Archive de session (update si re-extraction) ---
+  let sessionFile = path.join(SESSIONS_DIR, `${timestamp()}_${sessionId.slice(0, 8)}.md`);
+  if (isReExtraction) {
+    // Trouver l'archive existante pour cette session
+    try {
+      const existing = fs.readdirSync(SESSIONS_DIR)
+        .filter(f => f.endsWith(`_${sessionId.slice(0, 8)}.md`))
+        .sort()
+        .pop();
+      if (existing) sessionFile = path.join(SESSIONS_DIR, existing);
+    } catch {}
+  }
   const sessionName = (() => {
     try {
       const names = JSON.parse(
@@ -871,6 +1037,47 @@ async function main() {
   try {
     runMemoryLifecycle(MEMORY_DIR);
   } catch {}
+
+  // --- 7. Knowledge Graph enrichment ---
+  try {
+    const graphDir = path.join(MEMORY_DIR, "GRAPH");
+    fs.mkdirSync(graphDir, { recursive: true });
+    const graph = new HoraGraph(graphDir);
+
+    // Build session archive for extraction
+    const archive = transcript.slice(0, 5000);
+    const toolUsage: Record<string, number> = {};
+    try {
+      const toolLog = path.join(MEMORY_DIR, ".tool-usage.jsonl");
+      const raw = fs.readFileSync(toolLog, "utf-8").trim();
+      for (const line of raw.split("\n").slice(-50)) {
+        try {
+          const e = JSON.parse(line);
+          if (e.session === sessionId.slice(0, 8) && e.tool) {
+            toolUsage[e.tool] = (toolUsage[e.tool] || 0) + (e.count || 1);
+          }
+        } catch {}
+      }
+    } catch {}
+
+    await buildGraphFromSession(graph, {
+      sessionId,
+      archive,
+      failures,
+      sentiment,
+      toolUsage,
+      projectId: getProjectId(),
+    });
+
+    // Lazy migration of existing sessions (max 3 per run)
+    if (!fs.existsSync(path.join(graphDir, ".migrated"))) {
+      await migrateExistingData(graph, MEMORY_DIR);
+    }
+
+    graph.save();
+  } catch {
+    // Echec silencieux — graph enrichment is best-effort
+  }
 
   // NE PAS supprimer le state file — il est utilise par prompt-submit
   // pour detecter isFirst. Il sera ecrase naturellement par la session suivante.

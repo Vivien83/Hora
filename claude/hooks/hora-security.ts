@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+if (process.env.HORA_SKIP_HOOKS === "1") process.exit(0);
 /**
  * HORA — hook: hora-security (PreToolUse)
  * Valide chaque commande Bash et operation fichier avant execution.

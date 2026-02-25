@@ -736,6 +736,13 @@ else
     mkdir -p "$CLAUDE_DIR/hooks/lib"
     cp "$HORA_DIR/hooks/lib/"*.ts "$CLAUDE_DIR/hooks/lib/"
   fi
+  # Copy package.json for hooks dependencies (@huggingface/transformers etc.)
+  if [ -f "$HORA_DIR/hooks/package.json" ]; then
+    cp "$HORA_DIR/hooks/package.json" "$CLAUDE_DIR/hooks/package.json"
+    [ -f "$HORA_DIR/hooks/package-lock.json" ] && cp "$HORA_DIR/hooks/package-lock.json" "$CLAUDE_DIR/hooks/package-lock.json"
+    ui_info "Installation des dependances hooks..."
+    (cd "$CLAUDE_DIR/hooks" && npm install --production --silent 2>/dev/null) || ui_warn "npm install hooks echoue ${DIM}(non-bloquant)${RESET}"
+  fi
 fi
 ui_ok "hooks/ ${DIM}($HOOKS_COUNT hooks + lib/$LIB_COUNT)${RESET}"
 

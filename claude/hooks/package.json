@@ -6,7 +6,10 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
-    "vitest": "^3.0.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1"
   }
 }

@@ -23,6 +23,9 @@ import type {
   ToolUsageDay,
   MemoryHealth,
   MemoryTierStats,
+  GraphData,
+  GraphNode,
+  GraphEdge,
 } from "../src/types";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -218,13 +221,16 @@ function collectThread(
   const active = safeParseJson<ThreadEntry[]>(activePath, []);
   const archive = safeParseJson<ThreadEntry[]>(archivePath, []);
 
-  // Merge: archive (oldest) + active (newest), deduplicate by ts+sid
-  const seen = new Set<string>();
+  // Merge: archive (oldest) + active (newest), deduplicate by ts+sid AND sid+u_prefix
+  const seenTs = new Set<string>();
+  const seenContent = new Set<string>();
   const merged: ThreadEntry[] = [];
   for (const entry of [...archive, ...active]) {
-    const key = `${entry.ts}-${entry.sid}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const keyTs = `${entry.ts}-${entry.sid}`;
+    const keyContent = `${entry.sid}-${(entry.u || "").slice(0, 50)}`;
+    if (seenTs.has(keyTs) || seenContent.has(keyContent)) continue;
+    seenTs.add(keyTs);
+    seenContent.add(keyContent);
     merged.push(entry);
   }
 
@@ -596,6 +602,124 @@ function collectMemoryHealth(): MemoryHealth | null {
   }
 }
 
+// ─── Knowledge Graph ─────────────────────────────────────────────────────────
+
+interface RawEntityNode {
+  id?: string;
+  type?: string;
+  name?: string;
+  properties?: Record<string, string | number | boolean>;
+  embedding?: number[] | null;
+  created_at?: string;
+  last_seen?: string;
+}
+
+interface RawFactEdge {
+  id?: string;
+  source?: string;
+  target?: string;
+  relation?: string;
+  description?: string;
+  valid_at?: string;
+  invalid_at?: string | null;
+  expired_at?: string | null;
+  confidence?: number;
+}
+
+function collectGraphData(): GraphData | null {
+  const graphDir = join(MEMORY_DIR, "GRAPH");
+  const entitiesPath = join(graphDir, "entities.jsonl");
+  const factsPath = join(graphDir, "facts.jsonl");
+  const episodesPath = join(graphDir, "episodes.jsonl");
+
+  if (!existsSync(entitiesPath)) return null;
+
+  try {
+    const rawEntities = parseJsonl<RawEntityNode>(entitiesPath);
+    const rawFacts = parseJsonl<RawFactEdge>(factsPath);
+    const episodeCount = parseJsonl<unknown>(episodesPath).length;
+
+    if (rawEntities.length === 0) return null;
+
+    // Build adjacency count per entity
+    const connectionCount = new Map<string, number>();
+    const activeFacts = rawFacts.filter(f => !f.expired_at);
+
+    for (const fact of activeFacts) {
+      if (fact.source) connectionCount.set(fact.source, (connectionCount.get(fact.source) ?? 0) + 1);
+      if (fact.target) connectionCount.set(fact.target, (connectionCount.get(fact.target) ?? 0) + 1);
+    }
+
+    // Map to dashboard types
+    const entities: GraphNode[] = rawEntities
+      .filter(e => e.id && e.name && e.type)
+      .map(e => ({
+        id: e.id!,
+        type: e.type as GraphNode["type"],
+        name: e.name!,
+        properties: e.properties ?? {},
+        created_at: e.created_at ?? "",
+        last_seen: e.last_seen ?? "",
+        connections: connectionCount.get(e.id!) ?? 0,
+      }));
+
+    const facts: GraphEdge[] = activeFacts
+      .filter(f => f.id && f.source && f.target)
+      .map(f => ({
+        id: f.id!,
+        source: f.source!,
+        target: f.target!,
+        relation: f.relation ?? "",
+        description: f.description ?? "",
+        valid_at: f.valid_at ?? "",
+        invalid_at: f.invalid_at ?? null,
+        expired_at: f.expired_at ?? null,
+        confidence: f.confidence ?? 0.5,
+      }));
+
+    // Find hub (most connected entity)
+    let topHub: string | null = null;
+    let maxConn = 0;
+    for (const [id, count] of connectionCount) {
+      if (count > maxConn) {
+        maxConn = count;
+        topHub = rawEntities.find(e => e.id === id)?.name ?? null;
+      }
+    }
+
+    // Find last enrichment (most recent episode)
+    let lastEnrichment: string | null = null;
+    const episodes = parseJsonl<{ timestamp?: string }>(episodesPath);
+    if (episodes.length > 0) {
+      lastEnrichment = episodes[episodes.length - 1].timestamp ?? null;
+    }
+
+    // Count contradictions (superseded facts)
+    const contradictions = rawFacts.filter(f => f.expired_at).length;
+
+    // Embedded ratio
+    const embeddedEntities = rawEntities.filter(e => e.embedding && e.embedding.length > 0).length;
+    const embeddedRatio = rawEntities.length > 0 ? embeddedEntities / rawEntities.length : 0;
+
+    return {
+      entities,
+      facts,
+      episodes: episodeCount,
+      stats: {
+        totalEntities: rawEntities.length,
+        totalFacts: rawFacts.length,
+        activeFacts: activeFacts.length,
+        embeddedRatio,
+        topHub,
+        lastEnrichment,
+        contradictions,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ─── Main collector ─────────────────────────────────────────────────────────
 
 export function collectAll(projectDir?: string): DashboardData {
@@ -611,6 +735,7 @@ export function collectAll(projectDir?: string): DashboardData {
   const security = collectSecurity();
   const projectContext = projectDir ? collectProjectContext(projectDir) : null;
   const memoryHealth = collectMemoryHealth();
+  const graphData = collectGraphData();
 
   // Filter thread by current project (keep entries with no project for backward compat)
   const projectId = projectContext?.projectId;
@@ -632,5 +757,6 @@ export function collectAll(projectDir?: string): DashboardData {
     projectContext,
     toolTimeline,
     memoryHealth,
+    graphData,
   };
 }
