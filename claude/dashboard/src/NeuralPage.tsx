@@ -500,17 +500,12 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     return data;
   }, [graphData, search, filterRecent, temporalCutoff]);
 
-  // Configure link distance force + initial zoom-to-fit
+  // Configure link distance force
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg) return;
     fg.d3Force("charge")?.strength(-400);
     fg.d3Force("link")?.distance(120);
-    // Initial zoom-to-fit after a short delay for layout stabilization
-    const timer = setTimeout(() => {
-      fg.zoomToFit(600, 80);
-    }, 800);
-    return () => clearTimeout(timer);
   }, [forceData]);
 
   // Node canvas renderer
@@ -650,10 +645,12 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     }
   }, []);
 
-  // Link click handler
+  // Link click handler — extract string IDs since ForceGraph2D resolves references to objects
   const handleLinkClick = useCallback((link: any) => {
     const l = link as ForceLink;
-    setSelectedLink(l);
+    const sourceId = typeof l.source === "object" ? (l.source as any).id : l.source;
+    const targetId = typeof l.target === "object" ? (l.target as any).id : l.target;
+    setSelectedLink({ ...l, source: sourceId, target: targetId });
     setSelectedNode(null);
   }, []);
 
@@ -790,9 +787,30 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
             </div>
           </div>
 
-          {/* Title */}
-          <div style={{ fontSize: "14px", fontWeight: 700, color: C.text, letterSpacing: "-0.01em" }}>
-            Knowledge Graph
+          {/* Title + recenter */}
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", pointerEvents: "auto" }}>
+            <div style={{ fontSize: "14px", fontWeight: 700, color: C.text, letterSpacing: "-0.01em" }}>
+              Knowledge Graph
+            </div>
+            <button
+              onClick={() => {
+                if (graphRef.current) {
+                  graphRef.current.zoomToFit(400, 60);
+                }
+              }}
+              style={{
+                padding: "5px 10px",
+                fontSize: "11px",
+                fontWeight: 500,
+                color: C.muted,
+                background: C.card,
+                border: `1px solid ${C.border}`,
+                borderRadius: "4px",
+                cursor: "pointer",
+              }}
+            >
+              Recentrer
+            </button>
           </div>
         </div>
 
@@ -939,9 +957,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           enablePanInteraction={true}
           enableNodeDrag={true}
           onEngineStop={() => {
-            if (graphRef.current) {
-              graphRef.current.zoomToFit(400, 60);
-            }
+            // intentionally empty — no auto zoom-to-fit
           }}
         />
       </div>

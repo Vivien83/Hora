@@ -139,6 +139,13 @@ export interface GraphData {
   };
 }
 
+export interface TranscriptMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  sessionId: string;
+}
+
 export interface DashboardData {
   generatedAt: string;
   profile: ProfileData;
@@ -154,4 +161,5 @@ export interface DashboardData {
   toolTimeline: ToolUsageDay[];
   memoryHealth: MemoryHealth | null;
   graphData: GraphData | null;
+  transcripts: TranscriptMessage[];
 }

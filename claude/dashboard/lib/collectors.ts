@@ -26,6 +26,7 @@ import type {
   GraphData,
   GraphNode,
   GraphEdge,
+  TranscriptMessage,
 } from "../src/types";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -720,6 +721,91 @@ function collectGraphData(): GraphData | null {
   }
 }
 
+// ─── Transcripts ─────────────────────────────────────────────────────────────
+
+interface TranscriptJsonlEntry {
+  type?: string;
+  sessionId?: string;
+  timestamp?: string;
+  message?: {
+    role?: string;
+    content?: string | Array<{ type?: string; text?: string; thinking?: string }>;
+  };
+}
+
+function projectDirToClaudePath(projectDir: string): string {
+  // /Users/vivienmartin/Desktop/hora 2 -> -Users-vivienmartin-Desktop-hora-2
+  return projectDir.replace(/\//g, "-").replace(/\s+/g, "-");
+}
+
+function extractTextContent(content: string | Array<{ type?: string; text?: string; thinking?: string }> | undefined): string {
+  if (!content) return "";
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const block of content) {
+    if (block.type === "text" && block.text) {
+      parts.push(block.text);
+    }
+    // Skip tool_use, tool_result, thinking blocks
+  }
+  return parts.join("\n");
+}
+
+function collectTranscripts(projectDir: string): TranscriptMessage[] {
+  const claudeProjectsDir = join(homedir(), ".claude", "projects");
+  const projectSlug = projectDirToClaudePath(projectDir);
+  const transcriptDir = join(claudeProjectsDir, projectSlug);
+
+  if (!existsSync(transcriptDir)) return [];
+
+  let jsonlFiles: string[] = [];
+  try {
+    jsonlFiles = readdirSync(transcriptDir)
+      .filter((f) => f.endsWith(".jsonl") && !f.startsWith("."))
+      .sort();
+  } catch {
+    return [];
+  }
+
+  const messages: TranscriptMessage[] = [];
+
+  for (const file of jsonlFiles) {
+    const filePath = join(transcriptDir, file);
+    const lines = safeReadLines(filePath);
+
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line) as TranscriptJsonlEntry;
+
+        // Only keep user and assistant messages
+        if (entry.type !== "user" && entry.type !== "assistant") continue;
+        if (!entry.message?.role) continue;
+
+        const role = entry.message.role;
+        if (role !== "user" && role !== "assistant") continue;
+
+        const text = extractTextContent(entry.message.content);
+        if (!text.trim()) continue;
+
+        messages.push({
+          role: role as "user" | "assistant",
+          content: text,
+          timestamp: entry.timestamp ?? "",
+          sessionId: entry.sessionId ?? file.replace(/\.jsonl$/, ""),
+        });
+      } catch {
+        // skip malformed lines
+      }
+    }
+  }
+
+  // Sort chronologically
+  messages.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+  return messages;
+}
+
 // ─── Main collector ─────────────────────────────────────────────────────────
 
 export function collectAll(projectDir?: string): DashboardData {
@@ -736,6 +822,7 @@ export function collectAll(projectDir?: string): DashboardData {
   const projectContext = projectDir ? collectProjectContext(projectDir) : null;
   const memoryHealth = collectMemoryHealth();
   const graphData = collectGraphData();
+  const transcripts = projectDir ? collectTranscripts(projectDir) : [];
 
   // Show ALL thread entries (cross-project full history)
 
@@ -754,5 +841,6 @@ export function collectAll(projectDir?: string): DashboardData {
     toolTimeline,
     memoryHealth,
     graphData,
+    transcripts,
   };
 }

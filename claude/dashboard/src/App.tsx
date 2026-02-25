@@ -10,8 +10,8 @@ import { ProjectPanel } from "./ProjectPanel";
 import { ThreadHistory } from "./ThreadHistory";
 import { SecurityEvents } from "./SecurityEvents";
 import { MemoryHealth } from "./MemoryHealth";
-import { NeuralMemoryMap } from "./NeuralMemoryMap";
 import { NeuralPage } from "./NeuralPage";
+import { ChatView } from "./ChatView";
 
 const C = {
   bg: "#0A0A0B",
@@ -244,12 +244,6 @@ export function App() {
         {/* Overview section */}
         {section === "overview" && (
           <>
-            {data.memoryHealth && (
-              <Section title="Reseau neuronal memoire">
-                <NeuralMemoryMap data={data} health={data.memoryHealth} height={420} />
-              </Section>
-            )}
-
             <Section title="Sessions recentes">
               <SessionsTable sessions={data.sessions} />
             </Section>
@@ -339,14 +333,9 @@ export function App() {
         {section === "memory" && (
           <>
             {data.memoryHealth && (
-              <>
-                <Section title="Cartographie neuronale">
-                  <NeuralMemoryMap data={data} health={data.memoryHealth} height={500} />
-                </Section>
-                <Section title="Sante memoire">
-                  <MemoryHealth health={data.memoryHealth} />
-                </Section>
-              </>
+              <Section title="Sante memoire">
+                <MemoryHealth health={data.memoryHealth} />
+              </Section>
             )}
 
             <Section title="Profil utilisateur">
@@ -411,9 +400,7 @@ export function App() {
 
         {/* Chat section */}
         {section === "chat" && (
-          <Section title="Historique complet">
-            <ThreadHistory thread={data.thread} />
-          </Section>
+          <ChatView messages={data.transcripts} />
         )}
 
         {/* Security section */}
