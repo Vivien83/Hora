@@ -2,7 +2,8 @@
   <img src="https://img.shields.io/badge/Claude_Code-Native-blueviolet?style=for-the-badge&logo=anthropic" alt="Claude Code Native">
   <img src="https://img.shields.io/badge/Platform-macOS_|_Linux_|_Windows-blue?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
-  <img src="https://img.shields.io/badge/Dependencies-tsx_only-orange?style=for-the-badge" alt="Dependencies">
+  <img src="https://img.shields.io/badge/Knowledge_Graph-Bi--temporal-teal?style=for-the-badge" alt="Knowledge Graph">
+  <img src="https://img.shields.io/badge/Embeddings-Local_ONNX-orange?style=for-the-badge" alt="Local Embeddings">
   <img src="https://img.shields.io/badge/Config-Zero-brightgreen?style=for-the-badge" alt="Zero Config">
 </p>
 
@@ -10,14 +11,16 @@
 <h3 align="center">Hybrid Orchestrated Reasoning Architecture</h3>
 
 <p align="center">
-  <strong>A self-learning AI system for Claude Code.</strong><br>
-  Starts empty. Builds itself through usage. Opinionated TypeScript/React stack. Library-first.
+  <strong>A self-learning AI system with neural memory for Claude Code.</strong><br>
+  Starts empty. Builds a knowledge graph through usage. Retrieves context via semantic search.<br>
+  Opinionated TypeScript/React stack. Library-first. Zero additional cost.
 </p>
 
 <p align="center">
   <a href="#-quick-start">Quick Start</a> &bull;
   <a href="#-features">Features</a> &bull;
-  <a href="#-how-it-works">How It Works</a> &bull;
+  <a href="#-knowledge-graph">Knowledge Graph</a> &bull;
+  <a href="#-dashboard">Dashboard</a> &bull;
   <a href="#-skills--agents">Skills & Agents</a> &bull;
   <a href="#%EF%B8%8F-architecture">Architecture</a> &bull;
   <a href="#-web-saas-conventions">Web/SaaS Stack</a> &bull;
@@ -34,23 +37,24 @@ Claude Code is powerful out of the box. But it forgets everything between sessio
 
 ```
 Session 1:  Empty      --> 3 questions --> MEMORY/PROFILE/ starts filling
-Session 2:  Reloaded   --> Hora knows who you are + what you were doing
-Session N:  Rich       --> Increasingly relevant responses, your vocabulary, your patterns
+Session 2:  Reloaded   --> Knowledge graph captures entities, facts, relationships
+Session N:  Rich       --> Semantic search injects only the relevant context per query
 ```
 
 ### What makes it different
 
 | | Without HORA | With HORA |
 |---|---|---|
-| **New session** | "I have no context" | "Last time we were working on X. Continue?" |
+| **New session** | "I have no context" | Semantic search retrieves relevant facts from the knowledge graph |
 | **New project** | Re-explore the codebase every time | Auto-audit stored in `.hora/project-knowledge.md` |
 | **Dangerous command** | Executes silently | Blocked or confirmed before execution |
 | **Context compaction** | Lost train of thought | Auto-detected, project-scoped checkpoint injected |
+| **Long session (days)** | Memory only saved at end | Re-extraction every 20 minutes |
 | **Multiple terminals** | Sessions overwrite each other's state | Full session isolation, project-scoped checkpoints |
 | **File edited by mistake** | Hope you have git | Snapshot saved automatically before every edit |
-| **Multi-file refactor** | One file at a time | Parallel agents, coordinated execution |
-| **Library choice** | "Let me write a custom date picker" | Library-first: use battle-tested packages |
-| **UI design** | Generic AI-generated look | Professional design guidelines enforced |
+| **Memory after months** | Flat files, everything loaded | 3-tier memory (T1/T2/T3) with promotion, expiration, GC |
+| **Context injection** | Dump everything | Cosine similarity + BFS: only relevant facts injected |
+| **Understanding patterns** | None | Knowledge graph tracks entities, relationships, contradictions over time |
 
 ---
 
@@ -115,15 +119,132 @@ The installer runs 8 steps with a visual UI (ASCII header, progress counter, col
 7. **Memory** — initializes MEMORY/PROFILE/ if empty (never overwrites existing data)
 8. **Verification** — checks session data integrity, detects orphan files
 
-Ends with a summary showing installed component counts and available skills.
-
 > In case of error: `bash install.sh --restore` restores the backup.
 
 ---
 
 ## Features
 
-### 1. Layered Security
+### 1. Knowledge Graph (Graphiti-inspired)
+
+HORA builds a **bi-temporal knowledge graph** inspired by [Graphiti](https://github.com/getzep/graphiti) — automatically, at the end of every session.
+
+```
+Session ends --> claude -p extracts entities + facts + contradictions
+            --> @huggingface/transformers computes 384-dim embeddings (local ONNX)
+            --> Graph updated with bi-temporal metadata
+            --> Next session: semantic search retrieves relevant context
+```
+
+#### Three-layer structure
+
+| Layer | What | Example |
+|:---|:---|:---|
+| **Entities** (nodes) | Concepts extracted from sessions | `project:hora`, `tool:react-force-graph`, `preference:library-first` |
+| **Facts** (edges) | Relationships between entities with descriptions | "HORA uses react-force-graph-2d for neural visualization" |
+| **Episodes** (raw) | Source references (sessions, failures, sentiment) | `session:a1b2c3d4 → extracted 5 entities, 8 facts` |
+
+#### Bi-temporality (4 timestamps per fact)
+
+| Timestamp | Meaning |
+|:---|:---|
+| `valid_at` | When the fact became true in the real world |
+| `invalid_at` | When it stopped being true (`null` = still valid) |
+| `created_at` | When recorded in the graph |
+| `expired_at` | When superseded by a newer fact |
+
+This means HORA can **travel through time** — see what was true at any point, detect contradictions, and automatically supersede outdated facts.
+
+#### Zero additional cost
+
+| Component | Technology | Cost |
+|:---|:---|:---|
+| **Extraction** | `claude -p` (CLI pipe, subscription) | $0 |
+| **Embeddings** | `@huggingface/transformers` (all-MiniLM-L6-v2, local ONNX, 22MB) | $0 |
+| **Retrieval** | Cosine similarity + BFS (in-process) | $0 |
+
+Everything runs locally or through your existing Claude subscription.
+
+#### Anti-recursion
+
+When `session-end.ts` calls `claude -p` for extraction, it sets `HORA_SKIP_HOOKS=1`. All HORA hooks exit immediately when this variable is present — zero risk of infinite recursion.
+
+---
+
+### 2. Semantic Injection
+
+At the start of every session, HORA injects **only the relevant context** from the knowledge graph — not a blind dump of everything.
+
+```
+User message: "Fix the auth middleware"
+                |
+                v
+    embed("Fix the auth middleware")  -->  384-dim vector  (~50ms)
+                |
+                v
+    Cosine similarity vs all facts    -->  Top 20 matches  (~5ms)
+                |
+                v
+    BFS depth 2 on top entities       -->  Semantic neighborhood
+                |
+                v
+    Budget: min(6000 chars, 15% remaining context)
+                |
+                v
+    Inject as [HORA KNOWLEDGE GRAPH] section
+```
+
+**Why this matters:** `"TS development"` matches `"TypeScript coding"` even without an alias table — because the embedding vectors are semantically close. This is fundamentally more powerful than keyword matching.
+
+**Latency:** ~350ms on first message only (model load from cache + embed + search). Subsequent messages have no overhead.
+
+**Fallback:** If embeddings aren't computed yet or the model isn't available, HORA falls back to the classic profile + insights injection. Zero degradation.
+
+---
+
+### 3. Memory Tiers (T1/T2/T3)
+
+HORA organizes memory like the human brain — short-term, medium-term, and long-term:
+
+| Tier | Retention | Promotion criteria | Storage |
+|:---|:---|:---|:---|
+| **T1** (short) | 24 hours | Auto-expires | Recent sessions, raw data |
+| **T2** (medium) | 30 days | Recurring patterns (3+ occurrences) | `LEARNING/INSIGHTS/` |
+| **T3** (long) | Permanent | Confirmed important | `LEARNING/INSIGHTS/` |
+
+#### Automatic lifecycle
+
+- **Expiration:** T1 entries older than 24h are garbage-collected
+- **Promotion:** Patterns seen 3+ times in T2 are promoted to T3
+- **GC:** Runs every 6 hours (lock file prevents concurrent runs)
+- **Insights:** Recurring failures, sentiment trends, tool usage patterns — all aggregated automatically
+
+```
+MEMORY/LEARNING/INSIGHTS/
+  recurring-failures.md       # Patterns that keep happening
+  sentiment-summary.jsonl     # Monthly sentiment trends
+  tool-monthly.jsonl          # Tool usage aggregated by month
+```
+
+---
+
+### 4. Periodic Re-extraction
+
+Long sessions (hours or days) no longer lose memory. HORA re-extracts every **20 minutes**:
+
+```
+Session start  --> Full extraction (profile, errors, sentiment, archive)
++20 min        --> Re-extraction (update archive, new thread entries, refresh memory)
++40 min        --> Re-extraction
+...            --> Every 20 minutes until session ends
+Session end    --> Final extraction
+```
+
+The extraction flag uses a **timestamp** (not boolean) — so HORA knows exactly when the last extraction happened and only triggers when the interval has elapsed.
+
+---
+
+### 5. Layered Security
 
 Every operation is validated automatically by `hora-security.ts` — a defense-in-depth system with three layers.
 
@@ -156,7 +277,7 @@ All patterns are customizable in `~/.claude/.hora/patterns.yaml`.
 
 ---
 
-### 2. Self-Learning Memory
+### 6. Self-Learning Memory
 
 At the end of every significant session (3+ messages), HORA silently extracts profile data using **two-layer hybrid extraction**:
 
@@ -178,20 +299,6 @@ At the end of every significant session (3+ messages), HORA silently extracts pr
 | Vocabulary | Technical terms repeated 3+ times (stopwords filtered) | `hook, snapshot, statusline` |
 | Identity (fallback) | Regex patterns if git config empty | `je m'appelle X` |
 
-#### Output format
-
-Every data point is tagged with its source for traceability:
-
-```markdown
-## Identite
-- Nom: Vivien MARTIN [env:git-config]
-- GitHub: Vivien83 [env:git-remote]
-
-## Preferences
-- Langue: francais [transcript]
-- Tech: TypeScript [env:package.json]
-```
-
 #### Additional extractions
 
 | What | Format | Storage |
@@ -199,26 +306,15 @@ Every data point is tagged with its source for traceability:
 | **Errors & Lessons** | JSONL (user messages only, conversational patterns, max 5/session) | `LEARNING/FAILURES/failures-log.jsonl` |
 | **Sentiment** | JSONL (one line per session) | `LEARNING/ALGORITHM/sentiment-log.jsonl` |
 | **Session Archive** | Markdown (summary + first 5000 chars) | `SESSIONS/` |
+| **Thread History** | JSONL (ALL user/assistant exchanges from transcript) | `STATE/thread-state.jsonl` |
 
 **Everything is silent.** HORA never interrupts your flow. You won't even notice it's learning.
 
 ---
 
-### 3. Cross-Session Continuity
+### 7. Cross-Session Continuity
 
-HORA maintains conversation threads across sessions using **deferred pairing**:
-
-```
-Session N:
-  1. prompt-submit.ts saves the user message (pending)
-  2. User works normally
-  3. session-end.ts saves the assistant's last response summary
-
-Session N+1:
-  1. prompt-submit.ts pairs pending messages with responses
-  2. Injects the last 10 exchanges + 3 most recent sessions
-  3. Claude sees the full context from the very first message
-```
+HORA extracts **all user/assistant exchanges** from the JSONL transcript at session end, providing complete thread history across sessions.
 
 #### Project-scoped context
 
@@ -232,7 +328,7 @@ HORA: "Hey! Last time we were refactoring the auth module.
 
 ---
 
-### 4. Automatic Session Naming
+### 8. Automatic Session Naming
 
 Every session gets a deterministic name from the first prompt:
 
@@ -246,7 +342,7 @@ No AI inference — fast regex extraction. Stored in `MEMORY/STATE/session-names
 
 ---
 
-### 5. Pre-Edit Snapshots
+### 9. Pre-Edit Snapshots
 
 Every `Write` / `Edit` / `MultiEdit` saves the file **BEFORE** modification.
 
@@ -268,18 +364,9 @@ Every `Write` / `Edit` / `MultiEdit` saves the file **BEFORE** modification.
 
 Snapshots are **project-scoped** — each project has its own snapshot history in `<project>/.hora/snapshots/`. No cross-project mixing.
 
-**How to restore:**
-```bash
-# Find the snapshot (from project root)
-grep "filename" .hora/snapshots/manifest.jsonl | tail -1
-
-# Read the backup
-cat .hora/snapshots/2026-02-20/10-32-15-042_auth-middleware.ts.bak
-```
-
 ---
 
-### 6. Automatic Backup
+### 10. Automatic Backup
 
 The `backup-monitor` hook watches for changes and triggers backup automatically:
 
@@ -295,23 +382,11 @@ Strategy selection:
 Cooldown: 30s between full checks
 ```
 
-**Restore from backup:**
-
-```bash
-# From mirror branch (GitHub)
-git log hora/backup/main --oneline
-git checkout hora/backup/main -- path/to/file.ts
-
-# From local bundle
-git bundle verify .hora/backups/LATEST.bundle
-git clone .hora/backups/LATEST.bundle ./restored
-```
-
 ---
 
-### 7. Rich Statusline
+### 11. Rich Statusline
 
-A live status bar at the bottom of Claude Code with 3 responsive modes using gradient diamond bars (`◆◇`) and push-aware commit indicators (`●` unpushed / `✓` pushed):
+A live status bar at the bottom of Claude Code with 3 responsive modes using gradient diamond bars and push-aware commit indicators:
 
 ```
 Full mode (>= 80 cols):
@@ -320,52 +395,13 @@ Full mode (>= 80 cols):
 ◈ USAGE : 5H: 42% (reset 2h31) | WK: 18%
 ◈ GIT : feat/auth | ~/project | Modif:3 Nouv:1 | Backup: R 5min
 ◈ COMMITS : ● a1b2c3d Add auth middleware
-◈            ● e4f5g6h Fix token validation
-◈            ✓ i7j8k9l Update tests
 ◈ SNAP: 12 proteges | MODELE : claude-sonnet-4-5 | SKILLS : 5 hora/10 total
 ──────────────────────────────────────────────────────────────────────────────────
-
-Normal mode (55-79 cols):
-HORA ctx: ◆◆◆◆◆◆◆◇◇◇ 68% | 23m
-git: feat/auth *3 +1 | bak: R:5min | snap:12 | hora:5/10sk
-log: ●a1b2c3d Add auth middle ✓e4f5g6h Fix token valid ✓i7j8k9l Update tests
-▰ 5H: 42% ↻2h31 | WK: 18%
-
-Compact mode (< 55 cols):
-HORA ◆◆◆◆◇◇◇ 68% 23m
-feat/auth *3 R:5min 12snap 5h/10sk 42%↻2h31
 ```
 
-| Data | Source | Platform |
-|:---|:---|:---|
-| Context window % | Claude Code API (JSON stdin) | All |
-| Gradient bar (◆◇) | Emerald -> Gold -> Terracotta -> Rose | All |
-| API usage (5h/7d) | Anthropic OAuth API (Keychain / credentials file / secret-tool) | All |
-| Git status | `git status --porcelain` (cached 5s) | All |
-| Last 3 commits | `git log` with push status vs `origin/branch` | All |
-| Backup status | `<project>/.hora/backup-state.json` (auto-detects project root) | All |
-| Snapshot count | `<project>/.hora/snapshots/manifest.jsonl` (auto-detects project root) | All |
-| Active model | Claude Code API (JSON stdin) | All |
-| Skills count | HORA skills vs total in `~/.claude/skills/` | All |
-
 ---
 
-### 8. Intelligent Routing
-
-The `prompt-submit` hook detects intent from your message and suggests the right skill:
-
-| Keywords detected | Suggested skill |
-|:---|:---|
-| refactor, refonte, migration, v2 | `/hora-parallel-code` |
-| compare, analyse, research, benchmark | `/hora-parallel-research` |
-| plan, architecture, roadmap, strategy | `/hora-plan` |
-| from scratch, new project | Branch suggestion |
-
-Skills also trigger via **natural language** — HORA detects the intent, not just keywords.
-
----
-
-### 9. Context Checkpoint System
+### 12. Context Checkpoint System
 
 When Claude Code compresses context (compaction), HORA detects and recovers automatically:
 
@@ -375,35 +411,11 @@ When Claude Code compresses context (compaction), HORA detects and recovers auto
 [Recovery]        Hook detects >40pt drop    --> injects checkpoint + activity log
 ```
 
-**How it works:**
-
-```
-statusline.sh          -->  Writes context-pct.txt (session-scoped, atomic)
-                             |
-context-checkpoint.ts  -->  PreToolUse: reads context-pct.txt
-                             |  Detects >40pt drop from stored state
-                             |  Reads <project>/.hora/checkpoint.md
-                             |  Injects recovery via additionalContext
-                             |
-prompt-submit.ts       -->  At 70% context: asks Claude to write a
-                             |  semantic checkpoint to <project>/.hora/checkpoint.md
-                             |
-checkpoint.md          -->  Project-scoped: lives in the project's .hora/
-                             |  Contains: session, objective, current state,
-                             |  decisions made, next steps
-                             |  New sessions inherit the previous session's checkpoint
-```
-
-**Project-scoped, not session-scoped:** The checkpoint lives in the project's `.hora/` directory. This means:
-- Different projects (e.g., project A and project B) each have their own checkpoint — no cross-contamination
-- A new session on the same project automatically picks up where the last session left off
-- Concurrent sessions on different projects never interfere with each other
-
-**Ghost failures addressed:** false positives at startup (GF-2), stale checkpoints >30min (GF-4), race conditions (GF-6), double injection cooldown (GF-11), missing file (GF-12).
+**Project-scoped, not session-scoped:** The checkpoint lives in the project's `.hora/` directory. Different projects each have their own checkpoint — no cross-contamination.
 
 ---
 
-### 10. Session Isolation
+### 13. Session Isolation
 
 HORA supports **concurrent sessions** — multiple Claude Code terminals working on different projects simultaneously without interference.
 
@@ -414,77 +426,75 @@ Terminal 2 (project-B):  ~/.claude/.hora/sessions/e5f6g7h8/  (own state)
                          project-B/.hora/checkpoint.md        (own checkpoint)
 ```
 
-**What's isolated per session** (using first 8 chars of `session_id`):
-- Context percentage tracking (`context-pct.txt`)
-- Compact detection state (`context-state.json`)
-- Recovery cooldown flag (`.compact-recovered`)
-- Doc sync state, backup state, sentiment state
-
-**What's scoped per project** (in `<project>/.hora/`):
-- Checkpoint (`checkpoint.md`) — inherited by new sessions on the same project
-- Project knowledge (`project-knowledge.md`)
-- Project ID (`project-id`)
-
 **Path traversal protection:** Session IDs are sanitized to `[a-zA-Z0-9_-]` only — no `../` injection possible.
 
 ---
 
-### 11. Auto Project Audit
+### 14. Auto Project Audit
 
-When HORA detects a **new project** (no `.hora/project-knowledge.md`), it automatically proposes a full codebase audit before any work begins.
+When HORA detects a **new project** (no `.hora/project-knowledge.md`), it automatically proposes a full codebase audit covering architecture, stack, security flaws (with severity levels), technical debt, and good practices.
 
-```
-You open Claude Code in a new project:
-
-HORA: "This project hasn't been audited yet. I'll analyze:
-       - Architecture and structure
-       - Stack and dependencies
-       - Security flaws (with severity levels)
-       - Technical debt
-       - Good practices already in place
-
-       Want me to run the full audit?"
-```
-
-#### Audit output
-
-Results are stored in `.hora/project-knowledge.md` — versioned with git, injected automatically on every future session:
-
-```markdown
-# Audit : my-saas-app
-> Last updated: 2026-02-20
-
-## Architecture
-Next.js 15 App Router, src/ directory, feature-based structure...
-
-## Stack
-TypeScript 5.7, React 19, Tailwind CSS 4, Drizzle ORM, PostgreSQL...
-
-## Flaws Identified
-| # | Severity | Description | Impact | Solution |
-|---|----------|-------------|--------|----------|
-| 1 | critical | No rate limiting on auth endpoints | Brute force possible | Add rate-limiter middleware |
-| 2 | high     | SQL queries not parameterized in 3 files | SQL injection risk | Migrate to Drizzle prepared statements |
-| 3 | medium   | No error boundaries on route layouts | White screen on crash | Add Error Boundary per layout |
-
-## Technical Debt
-- 12 `any` types in API layer
-- No input validation on 4 form components
-- Unused dependencies: lodash, moment (replaced by date-fns)
-
-## Strengths
-- Clean separation of concerns (services layer)
-- Consistent naming conventions
-- Good test coverage on auth module (87%)
-```
-
-**Incremental updates:** When Claude discovers new information during a session (new flaw fixed, module added, debt resolved), the relevant section is updated in-place — never a full rewrite.
+Results are stored in `.hora/project-knowledge.md` — versioned with git, injected automatically on every future session. Updated incrementally as Claude discovers new information.
 
 ---
 
-### 12. Web/SaaS Conventions (Built-in)
+### 15. Dashboard (v2 — Real-time + Neural)
 
-HORA ships with **opinionated conventions** for modern web/SaaS development. These are enforced automatically through the CLAUDE.md guidelines — not optional suggestions.
+A standalone React 19 + Vite 6 app in `claude/dashboard/` that visualizes all HORA data in real-time.
+
+```bash
+cd claude/dashboard && npm install && npm run dev
+# Opens at http://localhost:3847 — updates automatically via HMR
+```
+
+**7 navigation sections:**
+
+| Section | What it shows |
+|:---|:---|
+| **Overview** | 6 stat cards, sessions table, sentiment chart, recent thread |
+| **Project** | Checkpoint, project knowledge |
+| **Memory** | Memory health (T1/T2/T3 bars), user profile, thread history, failures |
+| **Neural** | Full-page interactive knowledge graph (see below) |
+| **Chat** | Complete CLI transcript viewer — all messages, all sessions |
+| **Security** | Security events (blocks, confirms, alerts) |
+| **Tools** | Tool usage timeline (7-day bar chart) |
+
+#### Neural Page
+
+Full-page interactive visualization of the **real knowledge graph** using `react-force-graph-2d`:
+
+- **Nodes** = entities from `GRAPH/entities.jsonl`, colored by type (project=teal, tool=blue, error=red, preference=green, concept=purple, person=amber, file=zinc, library=orange)
+- **Edges** = facts from `GRAPH/facts.jsonl`, thickness = confidence, opacity = recency
+- **Node size** = degree centrality (number of connected facts)
+- **Interactions:** click node for detail panel with timeline, click link for relation details, drag to reposition (positions persisted), search bar, temporal slider
+- **Breathing animation** on entities seen in the last 48 hours
+- **Particle animation** on facts created in the last 24 hours
+
+#### Chat View
+
+Complete CLI transcript viewer reading raw JSONL from `~/.claude/projects/`:
+
+- **Scope:** current project only (based on path-encoded slug)
+- **Complete messages:** full content from Claude Code transcripts, not summaries
+- **Terminal style:** dark background, role badges (U/A), timestamps, session separators
+- **Search:** filter by content, session ID, role
+- **Collapsible:** long messages collapsed with expand button
+
+#### Memory Health
+
+Visual monitoring of the 3-tier memory system:
+
+- Bar charts showing T1/T2/T3 entry counts
+- Alerts when memory is unhealthy (too many T1, empty T3, etc.)
+- Last GC timestamp, promotion stats
+
+**Real-time architecture:** Vite plugin with chokidar watches `~/.claude/MEMORY/` and `<project>/.hora/`, debounces 500ms, pushes updates via HMR WebSocket. Fallback: polling every 10s.
+
+---
+
+### 16. Web/SaaS Conventions (Built-in)
+
+HORA ships with **opinionated conventions** for modern web/SaaS development. These are enforced automatically through the CLAUDE.md guidelines.
 
 #### Mandatory algorithm
 
@@ -492,17 +502,19 @@ The HORA algorithm (EXPLORE → PLAN → AUDIT → CODE → COMMIT) runs on **ev
 
 | Complexity | Algorithm depth |
 |:---|:---|
-| Trivial (typo, 1-3 lines) | EXPLORE (2s mental) → CODE |
+| Trivial (typo, 1-3 lines) | EXPLORE (implicit) → CODE |
 | Medium (feature, bug) | EXPLORE → PLAN → AUDIT → CODE |
 | Complex (multi-file, archi) | EXPLORE → full PLAN with ISC → AUDIT → CODE |
 | Critical (auth, data, migration) | Full algorithm + **user validation required** |
 
-Skills are activated automatically or proposed as choices:
+#### Implementation mode choice
 
-- Implementation task → HORA proposes **Normal** vs **Forge** mode
-- Multi-file task → `/hora-parallel-code` auto-triggered
-- Research/comparison → `/hora-parallel-research` auto-triggered
-- Complex end-to-end → `/hora-autopilot` auto-triggered
+When an implementation task is detected, HORA proposes:
+
+| Mode | Description |
+|:---|:---|
+| **HORA** (default) | EXPLORE → PLAN → AUDIT → CODE → COMMIT. Fast and effective. |
+| **Forge** | Zero Untested Delivery. TDD, 7 gates, tests mandatory at every phase. |
 
 #### Library-first philosophy
 
@@ -512,8 +524,6 @@ Decision rule:
 1. Does it differentiate the product? **No** → use existing library
 2. Does the library cover 80%+ of the need? **Yes** → library + light extension
 3. Otherwise → build, but document why
-
-Never build from scratch: auth, form validation, dates, drag-and-drop, file upload, payments, charts, rich text editors.
 
 #### Default stack
 
@@ -533,126 +543,28 @@ Never build from scratch: auth, form validation, dates, drag-and-drop, file uplo
 | Charts | **Recharts** | Tremor for dashboards |
 | Rich text | **@tiptap/react** | — |
 | DnD | **@dnd-kit/core** | — |
-| i18n | **next-intl** | — |
 | Payments | **@stripe/react-stripe-js** | — |
-| Analytics | **PostHog** | — |
-| Errors | **@sentry/nextjs** | — |
 | Testing | **Vitest + Testing Library + Playwright** | — |
 
 #### Design anti-patterns (banned)
 
-HORA explicitly **bans the generic "AI look"** in all UI work:
+HORA explicitly **bans the generic "AI look"** in all UI work. No indigo gradients, no glassmorphism, no floating blobs, no hero > 100vh, no pure black backgrounds. **Design references:** Linear, Vercel, Clerk, Resend.
 
-| Banned pattern | Replace with |
+**Accessibility (WCAG 2.2):** 4.5:1 contrast, 44px touch targets, visible focus rings, `prefers-reduced-motion` respected, keyboard alternatives for all interactions.
+
+---
+
+### 17. Additional Features
+
+| Feature | Description |
 |:---|:---|
-| Blue-violet gradients (Tailwind defaults) | Custom brand hue from OKLCH palette |
-| Inter on everything | Geist, Plus Jakarta Sans, Bricolage Grotesque |
-| 3 icons in a grid ("features section") | Asymmetric layouts, numbered lists, prose |
-| Glassmorphism / blurry cards | Solid surfaces with defined elevation |
-| Floating blob SVGs | Intentional geometric elements tied to brand |
-| Hero > 100vh with centered H1 + CTA | Show the product in the hero |
-| Pure black `#000000` backgrounds | `#0A0A0B` or warm dark neutrals |
-| Gradient CTAs with glow effects | Solid primary color, high contrast |
-
-**Design references:** Linear, Vercel, Clerk, Resend — not AI startup templates.
-
-**Accessibility (WCAG 2.2):** 4.5:1 contrast, 44px touch targets, visible focus rings, `prefers-reduced-motion` respected, keyboard alternatives for all drag interactions.
-
----
-
-### 13. Custom Spinner Verbs
-
-50 French messages replace the generic Claude Code spinners:
-
-> "Reflexion profonde", "Cartographie du code", "Tissage des liens", "Delegation aux agents", "Exploration des possibles", "Verification des hypotheses"...
-
-Customizable in the `spinnerVerbs` section of `~/.claude/settings.json`.
-
----
-
-### 14. Tool Usage Analytics
-
-Every tool call is silently logged to `MEMORY/.tool-usage.jsonl`:
-
-```json
-{"tool":"Edit","session":"a1b2c3d4","ts":"2026-02-20T10:32:15.042Z"}
-{"tool":"Bash","session":"a1b2c3d4","ts":"2026-02-20T10:32:18.118Z"}
-{"tool":"Read","session":"a1b2c3d4","ts":"2026-02-20T10:32:19.901Z"}
-```
-
-Useful for understanding your workflow patterns over time.
-
----
-
-### 15. Doc Sync
-
-The `doc-sync.ts` hook (PostToolUse) tracks structuring file changes during a session and reminds Claude to keep `.hora/project-knowledge.md` up to date.
-
-**Trigger:** 5+ structuring files modified in the current session (files in `src/`, `lib/`, `app/`, `components/`, `services/`, `api/`, or config files like `package.json`, `tsconfig.json`).
-
-**Staleness check:** If `project-knowledge.md` is older than 7 days, the hook flags it for a full refresh.
-
-**Safety:** The hook never writes to `project-knowledge.md` directly — it only injects an instruction for Claude to do it at the right moment. Skips if context > 80% or project-knowledge is absent.
-
----
-
-### 16. Librarian Agent
-
-A `PreToolUse` hook (`librarian-check.ts`) enforces HORA's **library-first** philosophy at file creation time.
-
-When Claude creates a new file in `utils/`, `helpers/`, or `lib/` directories, the hook injects a verification instruction: "Before writing custom code, check if a maintained library already does this."
-
-The **librarian agent** (Haiku model) evaluates npm packages against HORA criteria: TypeScript native, >10k downloads/week, published within 12 months, MIT/Apache license.
-
----
-
-### 17. Sentiment Predict
-
-Heuristic analysis of user tone integrated into `prompt-submit.ts`. Scores each message from 1 (frustrated) to 5 (satisfied) based on conversational signals.
-
-**Anti-false-positive:** Code blocks, file paths, and technical identifiers are stripped before analysis — `error` in a stack trace doesn't count as frustration.
-
-**Output:**
-- Real-time alerts injected when score drops to 1-2 ("User may be frustrated — slow down, clarify, validate")
-- Session-scoped state in `.hora/sessions/<sid8>/sentiment-predict.json`
-- Persistent log appended to `MEMORY/LEARNING/ALGORITHM/sentiment-log.jsonl`
-
----
-
-### 18. Vision Audit (`/hora-vision`)
-
-Multimodal screenshot analysis skill with a **23-point checklist** across 5 categories:
-
-| Category | Checks | Examples |
-|:---|:---:|:---|
-| Anti-patterns AI | 5 | Indigo gradients, glassmorphism, blob SVGs |
-| Typography | 5 | Font pairing, weight hierarchy, line-height |
-| Accessibility | 5 | Contrast ratio, focus rings, touch targets |
-| Spacing | 4 | 8px grid, section gaps, visual hierarchy |
-| Colors | 4 | Semantic tokens, dark mode, status colors |
-
-Supports `--compare` mode for before/after analysis. No external API — uses Claude's native multimodal capabilities.
-
----
-
-### 19. Dashboard UI (v2 — Real-time)
-
-A standalone React 19 + Vite 6 app in `claude/dashboard/` that visualizes all HORA data in real-time.
-
-```bash
-cd claude/dashboard && npm install && npm run dev
-# Opens at http://localhost:3847 — updates automatically via HMR
-```
-
-**Real-time architecture:** Vite plugin with chokidar watches `~/.claude/MEMORY/` and `<project>/.hora/`, debounces 500ms, pushes updates via HMR WebSocket. Fallback: polling every 10s.
-
-**Layout:** 3-column design — sidebar (profile + navigation), main content (stats, tables, charts), right panel (project context).
-
-**Components (12):** 6 stat cards (sessions, sentiment, snapshots, security, tools, thread), sessions table, sentiment chart, tool timeline (7-day bar chart), thread history, security events (blocks/confirms/alerts), project panel (checkpoint, knowledge, snapshots, backup state, failures).
-
-**Data pipeline:** `lib/collectors.ts` shared module used by both the Vite plugin (real-time) and CLI (`scripts/collect-data.ts`). JSONL-first for failures and sentiment, legacy markdown fallback. Project context read from `<project>/.hora/`.
-
-**Auto-prompt:** At session startup, HORA detects if the dashboard is installed and asks if you want to open it.
+| **Intelligent Routing** | `prompt-submit` detects intent and suggests the right skill |
+| **Doc Sync** | Tracks structuring file changes and reminds to update `project-knowledge.md` |
+| **Librarian Agent** | Enforces library-first at file creation time in `utils/`, `helpers/`, `lib/` |
+| **Sentiment Predict** | Heuristic tone analysis (1-5), alerts on frustration, anti-false-positive |
+| **Vision Audit** | 23-point multimodal screenshot checklist across 5 categories |
+| **Custom Spinners** | 50 French messages replacing generic Claude Code spinners |
+| **Tool Analytics** | Every tool call logged to `MEMORY/.tool-usage.jsonl` |
 
 ---
 
@@ -662,44 +574,32 @@ cd claude/dashboard && npm install && npm run dev
 
 | Command | What it does | Methodology |
 |:---|:---|:---|
-| `/hora-design` | Anti-AI web design — intentional, premium UI | Dieter Rams, Bauhaus, Swiss Style, Ma, OKLCH |
+| `/hora-design` | Anti-AI web design — intentional, premium UI | Dieter Rams, Bauhaus, Swiss Style, OKLCH |
 | `/hora-forge` | Zero Untested Delivery — TDD with 7 mandatory gates | NASA Cleanroom, TDD, DO-178C, Jidoka |
 | `/hora-refactor` | Systematic refactoring with safety nets | Martin Fowler (70+ catalog), Michael Feathers |
 | `/hora-security` | OWASP Top 10 2025 audit with CWE references | OWASP 2025, CWE/SANS Top 25, Microsoft SDL |
 | `/hora-perf` | Core Web Vitals + Lighthouse performance audit | Google CWV, RAIL model, Lighthouse |
-| `/hora-plan` | Full planning with verifiable ISC criteria | EXPLORE -> PLAN -> AUDIT -> Validation |
-| `/hora-autopilot` | Autonomous end-to-end execution | PLAN -> AUDIT -> BUILD -> VERIFY |
-| `/hora-parallel-code` | Multi-agent codebase work | Architect -> AUDIT -> Executors in parallel |
-| `/hora-parallel-research` | Multi-angle research | 3-5 angles -> Researchers -> Synthesizer |
+| `/hora-plan` | Full planning with verifiable ISC criteria | EXPLORE → PLAN → AUDIT → Validation |
+| `/hora-autopilot` | Autonomous end-to-end execution | PLAN → AUDIT → BUILD → VERIFY |
+| `/hora-parallel-code` | Multi-agent codebase work | Architect → AUDIT → Executors in parallel |
+| `/hora-parallel-research` | Multi-angle research | 3-5 angles → Researchers → Synthesizer |
 | `/hora-backup` | Immediate backup | Delegates to backup agent |
-| `/hora-vision` | Visual UI audit — detects anti-patterns from screenshots | 23-point checklist, 5 categories, multimodal |
-| `/hora-dashboard` | HORA analytics dashboard | React 19, Vite 6, Recharts |
-
-#### Specialized workflows
-
-**`/hora-design`** — Every UI choice is intentional. 13-point anti-AI checklist catches generic patterns (indigo gradients, symmetric grids, glassmorphism). OKLCH color system, fluid typography, asymmetric layouts. Gates: anti-AI, a11y, dark mode, responsive.
-
-**`/hora-forge`** — No deliverable ships without tests. 9 phases (CLASSIFY → SPEC → ANALYZE → PLAN → TEST FIRST → BUILD → VERIFY → EXAMINE → DELIVER), 7 gates, 6 criticality classes (F-A). Jidoka: red test = stop immediately.
-
-**`/hora-refactor`** — Code smells detected from Fowler's catalog (5 categories, 22 smells). Characterization tests written BEFORE any modification (Feathers). One refactoring at a time, micro-commits, metrics before/after.
-
-**`/hora-security`** — All 10 OWASP 2025 categories scanned systematically. Every finding gets a CWE reference and severity. Fixes require reproduction tests. Defense-in-depth hardening (headers, validation, env, dependencies).
-
-**`/hora-perf`** — Baseline measurement first (Lighthouse, bundle analysis, Core Web Vitals). Diagnose by category (LCP/INP/CLS/bundle). Quick wins prioritized. Every optimization measured before/after. RAIL model budgets.
+| `/hora-vision` | Visual UI audit — detects anti-patterns from screenshots | 23-point checklist, multimodal |
+| `/hora-dashboard` | HORA analytics dashboard | React 19, Vite 6, Recharts, react-force-graph-2d |
 
 > Every skill includes an **AUDIT step** that identifies ghost failures (silent failure modes) before any code is written.
 
 ### Agents
 
-| Agent | Model | Role | When to use |
-|:---|:---:|:---|:---|
-| **architect** | Opus | Structural decisions, system design, proposes 2-3 options | Architecture, design system, tech choices |
-| **executor** | Sonnet | Implementation, debug, refactoring (surgical modifications) | Code changes, bug fixes, feature implementation |
-| **researcher** | Sonnet | Multi-source research, analysis, documentation | Technology comparison, due diligence |
-| **reviewer** | Haiku | Quick review, PASS/FAIL verdict, Critical/Warning/OK severity | Code review, validation |
-| **synthesizer** | Haiku | Multi-source aggregation, deduplication | Combining research from multiple angles |
-| **backup** | Haiku | Silent git backup (mirror branch or local bundle) | Automated by backup-monitor hook |
-| **librarian** | Haiku | Library-first verification (npm search, criteria check) | Triggered by librarian-check.ts hook |
+| Agent | Model | Role |
+|:---|:---:|:---|
+| **architect** | Opus | Structural decisions, system design, proposes 2-3 options |
+| **executor** | Sonnet | Implementation, debug, refactoring (surgical modifications) |
+| **researcher** | Sonnet | Multi-source research, analysis, documentation |
+| **reviewer** | Haiku | Quick review, PASS/FAIL verdict, Critical/Warning/OK severity |
+| **synthesizer** | Haiku | Multi-source aggregation, deduplication |
+| **backup** | Haiku | Silent git backup (mirror branch or local bundle) |
+| **librarian** | Haiku | Library-first verification (npm search, criteria check) |
 
 > Agents are only activated when needed. Simple tasks get direct responses — no over-delegation.
 
@@ -716,11 +616,11 @@ HORA follows a structured reasoning process for **every task** — it's not opti
 1. EXPLORE
    Read before writing. Always.
    - What's the real ask behind the words?
-   - SSOT: Does this logic already exist? If yes --> reuse.
-   - Library-first: Does a maintained library do this? If yes --> use it.
+   - SSOT: Does this logic already exist?
+   - Library-first: Does a maintained library do this?
    - Can what's in production break?
 
-2. PLAN
+2. PLAN (Complex+ only)
    | Impact               | Thinking level                    |
    |----------------------|-----------------------------------|
    | Isolated / cosmetic  | Standard                          |
@@ -729,26 +629,19 @@ HORA follows a structured reasoning process for **every task** — it's not opti
 
 3. AUDIT (Ghost Failures)
    Before coding, identify silent failure modes:
-   - What happens if this integration point fails, times out, or returns unexpected data?
    - Is each technical assumption VERIFIED or ASSUMED?
+   - What happens if integration points fail, timeout, or return unexpected data?
    - Race conditions, stale files, false positives?
 
    Critical ghost failure found? --> Test before coding.
    None found? --> Document why (negative proof).
 
 4. CODE
-   - Errors handled explicitly (no silent failures)
-   - Search before creating (SSOT)
-   - Modify only what's in scope (minimal footprint)
+   Robustness > Speed. SSOT > Convenience. Library > Custom.
 
 5. COMMIT
-   - Verify each ISC criterion
-   - Message: what / why / impact
-   - Flag: tech debt introduced, uncovered edge cases, next steps
+   Verify ISC. Message: what / why / impact.
 ```
-
-> **Robustness > Speed. SSOT > Convenience.**
-> A bug in production costs more than 30 minutes of design.
 
 ---
 
@@ -770,16 +663,16 @@ HORA follows a structured reasoning process for **every task** — it's not opti
     prompt-submit.ts   snapshot.ts  backup-monitor  session-end.ts
     hora-session-name  hora-security doc-sync.ts      |
            .ts         tool-use.ts                 Extract:
-           |           context-                    - Profile
-    Injects:           checkpoint.ts               - Errors
-    - MEMORY/          librarian-                  - Sentiment
-    - Thread history   check.ts                    - Archive
-    - Routing hints         |
-    - Checkpoint       Validates:
-      reminder         - Security rules
-    - Sentiment        - Pre-edit snapshot
-      alert            - Tool logging
-                       - Compact detection
+           |           context-                    - Profile + Errors
+    Injects:           checkpoint.ts               - Sentiment + Archive
+    - Knowledge Graph  librarian-                  - Thread (all exchanges)
+      (semantic search) check.ts                   - Knowledge Graph
+    - MEMORY/                |                       (claude -p extraction
+    - Thread history   Validates:                    + embeddings)
+    - Routing hints    - Security rules
+    - Checkpoint       - Pre-edit snapshot
+      reminder         - Tool logging
+    - Sentiment alert  - Compact detection
                        - Library-first check
 ```
 
@@ -791,44 +684,58 @@ HORA follows a structured reasoning process for **every task** — it's not opti
         +--------+-------+-------+--------+
         |        |       |       |        |
      MEMORY/   hooks/  agents/  skills/  .hora/
-        |                                  |
-   +----+----+                    +--------+--------+--------+
-   |    |    |                    |        |        |        |
-PROFILE/ LEARNING/ SESSIONS/  sessions/  state/  patterns.yaml
-   |       |          |           |          |
-identity errors    archives   <sid8>/    context-pct.txt
-projects failures  summaries  (per-session  backup-state
-prefs    sentiment             state)      session-state
-vocab    system
+        |        |                        |
+   +----+----+   +-- lib/         +------+------+------+
+   |    |    |   |   knowledge-   |      |      |      |
+PROFILE/ |   |   |   graph.ts   sessions/ state/ patterns
+LEARNING/|   |   |   embeddings   <sid8>/        .yaml
+  |   SESSIONS/  |   .ts          (per-
+  |      |       |   graph-        session
+GRAPH/   |       |   builder.ts    state)
+  |    STATE/    |   graph-
+entities         |   migration.ts
+.jsonl           |   memory-
+facts            |   tiers.ts
+.jsonl           |   session-
+episodes         |   paths.ts
+.jsonl           |
 
                     <project>/
                          |
                        .hora/
                          |
-              +----------+----------+----------+----------+
-              |          |          |                     |
-        project-id  checkpoint  snapshots/    project-knowledge.md
-     (stable UUID,   .md        manifest.jsonl  (auto-audit results,
-      survives     (inherited   + .bak files     injected every session)
-      rename)       by new      (per-project
-                    sessions)    history)
+              +----------+----------+----------+
+              |          |          |          |
+        project-id  checkpoint  snapshots/  project-
+     (stable UUID)    .md       manifest    knowledge
+                   (inherited   .jsonl +    .md
+                    by new      .bak files
+                    sessions)
 ```
 
-### Zero runtime dependencies
+### Knowledge Graph storage
 
-All hooks use **only Node.js built-ins** (`fs`, `path`, `crypto`). The YAML parser in `hora-security.ts` is custom-written. No `npm install` required at runtime — only `tsx` is needed to execute TypeScript.
+```
+MEMORY/GRAPH/
+  entities.jsonl    # {id, type, name, properties, embedding[384], created_at, last_seen}
+  facts.jsonl       # {id, source, target, relation, description, embedding[384],
+                    #  valid_at, invalid_at, created_at, expired_at, confidence}
+  episodes.jsonl    # {id, source_type, source_ref, timestamp, entities[], facts[]}
+```
+
+Embeddings are stored inline (384 floats per entity/fact). Estimated volume after 6 months: ~2 MB. Loadable in < 200ms.
+
+### Dependencies
+
+| Component | Dependencies |
+|:---|:---|
+| **Hooks** (runtime) | `tsx` + `@huggingface/transformers` (for embeddings) |
+| **Dashboard** | React 19, Vite 6, Recharts, react-force-graph-2d, chokidar |
+| **Security** | Node.js built-ins only (custom YAML parser) |
 
 ### Fail-safe design
 
-Every hook wraps its logic in `try/catch` and exits `0` on error. **Hooks never block Claude Code**, even if a file is missing or corrupted.
-
-### Deferred pairing
-
-Hooks can't see both the user message and assistant response simultaneously. HORA works around this:
-
-1. `prompt-submit.ts` saves the user message at prompt time
-2. `session-end.ts` saves the assistant response summary at session end
-3. On next prompt, both are paired into a continuous thread history
+Every hook wraps its logic in `try/catch` and exits `0` on error. **Hooks never block Claude Code**, even if a file is missing or corrupted. Embeddings unavailable? Falls back to classic injection. Claude CLI absent? Skips graph extraction. JSON invalid? Skips and continues.
 
 ### Cross-platform
 
@@ -838,11 +745,8 @@ Hooks can't see both the user message and assistant response simultaneously. HOR
 | install.ps1 | N/A | N/A | Full (entry point) |
 | TypeScript hooks | Full | Full | Full (runs via cmd.exe) |
 | statusline.sh | Full | Full | Full (jq or Node.js fallback) |
-| Security patterns | Full | Full | Full |
-| Orphan hook cleanup | Full | Full | Full |
-| Path resolution | N/A | N/A | Auto (`~` → `C:/Users/...`) |
-
-> \* API usage works cross-platform: macOS Keychain, `~/.claude/.credentials.json` (Windows/Linux), Linux GNOME Keyring (`secret-tool`), or `CLAUDE_CODE_OAUTH_TOKEN` env var (CI). The statusline uses `jq` when available and falls back to Node.js.
+| Knowledge graph | Full | Full | Full |
+| Dashboard | Full | Full | Full |
 
 ---
 
@@ -850,8 +754,9 @@ Hooks can't see both the user message and assistant response simultaneously. HOR
 
 ```
 UserPromptSubmit (fires on every user message)
-  |-- prompt-submit.ts         Injects MEMORY/, routing hints, thread continuity,
-  |                            checkpoint reminder at 70%, sentiment analysis
+  |-- prompt-submit.ts         Injects: knowledge graph (semantic search), MEMORY/,
+  |                            routing hints, thread continuity, checkpoint reminder
+  |                            at 70%, sentiment analysis
   |-- hora-session-name.ts     Names the session on first prompt
 
 PreToolUse (fires before every tool call)
@@ -866,10 +771,11 @@ PostToolUse (fires after every tool call)
   |-- doc-sync.ts              Write|Edit|MultiEdit: tracks structuring changes
 
 Stop (fires at session end)
-  |-- session-end.ts           Extracts profile + errors + sentiment + archive
+  |-- session-end.ts           Extracts: profile, errors, sentiment, archive,
+                               all thread exchanges, knowledge graph
+                               (claude -p extraction + embeddings)
 
-SubagentStop
-  |-- session-end.ts --subagent  Skips extraction for sub-agents
+Re-extraction: every 20 minutes during long sessions
 ```
 
 ---
@@ -881,16 +787,10 @@ hora/
 |-- README.md
 |-- install.sh                    # Installer (macOS/Linux/Windows via Git Bash)
 |-- install.ps1                   # Windows PowerShell entry point
-|-- .gitattributes                # Forces LF line endings (prevents Windows CRLF issues)
-|-- .gitignore
-|-- .hora/                        # Project runtime state (git-ignored)
-|   |-- project-id                # Stable project ID (survives folder renames)
-|   |-- project-knowledge.md      # Auto-audit results (versioned with git)
-|   |-- checkpoint.md             # Last session's work context (inherited by new sessions)
-|   |-- snapshots/                # Pre-edit file backups (project-scoped)
-|   |   |-- manifest.jsonl        #   Append-only index
-|   |   |-- YYYY-MM-DD/           #   Timestamped .bak files by day
-|   |-- backups/                  # Git bundles (when no remote)
+|-- .gitattributes                # Forces LF line endings
+|-- .gitignore                    # Ignores **/.hora/ runtime files
+|-- scripts/
+|   |-- seed-graph.mjs            # One-shot graph seeding from existing memory
 |
 |-- claude/                       # SOURCE — everything deployed to ~/.claude/
     |
@@ -902,6 +802,8 @@ hora/
     |   |-- patterns.yaml         # Security rules (17 blocked, 18 confirm, 6 alert)
     |
     |-- hooks/                    # 10 TypeScript lifecycle hooks
+    |   |-- prompt-submit.ts      #   UserPromptSubmit: knowledge graph injection + context
+    |   |-- hora-session-name.ts  #   UserPromptSubmit: auto session naming
     |   |-- snapshot.ts           #   PreToolUse: pre-edit file backup
     |   |-- hora-security.ts      #   PreToolUse: security validation (custom YAML parser)
     |   |-- tool-use.ts           #   PreToolUse: silent usage logging
@@ -909,11 +811,15 @@ hora/
     |   |-- librarian-check.ts    #   PreToolUse: library-first verification
     |   |-- backup-monitor.ts     #   PostToolUse: auto-backup trigger
     |   |-- doc-sync.ts           #   PostToolUse: project-knowledge staleness tracking
-    |   |-- prompt-submit.ts      #   UserPromptSubmit: context + routing + thread + checkpoint + sentiment
-    |   |-- hora-session-name.ts  #   UserPromptSubmit: auto session naming
-    |   |-- session-end.ts        #   Stop: profile + errors + sentiment + archive extraction
-    |   |-- lib/                  #   Shared utilities
-    |       |-- session-paths.ts  #     Session-scoped file paths (isolation)
+    |   |-- session-end.ts        #   Stop: full extraction + graph enrichment
+    |   |-- package.json          #   Dependencies: @huggingface/transformers, vitest
+    |   |-- lib/                  #   Shared modules
+    |       |-- knowledge-graph.ts  # HoraGraph: CRUD, semantic search, bi-temporal facts
+    |       |-- embeddings.ts       # Local ONNX embeddings (all-MiniLM-L6-v2, 384-dim)
+    |       |-- graph-builder.ts    # LLM extraction via claude -p + embedding computation
+    |       |-- graph-migration.ts  # Lazy migration of existing sessions to graph
+    |       |-- memory-tiers.ts     # T1/T2/T3 lifecycle, promotion, GC, insights
+    |       |-- session-paths.ts    # Session-scoped file paths (isolation)
     |
     |-- agents/                   # 7 specialized agents
     |   |-- architect.md          #   Opus: architecture, system design
@@ -925,33 +831,53 @@ hora/
     |   |-- librarian.md          #   Haiku: library-first verification
     |
     |-- skills/                   # 12 skills (directory/SKILL.md format)
-    |   |-- hora-design/SKILL.md       #   Anti-AI web design (Dieter Rams, OKLCH)
-    |   |-- hora-forge/SKILL.md        #   Zero Untested Delivery (NASA, TDD)
-    |   |-- hora-refactor/SKILL.md     #   Systematic refactoring (Fowler, Feathers)
-    |   |-- hora-security/SKILL.md     #   OWASP 2025 audit (CWE, SANS)
-    |   |-- hora-perf/SKILL.md         #   Performance (Core Web Vitals, RAIL)
-    |   |-- hora-vision/SKILL.md       #   Visual UI audit (23-point checklist)
-    |   |-- hora-dashboard/SKILL.md    #   Analytics dashboard (React 19 + Vite 6)
-    |   |-- hora-plan/SKILL.md
-    |   |-- hora-autopilot/SKILL.md
-    |   |-- hora-parallel-code/SKILL.md
-    |   |-- hora-parallel-research/SKILL.md
-    |   |-- hora-backup/SKILL.md
+    |   |-- hora-design/          #   Anti-AI web design (Dieter Rams, OKLCH)
+    |   |-- hora-forge/           #   Zero Untested Delivery (NASA, TDD, 7 gates)
+    |   |-- hora-refactor/        #   Systematic refactoring (Fowler, Feathers)
+    |   |-- hora-security/        #   OWASP 2025 audit (CWE, SANS)
+    |   |-- hora-perf/            #   Performance (Core Web Vitals, RAIL)
+    |   |-- hora-vision/          #   Visual UI audit (23-point checklist)
+    |   |-- hora-dashboard/       #   Analytics dashboard
+    |   |-- hora-plan/            #   Planning with ISC
+    |   |-- hora-autopilot/       #   Autonomous execution
+    |   |-- hora-parallel-code/   #   Multi-agent codebase
+    |   |-- hora-parallel-research/ # Multi-angle research
+    |   |-- hora-backup/          #   Immediate backup
     |
-    |-- dashboard/                # Standalone analytics app
-    |   |-- package.json          #   React 19, Recharts, Vite 6
-    |   |-- src/                  #   App.tsx, StatCard, SessionsTable, SentimentChart, ToolUsageChart
-    |   |-- scripts/collect-data.ts  # MEMORY/ reader → public/data.json
+    |-- dashboard/                # Standalone analytics + neural visualization app
+    |   |-- package.json          #   React 19, Vite 6, Recharts, react-force-graph-2d
+    |   |-- vite.config.ts        #   Custom HMR plugin with chokidar file watching
+    |   |-- src/
+    |   |   |-- App.tsx           #   Main app with 7-section routing
+    |   |   |-- NeuralPage.tsx    #   Full-page interactive knowledge graph
+    |   |   |-- ChatView.tsx      #   Complete CLI transcript viewer
+    |   |   |-- MemoryHealth.tsx  #   T1/T2/T3 memory tier visualization
+    |   |   |-- ProfileSidebar.tsx #  Navigation + profile info
+    |   |   |-- ThreadHistory.tsx #   Cross-session thread browser
+    |   |   |-- SessionsTable.tsx #   Session archives table
+    |   |   |-- SentimentChart.tsx #  Sentiment over time
+    |   |   |-- ToolTimeline.tsx  #   7-day tool usage chart
+    |   |   |-- SecurityEvents.tsx #  Security event viewer
+    |   |   |-- ProjectPanel.tsx  #   Right panel (checkpoint, knowledge)
+    |   |   |-- StatCard.tsx      #   Reusable stat card component
+    |   |   |-- types.ts          #   Shared TypeScript interfaces
+    |   |-- lib/
+    |   |   |-- collectors.ts     #   MEMORY/ reader (graph, transcripts, threads)
+    |   |-- scripts/
+    |       |-- collect-data.ts   #   CLI data collection
     |
     |-- MEMORY/                   # Persistent memory (empty at start)
         |-- PROFILE/              #   identity.md, projects.md, preferences.md, vocabulary.md
         |-- LEARNING/
         |   |-- FAILURES/         #   Extracted errors and lessons
         |   |-- ALGORITHM/        #   Sentiment patterns
+        |   |-- INSIGHTS/         #   T2/T3 aggregated insights
         |   |-- SYSTEM/           #   Technical issues
         |-- SESSIONS/             #   Session archives
         |-- SECURITY/             #   Security audit trail
-        |-- STATE/                #   Current state (session names, thread state)
+        |-- STATE/                #   Thread state, session names
+        |-- GRAPH/                #   Knowledge graph (entities, facts, episodes with embeddings)
+        |-- WORK/                 #   Working memory
 ```
 
 ---
@@ -960,30 +886,25 @@ hora/
 
 | Capability | Details |
 |:---|:---|
-| **Initial setup** | Nothing — 3 questions, then it learns |
-| **Long-term memory** | Self-constructed from sessions (hybrid env + linguistic extraction) |
-| **Security** | Layered defense + audit trail |
-| **Cross-session continuity** | Thread persistence, project-scoped (stable `.hora/project-id`) |
-| **Learning extraction** | Profile + errors + sentiment (JSONL append-only) |
-| **Auto project audit** | Full codebase analysis on first session (stored in `.hora/project-knowledge.md`) |
-| **Web/SaaS conventions** | Opinionated TypeScript/React stack, library-first, anti "AI look" design |
-| **Session naming** | Deterministic (fast regex, no AI) |
-| **Statusline** | Rich (context %, git, API usage, backup) |
-| **Compact recovery** | Auto-detection + project-scoped checkpoint injection |
-| **Session isolation** | Concurrent sessions on different projects without interference |
+| **Knowledge graph** | Bi-temporal entities/facts/episodes, Graphiti-inspired, auto-enriched |
+| **Vector embeddings** | Local ONNX (all-MiniLM-L6-v2, 384-dim), zero API cost |
+| **Semantic injection** | Cosine similarity + BFS depth 2, budget-adaptive |
+| **Memory tiers** | T1 (24h) → T2 (30d) → T3 (permanent), auto-promotion, GC |
+| **Periodic re-extraction** | Every 20 minutes during long sessions |
+| **Layered security** | 3 layers + audit trail (17 blocked, 18 confirm, 6 alert patterns) |
+| **Self-learning memory** | Hybrid env + linguistic extraction, silent |
+| **Cross-session continuity** | Full thread history, project-scoped |
+| **Neural dashboard** | Interactive graph, chat viewer, memory health, 7 sections |
+| **Auto project audit** | Full codebase analysis on first session |
+| **Web/SaaS conventions** | TypeScript/React stack, library-first, anti "AI look" design |
 | **Pre-edit snapshots** | Every edit, project-scoped, with or without git |
 | **Auto backup** | Mirror branch or local bundle |
-| **Doc sync** | Auto-reminder to update project-knowledge.md after structuring changes |
-| **Librarian** | Library-first enforcement on new utility files |
-| **Sentiment predict** | Real-time frustration detection (score 1-5) with anti-false-positive |
+| **Compact recovery** | Auto-detection + project-scoped checkpoint injection |
+| **Session isolation** | Concurrent sessions, project-scoped checkpoints |
 | **12 skills** | Design, Forge, Refactor, Security, Perf, Vision, Dashboard, Plan, Autopilot, Parallel-Code, Parallel-Research, Backup |
-| **Multi-agents** | 7 agents across 3 models |
-| **Model routing** | Opus / Sonnet / Haiku |
+| **7 agents** | Across 3 models (Opus, Sonnet, Haiku) |
 | **Ghost failure detection** | Built into the Algorithm (AUDIT step) |
-| **Library-first** | Never reimplement what a maintained library does |
 | **Cross-platform** | macOS / Linux / Windows |
-| **Runtime dependencies** | tsx only |
-| **Custom spinners** | 50 verbs (FR, customizable) |
 
 ---
 
@@ -1011,52 +932,15 @@ alert:
 
 ### Agents
 
-Edit files in `~/.claude/agents/`. Each `.md` file defines the model, authorized tools, and protocol:
-
-```markdown
-# Agent: your-agent-name
-
-Model: sonnet
-Tools: Read, Write, Edit, Bash, Glob, Grep
-
-## Protocol
-1. First step
-2. Second step
-```
+Edit files in `~/.claude/agents/`. Each `.md` file defines the model, authorized tools, and protocol.
 
 ### Skills
 
-Edit files in `~/.claude/skills/`. Each skill follows the directory format with `SKILL.md` + YAML frontmatter:
-
-```
-~/.claude/skills/your-skill/SKILL.md
-```
-
-```markdown
----
-name: your-skill
-description: What it does. USE WHEN trigger words.
----
-
-# Skill: your-skill
-
-## Protocol
-### 1. Step one
-### 2. Step two
-```
+Edit files in `~/.claude/skills/`. Each skill follows the directory format with `SKILL.md`.
 
 ### Spinner verbs
 
-Edit the `spinnerVerbs` section in `~/.claude/settings.json`:
-
-```json
-{
-  "spinnerVerbs": [
-    "Your custom message 1",
-    "Your custom message 2"
-  ]
-}
-```
+Edit the `spinnerVerbs` section in `~/.claude/settings.json`.
 
 ---
 
@@ -1064,7 +948,7 @@ Edit the `spinnerVerbs` section in `~/.claude/settings.json`:
 
 ### How it works
 
-Claude Code on Windows uses **Git for Windows** ([download](https://git-scm.com/download/win)) for shell operations. Important distinction:
+Claude Code on Windows uses **Git for Windows** ([download](https://git-scm.com/download/win)) for shell operations:
 
 - **Hooks** (TypeScript) execute via **cmd.exe** using `npx tsx` — NOT through Git Bash
 - **Bash tool** uses Git Bash (controlled by `CLAUDE_CODE_GIT_BASH_PATH`)
@@ -1072,172 +956,15 @@ Claude Code on Windows uses **Git for Windows** ([download](https://git-scm.com/
 
 ### What install.ps1 handles automatically
 
-The PowerShell installer (`.\install.ps1`) does everything:
-
 | Step | What it does |
 |:---|:---|
 | **Git Bash detection** | Finds `bash.exe` in standard locations, rejects WSL bash |
-| **CLAUDE_CODE_GIT_BASH_PATH** | Set permanently (User env var) — no manual config needed |
-| **jq installation** | Auto-installs via `winget` if missing (optional, Node.js fallback exists) |
+| **CLAUDE_CODE_GIT_BASH_PATH** | Set permanently (User env var) |
+| **jq installation** | Auto-installs via `winget` if missing |
 | **tsx installation** | Auto-installs via `npm install -g tsx` if missing |
 | **Orphan hook cleanup** | Removes hooks from other frameworks pointing to non-existent files |
-| **Path resolution** | Replaces `~` and `$HOME` with absolute `C:/Users/...` paths in settings.json |
-| **Hook verification** | Tests hooks after install to confirm they work |
-
-### Receiving HORA without git clone
-
-If you receive HORA as a `.zip` (private repo, offline transfer):
-
-1. Extract the zip anywhere
-2. Open PowerShell in the extracted folder
-3. Run `.\install.ps1`
-
-The installer works identically whether the source is a git clone or extracted zip.
+| **Path resolution** | Replaces `~` and `$HOME` with absolute `C:/Users/...` paths |
 
 ### Switching from another framework
 
-If you previously used another Claude Code framework, HORA automatically detects and removes orphan hooks — no need to manually delete `~/.claude/settings.json` before installing. The cleanup runs after HORA hooks are copied, so only truly orphaned references (files that don't exist) are removed.
-
-### Known limitations
-
-| Limitation | Details |
-|:---|:---|
-| API usage not displayed | Requires macOS Keychain — statusline gracefully degrades |
-| Console window flashes | Known Claude Code limitation on Windows ([#17230](https://github.com/anthropics/claude-code/issues/17230)) |
-| CRLF line endings | Handled by `.gitattributes` (forces LF on all scripts) |
-| Symlinks not supported | HORA uses plain text files instead (backup `latest` pointer) |
-
-### Manual troubleshooting
-
-If hooks fail after install, check these in order:
-
-```powershell
-# 1. Verify CLAUDE_CODE_GIT_BASH_PATH is set
-[System.Environment]::GetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', 'User')
-
-# 2. Test a hook manually
-echo '{}' | npx tsx "$env:USERPROFILE\.claude\hooks\prompt-submit.ts"
-
-# 3. Check settings.json for orphan hooks
-# Look for hooks referencing .ts files that don't exist:
-Get-Content "$env:USERPROFILE\.claude\settings.json" | Select-String "\.ts"
-
-# 4. Re-run the installer (safe to run multiple times)
-.\install.ps1
-```
-
----
-
-## FAQ
-
-<details>
-<summary><strong>Does HORA send my data anywhere?</strong></summary>
-
-No. Everything stays local in `~/.claude/`. The only network call is the Anthropic API usage check (macOS only, uses your existing Claude Code OAuth token). No telemetry, no analytics, no external services.
-</details>
-
-<details>
-<summary><strong>Can HORA break my Claude Code setup?</strong></summary>
-
-No. The installer backs up all your data first and can be rolled back with `bash install.sh --restore`. HORA merges into your existing config — it doesn't replace it. Every hook is fail-safe (try/catch + exit 0).
-</details>
-
-<details>
-<summary><strong>What happens if I uninstall HORA?</strong></summary>
-
-Run `bash install.sh --restore` to get back to your pre-HORA state. Or manually remove the HORA blocks from `~/.claude/CLAUDE.md` and `~/.claude/settings.json`.
-</details>
-
-<details>
-<summary><strong>Does it work with other Claude Code extensions?</strong></summary>
-
-Yes. The installer preserves third-party hooks during merge (requires jq). HORA hooks are additive — they don't interfere with existing ones. If you switch FROM another framework to HORA, orphan hooks (referencing non-existent files) are automatically cleaned up.
-</details>
-
-<details>
-<summary><strong>I'm on Windows and hooks are failing — what should I do?</strong></summary>
-
-Re-run `.\install.ps1` — it's safe to run multiple times. The installer will auto-detect Git Bash, set `CLAUDE_CODE_GIT_BASH_PATH`, clean orphan hooks from previous frameworks, and resolve paths. If you previously used another Claude Code framework, the installer handles the transition automatically. See the [Windows Notes](#windows-notes) section for manual troubleshooting.
-</details>
-
-<details>
-<summary><strong>Can I use it in English?</strong></summary>
-
-Yes. HORA's internal language is French (comments, spinner verbs, skill descriptions) but it works with any language. Memory extraction and session continuity are language-agnostic. You can customize spinner verbs to English in `settings.json`.
-</details>
-
-<details>
-<summary><strong>What's the performance impact?</strong></summary>
-
-Minimal. Each hook runs in 10-50ms. The statusline is a single bash script. Backup checks have a 30s cooldown. The heaviest operation (session-end extraction) only runs once per session.
-</details>
-
-<details>
-<summary><strong>What happens if I rename a project folder?</strong></summary>
-
-Nothing breaks. HORA generates a stable project ID stored in `.hora/project-id` on first use. This ID persists across folder renames, so session history and project knowledge stay associated correctly.
-</details>
-
-<details>
-<summary><strong>Can I opt out of the web/SaaS conventions?</strong></summary>
-
-Yes. The conventions live in the `STACK & CONVENTIONS WEB/SAAS` and `DESIGN UI/UX` sections of `~/.claude/CLAUDE.md`. Remove or edit those sections to change the defaults. The core HORA features (memory, security, snapshots, continuity) are independent of the stack opinions.
-</details>
-
-<details>
-<summary><strong>How does the auto project audit work?</strong></summary>
-
-When you open Claude Code in a directory without `.hora/project-knowledge.md`, HORA detects it as a new project and proposes a full codebase audit. The audit covers architecture, stack, security flaws (with severity), technical debt, and good practices. Results are stored locally and injected as context on every future session — so Claude never has to re-analyze the same project.
-</details>
-
-<details>
-<summary><strong>What's a "ghost failure"?</strong></summary>
-
-A ghost failure is when something fails **silently** — no error, no warning, but the system doesn't work as expected. HORA's Algorithm includes a mandatory AUDIT step that identifies these before any code is written. Example: the discovery that `system_reminder` output from PreToolUse hooks is silently ignored by Claude Code (the correct format is `hookSpecificOutput.additionalContext`).
-</details>
-
----
-
-## Contributing
-
-Contributions are welcome! HORA is built with a specific philosophy:
-
-1. **Zero runtime dependencies** — only Node.js built-ins
-2. **Fail-safe everything** — hooks must never block Claude Code
-3. **Silent by default** — never interrupt the user's flow
-4. **SSOT** — search before creating, reuse before duplicating
-5. **Ghost failure awareness** — identify silent failures before coding
-
-### Development
-
-```bash
-# Clone and install
-git clone https://github.com/Vivien83/Hora.git
-cd Hora
-bash install.sh
-
-# Test changes
-bash install.sh --dry-run     # Verify installer
-npx tsx claude/hooks/FILE.ts  # Test individual hooks
-
-# The source is in claude/ — everything deploys to ~/.claude/
-```
-
----
-
-## Acknowledgments
-
-HORA was born from the inspiration of two projects: [PAI](https://github.com/danielmiessler/Personal_AI_Infrastructure) by Daniel Miessler and [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) by Yeachan Heo. Their work showed what was possible with Claude Code — HORA takes a different path, but wouldn't exist without them.
-
----
-
-## License
-
-**MIT** — Free, open-source, forever.
-
----
-
-<p align="center">
-  <strong>HORA starts empty and builds itself through usage.</strong><br>
-  The more you use it, the more it knows. The more it knows, the better it helps.
-</p>
+If you previously used another Claude Code framework, HORA automatically detects and removes orphan hooks — no need to manually delete settings before installing.
