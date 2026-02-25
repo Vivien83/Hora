@@ -86,6 +86,20 @@ export interface ProfileData {
   vocabulary: string;
 }
 
+export interface MemoryTierStats {
+  items: number;
+  sizeKb: number;
+  oldestDays?: number;
+}
+
+export interface MemoryHealth {
+  t1: MemoryTierStats;
+  t2: MemoryTierStats;
+  t3: MemoryTierStats;
+  lastGc: string | null;
+  alerts: string[];
+}
+
 export interface DashboardData {
   generatedAt: string;
   profile: ProfileData;
@@ -99,4 +113,5 @@ export interface DashboardData {
   security: SecuritySummary;
   projectContext: ProjectContext | null;
   toolTimeline: ToolUsageDay[];
+  memoryHealth: MemoryHealth | null;
 }

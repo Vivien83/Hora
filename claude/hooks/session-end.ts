@@ -17,6 +17,7 @@ import * as path from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
 import { stateSessionFile, memorySessionFile } from "./lib/session-paths.js";
+import { runMemoryLifecycle } from "./lib/memory-tiers.js";
 
 const CLAUDE_DIR = path.join(homedir(), ".claude");
 const MEMORY_DIR = path.join(CLAUDE_DIR, "MEMORY");
@@ -864,6 +865,12 @@ async function main() {
   // --- 5. Cleanup flags + legacy migration ---
   cleanupOldFlags();
   migrateLegacyPAI();
+
+  // --- 6. Memory lifecycle: expire T2 + promote to T3 ---
+  // Silencieux: respecte le GC interval (6h) et le lock file
+  try {
+    runMemoryLifecycle(MEMORY_DIR);
+  } catch {}
 
   // NE PAS supprimer le state file — il est utilise par prompt-submit
   // pour detecter isFirst. Il sera ecrase naturellement par la session suivante.

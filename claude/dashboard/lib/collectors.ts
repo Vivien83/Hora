@@ -21,6 +21,8 @@ import type {
   SnapshotEntry,
   ProjectContext,
   ToolUsageDay,
+  MemoryHealth,
+  MemoryTierStats,
 } from "../src/types";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -492,6 +494,108 @@ function collectProjectContext(projectDir: string): ProjectContext | null {
   };
 }
 
+// ─── Memory Health ───────────────────────────────────────────────────────────
+
+function fileSizeKb(filePath: string): number {
+  try {
+    if (!existsSync(filePath)) return 0;
+    return Math.round(statSync(filePath).size / 1024);
+  } catch {
+    return 0;
+  }
+}
+
+function dirItemCount(dirPath: string, extensions?: string[]): { items: number; sizeKb: number; oldestDays: number } {
+  let items = 0;
+  let totalSize = 0;
+  let oldestMs = Date.now();
+
+  try {
+    if (!existsSync(dirPath)) return { items: 0, sizeKb: 0, oldestDays: 0 };
+    const entries = readdirSync(dirPath);
+    for (const entry of entries) {
+      if (entry.startsWith(".") || entry.startsWith("_")) continue;
+      const fullPath = join(dirPath, entry);
+      try {
+        const stat = statSync(fullPath);
+        if (stat.isFile()) {
+          if (extensions && !extensions.some((ext) => entry.endsWith(ext))) continue;
+          items++;
+          totalSize += stat.size;
+          if (stat.mtimeMs < oldestMs) oldestMs = stat.mtimeMs;
+        }
+      } catch {}
+    }
+  } catch {}
+
+  return {
+    items,
+    sizeKb: Math.round(totalSize / 1024),
+    oldestDays: items > 0 ? Math.floor((Date.now() - oldestMs) / (24 * 60 * 60 * 1000)) : 0,
+  };
+}
+
+function collectMemoryHealth(): MemoryHealth | null {
+  try {
+    const alerts: string[] = [];
+
+    // T1: STATE/ + .hora/sessions/
+    const stateDir = join(MEMORY_DIR, "STATE");
+    const stateStats = dirItemCount(stateDir);
+    const horaSessionsDir = join(CLAUDE_DIR, ".hora", "sessions");
+    const horaStats = dirItemCount(horaSessionsDir);
+    const t1: MemoryTierStats = {
+      items: stateStats.items + horaStats.items,
+      sizeKb: stateStats.sizeKb + horaStats.sizeKb,
+    };
+
+    // T2: SESSIONS/ + LEARNING/ logs + .tool-usage
+    const sessionsDir = join(MEMORY_DIR, "SESSIONS");
+    const sessionsStats = dirItemCount(sessionsDir, [".md"]);
+    const sentimentLog = join(MEMORY_DIR, "LEARNING", "ALGORITHM", "sentiment-log.jsonl");
+    const failuresLog = join(MEMORY_DIR, "LEARNING", "FAILURES", "failures-log.jsonl");
+    const toolUsageLog = join(MEMORY_DIR, ".tool-usage.jsonl");
+
+    const sentimentLines = parseJsonl<unknown>(sentimentLog).length;
+    const failuresLines = parseJsonl<unknown>(failuresLog).length;
+    const toolLines = parseJsonl<unknown>(toolUsageLog).length;
+
+    const t2Items = sessionsStats.items + sentimentLines + failuresLines + toolLines;
+    const t2: MemoryTierStats = {
+      items: t2Items,
+      sizeKb: sessionsStats.sizeKb + fileSizeKb(sentimentLog) + fileSizeKb(failuresLog) + fileSizeKb(toolUsageLog),
+      oldestDays: sessionsStats.oldestDays,
+    };
+
+    if (t2Items > 500) {
+      alerts.push(`T2 surcharge: ${t2Items} items`);
+    }
+
+    // T3: PROFILE/ + INSIGHTS/
+    const profileStats = dirItemCount(join(MEMORY_DIR, "PROFILE"));
+    const insightsStats = dirItemCount(join(MEMORY_DIR, "INSIGHTS"));
+    const t3: MemoryTierStats = {
+      items: profileStats.items + insightsStats.items,
+      sizeKb: profileStats.sizeKb + insightsStats.sizeKb,
+    };
+
+    // Last GC
+    let lastGc: string | null = null;
+    try {
+      const raw = safeRead(join(MEMORY_DIR, ".last-gc-timestamp"));
+      if (raw) lastGc = raw;
+    } catch {}
+
+    if (!lastGc) {
+      alerts.push("GC jamais execute");
+    }
+
+    return { t1, t2, t3, lastGc, alerts };
+  } catch {
+    return null;
+  }
+}
+
 // ─── Main collector ─────────────────────────────────────────────────────────
 
 export function collectAll(projectDir?: string): DashboardData {
@@ -506,6 +610,7 @@ export function collectAll(projectDir?: string): DashboardData {
   const failures = collectFailures();
   const security = collectSecurity();
   const projectContext = projectDir ? collectProjectContext(projectDir) : null;
+  const memoryHealth = collectMemoryHealth();
 
   // Filter thread by current project (keep entries with no project for backward compat)
   const projectId = projectContext?.projectId;
@@ -526,5 +631,6 @@ export function collectAll(projectDir?: string): DashboardData {
     security,
     projectContext,
     toolTimeline,
+    memoryHealth,
   };
 }

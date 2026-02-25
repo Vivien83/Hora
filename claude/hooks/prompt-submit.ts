@@ -692,6 +692,21 @@ async function main() {
         }
       } catch {}
 
+      // Injection T3 long-terme: insights distilles
+      const insightsDir = path.join(MEMORY_DIR, "INSIGHTS");
+      try {
+        const recurringFailures = readFile(path.join(insightsDir, "recurring-failures.md"));
+        if (recurringFailures && recurringFailures.length > 20) {
+          sections.push(`Patterns connus:\n${truncate(recurringFailures, MAX_SECTION_CHARS)}`);
+        }
+      } catch {}
+      try {
+        const projectHealth = readFile(path.join(insightsDir, "project-health.md"));
+        if (projectHealth && projectHealth.length > 20) {
+          sections.push(`Sante projets:\n${truncate(projectHealth, MAX_SECTION_CHARS)}`);
+        }
+      } catch {}
+
       if (sections.length > 0) {
         parts.push(`[HORA]\n${sections.join("\n")}`);
       }
