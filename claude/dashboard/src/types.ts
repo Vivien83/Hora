@@ -27,6 +27,8 @@ export interface ThreadEntry {
   u: string;
   a: string;
   project?: string;
+  sessionName?: string;
+  sentiment?: number;
 }
 
 export interface FailureEntry {

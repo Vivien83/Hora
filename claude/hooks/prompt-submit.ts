@@ -48,9 +48,9 @@ const MAX_SECTION_CHARS = 400;
 const MAX_WORK_CHARS = 300;
 
 // Thread limits
-const MAX_THREAD_ENTRIES = 10;
-const MAX_THREAD_CHARS = 2500;
-const MAX_USER_SUMMARY = 80;
+const MAX_THREAD_ENTRIES = 20;
+const MAX_THREAD_CHARS = 5000;
+const MAX_USER_SUMMARY = 200;
 
 interface HookInput {
   session_id?: string;
@@ -95,7 +95,8 @@ function summarizeUserMessage(msg: string): string {
     .replace(/```[\s\S]*?```/g, "")
     .replace(/https?:\/\/\S+/g, "")
     .replace(/\/[\w./-]{20,}/g, "")
-    .replace(/\s+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")          // collapse 3+ newlines to 2
+    .replace(/[^\S\n]+/g, " ")           // collapse spaces/tabs but preserve \n
     .trim();
 
   if (clean.length <= MAX_USER_SUMMARY) return clean;

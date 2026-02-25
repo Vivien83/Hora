@@ -95,6 +95,8 @@ function collectProfile(): ProfileData {
 
 interface SessionNamesJson {
   sessions?: Record<string, { name?: string; sid?: string; date?: string }>;
+  // Flat format: {UUID: "name"} — keys are full UUIDs, values are name strings
+  [key: string]: unknown;
 }
 
 interface SentimentLogEntry {
@@ -104,15 +106,37 @@ interface SentimentLogEntry {
   trigger?: string;
 }
 
-function collectSessions(sentimentMap: Map<string, number>): SessionEntry[] {
-  const sessionsDir = join(MEMORY_DIR, "SESSIONS");
+function collectSessionNames(): Map<string, { name?: string; date?: string }> {
   const namesPath = join(MEMORY_DIR, "STATE", "session-names.json");
-
   const namesJson = safeParseJson<SessionNamesJson>(namesPath, {});
   const namesMap = new Map<string, { name?: string; date?: string }>();
-  for (const [sid, info] of Object.entries(namesJson.sessions ?? {})) {
-    namesMap.set(sid, { name: info.name, date: info.date });
+
+  // Format 1: {sessions: {sid: {name, date}}}
+  if (namesJson.sessions) {
+    for (const [sid, info] of Object.entries(namesJson.sessions)) {
+      namesMap.set(sid, { name: info.name, date: info.date });
+      // Also index by sid8 for thread cross-ref
+      if (sid.length > 8) namesMap.set(sid.slice(0, 8), { name: info.name, date: info.date });
+    }
   }
+
+  // Format 2: {UUID: "name"} (flat — actual current format)
+  for (const [key, val] of Object.entries(namesJson)) {
+    if (key === "sessions") continue;
+    if (typeof val === "string") {
+      namesMap.set(key, { name: val });
+      if (key.length > 8) namesMap.set(key.slice(0, 8), { name: val });
+    }
+  }
+
+  return namesMap;
+}
+
+function collectSessions(
+  sentimentMap: Map<string, number>,
+  namesMap: Map<string, { name?: string; date?: string }>,
+): SessionEntry[] {
+  const sessionsDir = join(MEMORY_DIR, "SESSIONS");
 
   if (!existsSync(sessionsDir)) return [];
 
@@ -182,11 +206,39 @@ function collectSentiment(): { history: SentimentEntry[]; map: Map<string, numbe
 
 // ─── Thread ─────────────────────────────────────────────────────────────────
 
-function collectThread(): ThreadEntry[] {
-  const path = join(MEMORY_DIR, "STATE", "session-thread.json");
-  const raw = safeParseJson<ThreadEntry[]>(path, []);
-  // Return last 20 entries
-  return raw.slice(-20);
+function collectThread(
+  sentimentMap: Map<string, number>,
+  namesMap: Map<string, { name?: string; date?: string }>,
+): ThreadEntry[] {
+  const activePath = join(MEMORY_DIR, "STATE", "session-thread.json");
+  const archivePath = join(MEMORY_DIR, "STATE", "session-thread-archive.json");
+
+  const active = safeParseJson<ThreadEntry[]>(activePath, []);
+  const archive = safeParseJson<ThreadEntry[]>(archivePath, []);
+
+  // Merge: archive (oldest) + active (newest), deduplicate by ts+sid
+  const seen = new Set<string>();
+  const merged: ThreadEntry[] = [];
+  for (const entry of [...archive, ...active]) {
+    const key = `${entry.ts}-${entry.sid}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(entry);
+  }
+
+  // Enrich with session names and sentiment
+  for (const entry of merged) {
+    const sid8 = entry.sid?.slice(0, 8) ?? "";
+    if (!entry.sessionName && sid8) {
+      entry.sessionName = namesMap.get(sid8)?.name;
+    }
+    if (entry.sentiment === undefined && sid8) {
+      entry.sentiment = sentimentMap.get(sid8);
+    }
+  }
+
+  // Return last 50 entries (enough for dashboard, not too heavy)
+  return merged.slice(-50);
 }
 
 // ─── Failures ───────────────────────────────────────────────────────────────
@@ -445,11 +497,12 @@ function collectProjectContext(projectDir: string): ProjectContext | null {
 export function collectAll(projectDir?: string): DashboardData {
   const profile = collectProfile();
   const { history: sentimentHistory, map: sentimentMap } = collectSentiment();
-  const sessions = collectSessions(sentimentMap);
+  const namesMap = collectSessionNames();
+  const sessions = collectSessions(sentimentMap, namesMap);
   const backupState = collectBackupState();
   const snapshotCount = collectSnapshotCount();
   const { total: toolUsage, timeline: toolTimeline } = collectToolUsage();
-  const thread = collectThread();
+  const thread = collectThread(sentimentMap, namesMap);
   const failures = collectFailures();
   const security = collectSecurity();
   const projectContext = projectDir ? collectProjectContext(projectDir) : null;
