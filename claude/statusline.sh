@@ -27,11 +27,33 @@ set -o pipefail
 # ─────────────────────────────────────────────────────────────────────────────
 
 HORA_STATE_DIR="${HOME}/.claude/.hora"
-BACKUP_STATE="${HORA_STATE_DIR}/backup-state.json"
 GIT_CACHE="${HORA_STATE_DIR}/git-cache.sh"
 USAGE_CACHE="${HORA_STATE_DIR}/usage-cache.json"
 GIT_CACHE_TTL=5     # secondes
 USAGE_CACHE_TTL=60  # secondes
+
+# Find project root: walk up from CWD looking for .hora/project-id
+PROJECT_ROOT=""
+_dir="$(pwd)"
+while [ "$_dir" != "/" ]; do
+    if [ -f "$_dir/.hora/project-id" ]; then
+        PROJECT_ROOT="$_dir"
+        break
+    fi
+    _dir="$(dirname "$_dir")"
+done
+# Fallback to git root, then CWD
+if [ -z "$PROJECT_ROOT" ]; then
+    PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+fi
+PROJECT_HORA_DIR="${PROJECT_ROOT}/.hora"
+
+# Project-scoped backup state (fallback to global)
+if [ -f "${PROJECT_HORA_DIR}/backup-state.json" ]; then
+    BACKUP_STATE="${PROJECT_HORA_DIR}/backup-state.json"
+else
+    BACKUP_STATE="${HORA_STATE_DIR}/backup-state.json"
+fi
 
 # mtime cross-platform (epoch)
 get_mtime() {
@@ -361,8 +383,8 @@ fi
 # ETAT DES SNAPSHOTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Project-scoped: snapshots live in <cwd>/.hora/snapshots/
-SNAP_MANIFEST=".hora/snapshots/manifest.jsonl"
+# Project-scoped: snapshots live in <project-root>/.hora/snapshots/
+SNAP_MANIFEST="${PROJECT_HORA_DIR}/snapshots/manifest.jsonl"
 snap_count=0
 if [ -f "$SNAP_MANIFEST" ]; then
     snap_count=$(wc -l < "$SNAP_MANIFEST" 2>/dev/null | tr -d ' ')

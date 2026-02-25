@@ -343,8 +343,8 @@ feat/auth *3 R:5min 12snap 5h/10sk 42%↻2h31
 | API usage (5h/7d) | Anthropic OAuth API (Keychain / credentials file / secret-tool) | All |
 | Git status | `git status --porcelain` (cached 5s) | All |
 | Last 3 commits | `git log` with push status vs `origin/branch` | All |
-| Backup status | `.hora/backup-state.json` | All |
-| Snapshot count | `.hora/snapshots/manifest.jsonl` | All |
+| Backup status | `<project>/.hora/backup-state.json` (auto-detects project root) | All |
+| Snapshot count | `<project>/.hora/snapshots/manifest.jsonl` (auto-detects project root) | All |
 | Active model | Claude Code API (JSON stdin) | All |
 | Skills count | HORA skills vs total in `~/.claude/skills/` | All |
 
@@ -635,18 +635,22 @@ Supports `--compare` mode for before/after analysis. No external API — uses Cl
 
 ---
 
-### 19. Dashboard UI
+### 19. Dashboard UI (v2 — Real-time)
 
-A standalone React 19 + Vite 6 app in `claude/dashboard/` that visualizes HORA's collected data.
+A standalone React 19 + Vite 6 app in `claude/dashboard/` that visualizes all HORA data in real-time.
 
 ```bash
-cd claude/dashboard && npm install && npm run collect && npm run dev
-# Opens at http://localhost:3847
+cd claude/dashboard && npm install && npm run dev
+# Opens at http://localhost:3847 — updates automatically via HMR
 ```
 
-**Components:** 4 stat cards (sessions, sentiment, tools, files), sessions table, sentiment trend chart (Recharts), tool usage distribution chart.
+**Real-time architecture:** Vite plugin with chokidar watches `~/.claude/MEMORY/` and `<project>/.hora/`, debounces 500ms, pushes updates via HMR WebSocket. Fallback: polling every 10s.
 
-**Data pipeline:** `scripts/collect-data.ts` reads from `MEMORY/` (sessions, sentiment logs, tool usage) and produces `public/data.json`. Dark-first design (`#0A0A0B`), zinc palette.
+**Layout:** 3-column design — sidebar (profile + navigation), main content (stats, tables, charts), right panel (project context).
+
+**Components (12):** 6 stat cards (sessions, sentiment, snapshots, security, tools, thread), sessions table, sentiment chart, tool timeline (7-day bar chart), thread history, security events (blocks/confirms/alerts), project panel (checkpoint, knowledge, snapshots, backup state, failures).
+
+**Data pipeline:** `lib/collectors.ts` shared module used by both the Vite plugin (real-time) and CLI (`scripts/collect-data.ts`). JSONL-first for failures and sentiment, legacy markdown fallback. Project context read from `<project>/.hora/`.
 
 **Auto-prompt:** At session startup, HORA detects if the dashboard is installed and asks if you want to open it.
 

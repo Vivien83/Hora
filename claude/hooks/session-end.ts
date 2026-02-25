@@ -542,12 +542,25 @@ function extractFailures(transcript: string, sessionId: string): FailureEntry[] 
     }
   }
 
-  // Conversational patterns (require context, not bare keywords)
+  // Conversational patterns — user-only, context-rich phrases (not bare keywords).
+  // FR and EN variants. Grouped by severity.
   const errorPatterns = [
-    { pattern: /j'ai une erreur|j'ai eu une erreur|il y a une erreur|there'?s an error|i got an error|i have an error/i, type: "error" as const },
-    { pattern: /ca (?:ne )?(?:marche|fonctionne) (?:pas|plus)|doesn'?t work|it'?s broken|it broke|c'est casse/i, type: "failure" as const },
-    { pattern: /je suis bloque|je (?:n')?arrive pas|i'?m stuck|i can'?t figure|je ne comprends pas pourquoi/i, type: "blocage" as const },
-    { pattern: /c'est (?:corrige|repare|resolu|regle)|(?:it'?s|that'?s) (?:fixed|resolved|solved)|ca (?:re)?marche (?:maintenant|enfin)/i, type: "correction" as const },
+    // Error: user reports an error
+    { pattern: /j'ai (?:une|eu une|cette) erreur|il y a une erreur|y'?a une erreur|there'?s an error|i got an error|i have an error|i'?m getting (?:an |this )?error/i, type: "error" as const },
+    { pattern: /erreur (?:quand|lorsque|si|au moment)|error (?:when|while|after|during)/i, type: "error" as const },
+
+    // Failure: something doesn't work
+    { pattern: /(?:ca|ça) (?:ne )?(?:marche|fonctionne) (?:pas|plus)|doesn'?t work|it'?s (?:not working|broken)|it broke|c'est (?:casse|cassé)|(?:ca|ça) plante|(?:ca|ça) crash/i, type: "failure" as const },
+    { pattern: /(?:toujours|encore) (?:le meme |la meme )?(?:bug|probleme|erreur)|still (?:broken|failing|not working)|same (?:bug|issue|error)/i, type: "failure" as const },
+    { pattern: /(?:ca|ça) (?:a |ne |n'a )(?:pas |)(?:marche|fonctionne|resolu|corrige)|didn'?t (?:work|fix|help|solve)/i, type: "failure" as const },
+
+    // Blocage: user is stuck
+    { pattern: /je suis (?:bloque|bloqu[eé])|je (?:n')?(?:y )?arrive pas|i'?m stuck|i can'?t (?:figure|get|make)|je ne (?:comprends|sais) pas (?:pourquoi|comment)/i, type: "blocage" as const },
+    { pattern: /on (?:n')?avance (?:pas|plus)|(?:ca|ça) (?:ne )?(?:bouge|avance) (?:pas|plus)|we'?re? stuck|can'?t (?:proceed|continue|move forward)/i, type: "blocage" as const },
+
+    // Correction: user confirms fix
+    { pattern: /c'est (?:corrig[eé]|r[eé]par[eé]|r[eé]solu|r[eé]gl[eé])|(?:it'?s|that'?s) (?:fixed|resolved|solved)|(?:ca|ça) (?:re)?marche (?:maintenant|enfin)/i, type: "correction" as const },
+    { pattern: /(?:ok|bien|bon|parfait|top|nickel),? (?:ca|ça) (?:marche|fonctionne)|(?:ok|good|great|nice),? (?:it |that )?works/i, type: "correction" as const },
   ];
 
   for (const line of userContentLines) {
