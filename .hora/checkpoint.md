@@ -1,22 +1,20 @@
 ---
-session: 86b5164c
-timestamp: 2026-02-25T09:33:33.688Z
-context_pct: 80
+session: 765a72eb
+timestamp: 2026-02-25T14:47:23.767Z
+context_pct: 82
 ---
 # Objectif en cours
-Dashboard HORA v2 — Thread History enrichi + filtrage projet
+Calculer les embeddings sur le graph seede pour activer l'injection semantique
 
 # Etat actuel
-- Thread filtré par projet courant (32 entrées au lieu de 50 mélangées)
-- Composant compact : 2 entrées/groupe, expandable, groupé par session
-- Noms sessions, sentiment, newlines préservés
-- Toutes les sessions visibles sans scroll excessif
+- Graph seede : 71 entites, 100 faits, 0 embeddings
+- Pipeline injection dans prompt-submit.ts pret mais bloque par embeddedRatio = 0
+- Lancement du calcul des embeddings en cours
 
 # Decisions prises
-- Filtrage projet dans collectAll() : garder entries du projet + entries sans projet (backward compat)
-- Max 2 entrées visibles par groupe, bouton expand
-- MAX_USER_SUMMARY 200, MAX_THREAD_ENTRIES 20
+- Calculer les embeddings maintenant via script one-shot
+- Utiliser @huggingface/transformers (all-MiniLM-L6-v2, local ONNX)
 
 # Prochaines etapes
-- Commit + push
-- Mémoire court/moyen/long terme (demande user en attente)
+- Verifier embeddedRatio > 0.3 apres calcul
+- Tester l'injection au prochain demarrage de session
