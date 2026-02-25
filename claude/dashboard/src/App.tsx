@@ -409,6 +409,13 @@ export function App() {
           </>
         )}
 
+        {/* Chat section */}
+        {section === "chat" && (
+          <Section title="Historique complet">
+            <ThreadHistory thread={data.thread} />
+          </Section>
+        )}
+
         {/* Security section */}
         {section === "security" && (
           <Section title="Evenements de securite">

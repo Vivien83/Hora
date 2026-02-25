@@ -737,11 +737,7 @@ export function collectAll(projectDir?: string): DashboardData {
   const memoryHealth = collectMemoryHealth();
   const graphData = collectGraphData();
 
-  // Filter thread by current project (keep entries with no project for backward compat)
-  const projectId = projectContext?.projectId;
-  const filteredThread = projectId
-    ? thread.filter((e) => !e.project || e.project === projectId)
-    : thread;
+  // Show ALL thread entries (cross-project full history)
 
   return {
     generatedAt: new Date().toISOString(),
@@ -751,7 +747,7 @@ export function collectAll(projectDir?: string): DashboardData {
     backupState,
     snapshotCount,
     toolUsage,
-    thread: filteredThread,
+    thread,
     failures,
     security,
     projectContext,

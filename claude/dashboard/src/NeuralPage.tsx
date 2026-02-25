@@ -41,6 +41,8 @@ interface ForceNode extends GraphNode {
   x?: number;
   y?: number;
   val: number;
+  fx?: number | undefined;
+  fy?: number | undefined;
 }
 
 interface ForceLink {
@@ -50,6 +52,9 @@ interface ForceLink {
   confidence: number;
   isRecent: boolean;
   id: string;
+  relation: string;
+  description: string;
+  valid_at: string;
 }
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
@@ -127,6 +132,9 @@ function buildForceData(
     confidence: f.confidence,
     isRecent: isRecent(f.valid_at, 24),
     id: f.id,
+    relation: f.relation,
+    description: f.description,
+    valid_at: f.valid_at,
   }));
 
   return { nodes, links };
@@ -298,11 +306,170 @@ function DetailPanel({
   );
 }
 
+// ─── Link Detail Panel ──────────────────────────────────────────────────────
+
+function LinkDetailPanel({
+  link,
+  entities,
+  onClose,
+}: {
+  link: ForceLink;
+  entities: GraphNode[];
+  onClose: () => void;
+}) {
+  const sourceName = entities.find((e) => e.id === link.source)?.name || link.source;
+  const targetName = entities.find((e) => e.id === link.target)?.name || link.target;
+  const confPct = (link.confidence * 100).toFixed(0);
+
+  return (
+    <div
+      style={{
+        width: "300px",
+        height: "100%",
+        background: C.card,
+        borderLeft: `1px solid ${C.border}`,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        flexShrink: 0,
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          padding: "16px 20px",
+          borderBottom: `1px solid ${C.border}`,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "12px",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: "14px",
+              fontWeight: 700,
+              color: C.text,
+              lineHeight: 1.2,
+              letterSpacing: "-0.01em",
+              wordBreak: "break-word",
+            }}
+          >
+            {link.relation}
+          </div>
+          <span
+            style={{
+              display: "inline-block",
+              marginTop: "6px",
+              fontSize: "10px",
+              fontWeight: 600,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              color: C.bg,
+              background: C.accent,
+              padding: "2px 8px",
+              borderRadius: "4px",
+            }}
+          >
+            fait
+          </span>
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            background: "none",
+            border: "none",
+            color: C.dim,
+            cursor: "pointer",
+            fontSize: "18px",
+            lineHeight: 1,
+            padding: "4px",
+            flexShrink: 0,
+          }}
+          aria-label="Fermer"
+        >
+          X
+        </button>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+        {/* Connection */}
+        <div style={{ marginBottom: "16px" }}>
+          <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+            Connexion
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontSize: "12px",
+              color: C.text,
+              padding: "8px 10px",
+              background: C.bg,
+              borderRadius: "4px",
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>{sourceName}</span>
+            <span style={{ color: C.dim }}>→</span>
+            <span style={{ fontWeight: 600 }}>{targetName}</span>
+          </div>
+        </div>
+
+        {/* Description */}
+        {link.description && (
+          <div style={{ marginBottom: "16px" }}>
+            <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+              Description
+            </div>
+            <div style={{ fontSize: "12px", color: C.muted, lineHeight: 1.5 }}>
+              {link.description}
+            </div>
+          </div>
+        )}
+
+        {/* Metadata */}
+        <div style={{ marginBottom: "16px" }}>
+          <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+            Metadata
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            {[
+              { label: "Confiance", value: `${confPct}%` },
+              { label: "Valide depuis", value: formatDate(link.valid_at) },
+              { label: "Relation", value: link.relation },
+            ].map((row) => (
+              <div
+                key={row.label}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: "12px",
+                  padding: "4px 8px",
+                  background: C.bg,
+                  borderRadius: "4px",
+                }}
+              >
+                <span style={{ color: C.dim, fontFamily: "monospace" }}>{row.label}</span>
+                <span style={{ color: C.muted, fontFamily: "monospace" }}>{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function NeuralPage({ graphData }: NeuralPageProps) {
   const graphRef = useRef<any>(null);
+  const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [selectedLink, setSelectedLink] = useState<ForceLink | null>(null);
   const [highlightNodes, setHighlightNodes] = useState<Set<string>>(new Set());
   const [highlightLinks, setHighlightLinks] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -320,11 +487,18 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
 
   const [temporalCutoff, setTemporalCutoff] = useState(allDates.max);
 
-  // Build graph data
-  const forceData = useMemo(
-    () => buildForceData(graphData, search, filterRecent, temporalCutoff),
-    [graphData, search, filterRecent, temporalCutoff],
-  );
+  // Build graph data, restoring persisted positions
+  const forceData = useMemo(() => {
+    const data = buildForceData(graphData, search, filterRecent, temporalCutoff);
+    for (const node of data.nodes) {
+      const saved = positionsRef.current.get(node.id);
+      if (saved) {
+        node.fx = saved.x;
+        node.fy = saved.y;
+      }
+    }
+    return data;
+  }, [graphData, search, filterRecent, temporalCutoff]);
 
   // Configure link distance force + initial zoom-to-fit
   useEffect(() => {
@@ -455,9 +629,43 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
       const n = node as ForceNode;
       const entity = graphData.entities.find((e) => e.id === n.id);
       setSelectedNode(entity || null);
+      setSelectedLink(null);
     },
     [graphData.entities],
   );
+
+  // Drag handlers — persist node positions
+  const handleNodeDrag = useCallback((node: any) => {
+    const n = node as ForceNode;
+    n.fx = n.x;
+    n.fy = n.y;
+  }, []);
+
+  const handleNodeDragEnd = useCallback((node: any) => {
+    const n = node as ForceNode;
+    if (n.x != null && n.y != null) {
+      positionsRef.current.set(n.id, { x: n.x, y: n.y });
+      n.fx = n.x;
+      n.fy = n.y;
+    }
+  }, []);
+
+  // Link click handler
+  const handleLinkClick = useCallback((link: any) => {
+    const l = link as ForceLink;
+    setSelectedLink(l);
+    setSelectedNode(null);
+  }, []);
+
+  // Link tooltip
+  const linkLabel = useCallback((link: any) => {
+    const l = link as ForceLink;
+    const parts = [l.relation];
+    if (l.description) parts.push(l.description);
+    parts.push(`conf. ${(l.confidence * 100).toFixed(0)}%`);
+    parts.push(formatDate(l.valid_at));
+    return parts.join(" · ");
+  }, []);
 
   // Link width
   const linkWidth = useCallback(
@@ -709,8 +917,12 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           nodeLabel=""
           onNodeHover={handleNodeHover}
           onNodeClick={handleNodeClick}
+          onNodeDrag={handleNodeDrag}
+          onNodeDragEnd={handleNodeDragEnd}
           linkWidth={linkWidth}
           linkColor={linkColor}
+          linkLabel={linkLabel}
+          onLinkClick={handleLinkClick}
           linkDirectionalParticles={(link: any) => {
             const l = link as ForceLink;
             return l.isRecent ? 3 : 0;
@@ -734,12 +946,19 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
         />
       </div>
 
-      {/* Detail panel */}
+      {/* Detail panel — node or link */}
       {selectedNode && (
         <DetailPanel
           node={selectedNode}
           facts={graphData.facts}
           onClose={() => setSelectedNode(null)}
+        />
+      )}
+      {selectedLink && !selectedNode && (
+        <LinkDetailPanel
+          link={selectedLink}
+          entities={graphData.entities}
+          onClose={() => setSelectedLink(null)}
         />
       )}
     </div>
