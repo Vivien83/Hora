@@ -16,13 +16,11 @@ claude/MEMORY/PROFILE/projects.md
 claude/MEMORY/PROFILE/preferences.md
 claude/MEMORY/PROFILE/vocabulary.md
 
-# Snapshots et backups runtime
-.hora/snapshots/
-.hora/backups/
-.hora/.last-check
-.hora/session-backup-state.json
-.hora/backup-state.json
-.hora/backup-log.md
+# HORA runtime (session state, snapshots, backups, doc-sync)
+**/.hora/
+!.hora/checkpoint.md
+!.hora/project-knowledge.md
+!.hora/project-id
 
 # Backup fichiers
 *.bak
