@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { ThreadEntry } from "./types";
 
 const C = {
@@ -19,8 +19,6 @@ const SENTIMENT_COLORS: Record<number, string> = {
   4: "#22c55e",
   5: "#14b8a6",
 };
-
-const ENTRIES_PER_GROUP = 2;
 
 interface ThreadHistoryProps {
   thread: ThreadEntry[];
@@ -69,6 +67,16 @@ function groupBySession(entries: ThreadEntry[]): SessionGroup[] {
     }
   }
   return groups;
+}
+
+function matchesSearch(entry: ThreadEntry, query: string): boolean {
+  const q = query.toLowerCase();
+  if (entry.u.toLowerCase().includes(q)) return true;
+  if (entry.a.toLowerCase().includes(q)) return true;
+  if (entry.sessionName?.toLowerCase().includes(q)) return true;
+  if (entry.ts.toLowerCase().includes(q)) return true;
+  if (entry.sid.toLowerCase().includes(q)) return true;
+  return false;
 }
 
 function EntryRow({ entry }: { entry: ThreadEntry }) {
@@ -126,10 +134,6 @@ function EntryRow({ entry }: { entry: ThreadEntry }) {
 }
 
 function GroupCard({ group }: { group: SessionGroup }) {
-  const [showAll, setShowAll] = useState(false);
-  const visible = showAll ? group.entries : group.entries.slice(0, ENTRIES_PER_GROUP);
-  const hidden = group.entries.length - ENTRIES_PER_GROUP;
-
   return (
     <div
       style={{
@@ -167,44 +171,45 @@ function GroupCard({ group }: { group: SessionGroup }) {
         <span style={{ color: C.dim, flexShrink: 0 }}>{group.entries.length}msg</span>
       </div>
 
-      {/* Entries */}
-      {visible.map((entry, i) => (
+      {/* All entries — no limit */}
+      {group.entries.map((entry, i) => (
         <div
           key={`${entry.ts}-${i}`}
-          style={{ borderBottom: i < visible.length - 1 ? "1px solid #1f1f22" : "none" }}
+          style={{ borderBottom: i < group.entries.length - 1 ? "1px solid #1f1f22" : "none" }}
         >
           <EntryRow entry={entry} />
         </div>
       ))}
-
-      {/* Show more entries in this group */}
-      {hidden > 0 && !showAll && (
-        <button
-          onClick={() => setShowAll(true)}
-          style={{
-            width: "100%",
-            background: "none",
-            border: "none",
-            borderTop: "1px solid #1f1f22",
-            color: C.dim,
-            fontSize: "11px",
-            padding: "5px 12px",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-        >
-          + {hidden} echange{hidden > 1 ? "s" : ""} de plus
-        </button>
-      )}
     </div>
   );
 }
 
+function computeDateRange(entries: ThreadEntry[]): string {
+  if (entries.length === 0) return "";
+  const dates = entries
+    .map((e) => new Date(e.ts))
+    .filter((d) => !isNaN(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+  if (dates.length === 0) return "";
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+  const first = fmt(dates[0]);
+  const last = fmt(dates[dates.length - 1]);
+  if (first === last) return first;
+  return `${first} — ${last}`;
+}
+
 export function ThreadHistory({ thread }: ThreadHistoryProps) {
-  const [showOlder, setShowOlder] = useState(false);
+  const [search, setSearch] = useState("");
   const reversed = thread.slice().reverse();
-  const groups = groupBySession(reversed);
-  const displayGroups = showOlder ? groups : groups.slice(0, 8);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return reversed;
+    return reversed.filter((entry) => matchesSearch(entry, search.trim()));
+  }, [reversed, search]);
+
+  const groups = useMemo(() => groupBySession(filtered), [filtered]);
+  const dateRange = useMemo(() => computeDateRange(reversed), [reversed]);
 
   if (reversed.length === 0) {
     return (
@@ -225,32 +230,54 @@ export function ThreadHistory({ thread }: ThreadHistoryProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      {/* Search bar */}
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Rechercher (message, session, date...)"
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: "6px",
+          padding: "8px 12px",
+          color: C.text,
+          fontSize: "12px",
+          outline: "none",
+          width: "100%",
+          boxSizing: "border-box",
+        }}
+      />
+
       {/* Stats */}
-      <div style={{ display: "flex", gap: "16px", fontSize: "11px", color: C.dim, padding: "0 4px" }}>
+      <div style={{ display: "flex", gap: "16px", fontSize: "11px", color: C.dim, padding: "0 4px", flexWrap: "wrap" }}>
         <span>{reversed.length} echanges</span>
-        <span>{groups.length} sessions</span>
+        <span>{groupBySession(reversed).length} sessions</span>
+        {dateRange && <span>{dateRange}</span>}
+        {search.trim() && filtered.length !== reversed.length && (
+          <span style={{ color: C.accent }}>{filtered.length} resultat{filtered.length !== 1 ? "s" : ""}</span>
+        )}
       </div>
 
-      {displayGroups.map((group) => (
+      {/* All groups — no limit */}
+      {groups.map((group) => (
         <GroupCard key={`${group.sid}-${group.entries[0]?.ts}`} group={group} />
       ))}
 
-      {groups.length > 8 && (
-        <button
-          onClick={() => setShowOlder(!showOlder)}
+      {search.trim() && groups.length === 0 && (
+        <div
           style={{
             background: C.card,
             border: `1px solid ${C.border}`,
             borderRadius: "8px",
-            padding: "6px 12px",
-            color: C.accent,
-            fontSize: "11px",
-            cursor: "pointer",
+            padding: "16px",
+            color: C.dim,
+            fontSize: "12px",
             textAlign: "center",
           }}
         >
-          {showOlder ? "Reduire" : `+ ${groups.length - 8} sessions precedentes`}
-        </button>
+          Aucun resultat pour "{search}"
+        </div>
       )}
     </div>
   );

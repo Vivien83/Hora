@@ -6,7 +6,7 @@
  * Les entites sont colorees par type, les faits par confiance.
  */
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import type { GraphData, GraphNode, GraphEdge } from "./types";
 
@@ -117,13 +117,13 @@ function buildForceData(
 
   const nodes: ForceNode[] = entities.map((e) => ({
     ...e,
-    val: Math.max(2, Math.min(12, (degree[e.id] || 0) + 2)),
+    val: Math.max(5, Math.min(20, (degree[e.id] || 0) * 2 + 5)),
   }));
 
   const links: ForceLink[] = facts.map((f) => ({
     source: f.source,
     target: f.target,
-    color: hexToRgba("#ffffff", 0.1 + f.confidence * 0.3),
+    color: hexToRgba("#ffffff", 0.05 + f.confidence * 0.2),
     confidence: f.confidence,
     isRecent: isRecent(f.valid_at, 24),
     id: f.id,
@@ -326,6 +326,19 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     [graphData, search, filterRecent, temporalCutoff],
   );
 
+  // Configure link distance force + initial zoom-to-fit
+  useEffect(() => {
+    const fg = graphRef.current;
+    if (!fg) return;
+    fg.d3Force("charge")?.strength(-400);
+    fg.d3Force("link")?.distance(120);
+    // Initial zoom-to-fit after a short delay for layout stabilization
+    const timer = setTimeout(() => {
+      fg.zoomToFit(600, 80);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [forceData]);
+
   // Node canvas renderer
   const nodeCanvasObject = useCallback(
     (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
@@ -334,7 +347,8 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
       const y = n.y || 0;
       const color = TYPE_COLORS[n.type] || C.muted;
       const isHighlighted = highlightNodes.has(n.id);
-      const radius = Math.max(4, Math.min(16, n.connections * 2 + 4));
+      const deg = n.connections || 0;
+      const radius = Math.max(6, Math.min(24, deg * 3 + 6));
 
       // Breathing for recently seen entities
       let breathScale = 1;
@@ -366,14 +380,33 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
       ctx.fillStyle = hexToRgba("#ffffff", isHighlighted ? 0.25 : 0.12);
       ctx.fill();
 
-      // Label
-      if (globalScale > 0.5) {
-        const fontSize = Math.max(9, 10 / globalScale);
-        ctx.font = `400 ${fontSize}px system-ui, sans-serif`;
+      // Label — only for nodes with 3+ connections or highlighted
+      const showLabel = deg >= 3 || isHighlighted;
+      if (showLabel && globalScale > 0.3) {
+        const fontSize = Math.max(11, 13 / globalScale);
+        ctx.font = `500 ${fontSize}px system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
+        const label = truncate(n.name, 18);
+        const textWidth = ctx.measureText(label).width;
+        const labelY = y + r + 4;
+
+        // Dark background behind label for contrast
+        const padX = 4;
+        const padY = 2;
+        ctx.fillStyle = hexToRgba(C.bg, 0.85);
+        ctx.beginPath();
+        ctx.roundRect(
+          x - textWidth / 2 - padX,
+          labelY - padY,
+          textWidth + padX * 2,
+          fontSize + padY * 2,
+          3,
+        );
+        ctx.fill();
+
         ctx.fillStyle = isHighlighted ? C.text : C.muted;
-        ctx.fillText(truncate(n.name, 15), x, y + r + 3);
+        ctx.fillText(label, x, labelY);
       }
     },
     [highlightNodes],
@@ -383,7 +416,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   const nodePointerAreaPaint = useCallback(
     (node: any, color: string, ctx: CanvasRenderingContext2D) => {
       const n = node as ForceNode;
-      const r = Math.max(4, Math.min(16, n.connections * 2 + 4)) + 4;
+      const r = Math.max(6, Math.min(24, (n.connections || 0) * 3 + 6)) + 6;
       ctx.beginPath();
       ctx.arc(n.x || 0, n.y || 0, r, 0, 2 * Math.PI);
       ctx.fillStyle = color;
@@ -688,11 +721,16 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           linkCurvature={0.1}
           d3AlphaDecay={0.03}
           d3VelocityDecay={0.25}
-          warmupTicks={60}
-          cooldownTicks={120}
+          warmupTicks={80}
+          cooldownTicks={150}
           enableZoomInteraction={true}
           enablePanInteraction={true}
           enableNodeDrag={true}
+          onEngineStop={() => {
+            if (graphRef.current) {
+              graphRef.current.zoomToFit(400, 60);
+            }
+          }}
         />
       </div>
 

@@ -245,8 +245,8 @@ function collectThread(
     }
   }
 
-  // Return last 50 entries (enough for dashboard, not too heavy)
-  return merged.slice(-50);
+  // Return all entries (no limit)
+  return merged;
 }
 
 // ─── Failures ───────────────────────────────────────────────────────────────
