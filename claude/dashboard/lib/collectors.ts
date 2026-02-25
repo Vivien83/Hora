@@ -507,6 +507,12 @@ export function collectAll(projectDir?: string): DashboardData {
   const security = collectSecurity();
   const projectContext = projectDir ? collectProjectContext(projectDir) : null;
 
+  // Filter thread by current project (keep entries with no project for backward compat)
+  const projectId = projectContext?.projectId;
+  const filteredThread = projectId
+    ? thread.filter((e) => !e.project || e.project === projectId)
+    : thread;
+
   return {
     generatedAt: new Date().toISOString(),
     profile,
@@ -515,7 +521,7 @@ export function collectAll(projectDir?: string): DashboardData {
     backupState,
     snapshotCount,
     toolUsage,
-    thread,
+    thread: filteredThread,
     failures,
     security,
     projectContext,
