@@ -158,15 +158,15 @@ interface LastSessionInfo {
   summary: string;
 }
 
-function getLastSessionSummary(currentProject: string): LastSessionInfo | null {
+function getLastSessionSummary(_currentProject: string): LastSessionInfo | null {
   try {
-    // Cross-session: try reading thread-state from any previous session
+    // Global: show the most recent session regardless of project
+    // The user may continue work started in a different project context
     const threadStateContent = findLatestFile(STATE_DIR, "thread-state-");
     if (threadStateContent) {
       try {
         const threadState = JSON.parse(fs.readFileSync(threadStateContent, "utf-8"));
-        if (threadState.session_name && threadState.session_summary &&
-            (!threadState.project || threadState.project === currentProject)) {
+        if (threadState.session_name && threadState.session_summary) {
           return {
             name: threadState.session_name,
             sid: threadState.session_id || "?",
@@ -180,8 +180,7 @@ function getLastSessionSummary(currentProject: string): LastSessionInfo | null {
     try {
       const legacyFile = path.join(STATE_DIR, "thread-state.json");
       const threadState = JSON.parse(fs.readFileSync(legacyFile, "utf-8"));
-      if (threadState.session_name && threadState.session_summary &&
-          (!threadState.project || threadState.project === currentProject)) {
+      if (threadState.session_name && threadState.session_summary) {
         return {
           name: threadState.session_name,
           sid: threadState.session_id || "?",
@@ -191,7 +190,7 @@ function getLastSessionSummary(currentProject: string): LastSessionInfo | null {
       }
     } catch {}
 
-    // Fallback: find most recent session file matching current project
+    // Fallback: find most recent session file (skip legacy without ProjetID)
     const allFiles = fs.readdirSync(SESSIONS_DIR)
       .filter((f: string) => f.endsWith(".md"))
       .sort()
@@ -202,8 +201,8 @@ function getLastSessionSummary(currentProject: string): LastSessionInfo | null {
     for (const f of allFiles) {
       const c = fs.readFileSync(path.join(SESSIONS_DIR, f), "utf-8");
       const projetIdMatch = c.match(/\*\*ProjetID\*\*\s*:\s*(\S+)/);
-      // Only include if same project, skip legacy sessions without ProjetID
-      if (projetIdMatch && projetIdMatch[1].trim() === currentProject) {
+      // Include any session with a ProjetID (skip legacy without ProjetID)
+      if (projetIdMatch) {
         content = c;
         break;
       }
@@ -241,10 +240,10 @@ function getLastSessionSummary(currentProject: string): LastSessionInfo | null {
 }
 
 function formatThreadForInjection(entries: ThreadEntry[], currentProject: string): string {
-  // Filter to current project (entries without project field = legacy, include them)
-  const filtered = entries.filter(
-    (e) => !e.project || e.project === currentProject
-  );
+  // Global thread: show all recent entries regardless of project
+  // The thread is conversation flow — the user expects continuity across projects
+  // Only exclude very old entries without project field (legacy noise)
+  const filtered = entries.filter((e) => !!e.project);
   if (filtered.length === 0) return "";
 
   const parts: string[] = [];
@@ -276,19 +275,24 @@ function formatThreadForInjection(entries: ThreadEntry[], currentProject: string
       .filter((f: string) => f.endsWith(".md"))
       .sort();
 
-    // Filter by project: read each file and check **ProjetID** field
-    // Only include sessions with matching ProjetID — skip legacy sessions without ProjetID
-    // to prevent cross-project memory leakage
-    const projectSessions: string[] = [];
-    for (let i = allSessionFiles.length - 1; i >= 0 && projectSessions.length < 3; i--) {
+    // Prefer same-project sessions, fallback to recent cross-project sessions
+    // Always skip legacy sessions without ProjetID (prevents old noise)
+    const sameProject: string[] = [];
+    const otherProject: string[] = [];
+    for (let i = allSessionFiles.length - 1; i >= 0 && (sameProject.length + otherProject.length) < 6; i--) {
       try {
         const content = fs.readFileSync(path.join(SESSIONS_DIR, allSessionFiles[i]), "utf-8");
         const projetIdMatch = content.match(/\*\*ProjetID\*\*\s*:\s*(\S+)/);
-        if (projetIdMatch && projetIdMatch[1].trim() === currentProject) {
-          projectSessions.unshift(allSessionFiles[i]);
+        if (!projetIdMatch) continue; // skip legacy without ProjetID
+        if (projetIdMatch[1].trim() === currentProject) {
+          sameProject.unshift(allSessionFiles[i]);
+        } else if (otherProject.length < 3) {
+          otherProject.unshift(allSessionFiles[i]);
         }
       } catch {}
     }
+    // Use same-project if available, otherwise fallback to recent cross-project
+    const projectSessions = sameProject.length > 0 ? sameProject.slice(-3) : otherProject.slice(-3);
 
     if (projectSessions.length > 0) {
       parts.push(`Sessions recentes:`);
