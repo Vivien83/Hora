@@ -17,6 +17,8 @@ import * as path from "path";
 import type { HoraGraph, EntityNode, FactEdge, SubGraph, SearchResult } from "./knowledge-graph.js";
 import { embed, embedBatch } from "./embeddings.js";
 import { getRelationCategory } from "./relation-ontology.js";
+import { loadActivationLog, saveActivationLog, recordAccess, createActivationEntry, activationLogPath } from "./activation-model.js";
+import { buildBM25Index, hybridSearch } from "./hybrid-search.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -267,10 +269,12 @@ function mapRelCategoryToQueryCategory(
 
 /**
  * Execute multi-search: embed all queries, semantic search, structural queries, merge.
+ * Uses ACT-R activation log for scoring and records accesses for retrieved facts.
  */
 async function multiSearch(
   queries: AgenticQuery[],
   graph: HoraGraph,
+  graphDir: string,
   projectName: string,
   taskType: TaskType,
 ): Promise<MergedResults> {
@@ -278,6 +282,15 @@ async function multiSearch(
     facts: new Map(),
     entities: new Map(),
   };
+
+  // Load activation log for ACT-R scoring
+  const actLogPath = activationLogPath(graphDir);
+  let actLog: Map<string, ReturnType<typeof loadActivationLog> extends Map<string, infer V> ? V : never>;
+  try {
+    actLog = loadActivationLog(actLogPath);
+  } catch {
+    actLog = new Map();
+  }
 
   // 1. Embed all queries in batch
   const queryTexts = queries.map((q) => q.text);
@@ -288,7 +301,7 @@ async function multiSearch(
     embeddings = queryTexts.map(() => null);
   }
 
-  // 2. Semantic search for each query with embedding
+  // 2. Semantic search for each query with embedding + activation scoring
   for (let i = 0; i < queries.length; i++) {
     const query = queries[i];
     const queryEmb = embeddings[i];
@@ -297,6 +310,7 @@ async function multiSearch(
     const results = graph.semanticSearch(queryEmb, {
       limit: 10,
       minScore: 0.25,
+      activationLog: actLog.size > 0 ? actLog : undefined,
     });
 
     for (const r of results) {
@@ -318,6 +332,64 @@ async function multiSearch(
         }
       }
     }
+  }
+
+  // 2b. BM25 hybrid search — catches exact term matches semantic search misses
+  try {
+    const activeFacts = graph.getActiveFacts();
+    if (activeFacts.length > 0) {
+      // Build entity name map for BM25 indexing
+      const entityNames = new Map<string, string>();
+      for (const e of graph.getAllEntities()) {
+        entityNames.set(e.id, e.name);
+      }
+
+      const factsMap = new Map<string, FactEdge>();
+      for (const f of activeFacts) factsMap.set(f.id, f);
+
+      const bm25Index = buildBM25Index(activeFacts, entityNames);
+
+      // Run hybrid search for each query text
+      for (const query of queries) {
+        const semanticForQuery = [...merged.facts.values()]
+          .map(sf => ({ type: "fact" as const, id: sf.fact.id, score: sf.score, fact: sf.fact }));
+
+        const hybridResults = hybridSearch(query.text, semanticForQuery, factsMap, bm25Index, {
+          semanticWeight: 0.7,
+          bm25Weight: 0.3,
+          limit: 10,
+        });
+
+        for (const hr of hybridResults) {
+          const existing = merged.facts.get(hr.id);
+          const boostedScore = hr.score * query.weight;
+          if (!existing || existing.score < boostedScore) {
+            const relCategory = getRelationCategory(hr.fact.relation);
+            const factCategory = mapRelCategoryToQueryCategory(relCategory, query.category);
+            merged.facts.set(hr.id, { fact: hr.fact, score: boostedScore, category: factCategory });
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // Record access for all retrieved facts (ACT-R retrieval boost)
+  if (merged.facts.size > 0) {
+    try {
+      let logModified = false;
+      for (const [factId] of merged.facts) {
+        const existing = actLog.get(factId);
+        if (existing) {
+          actLog.set(factId, recordAccess(existing));
+        } else {
+          actLog.set(factId, createActivationEntry(factId));
+        }
+        logModified = true;
+      }
+      if (logModified) {
+        saveActivationLog(actLogPath, actLog);
+      }
+    } catch {}
   }
 
   // 3. Structural queries (no embedding needed)
@@ -373,8 +445,70 @@ const CATEGORY_LABELS: Record<QueryCategory, string> = {
 
 const CATEGORY_ORDER: QueryCategory[] = ["context", "stack", "decisions", "errors", "patterns"];
 
+// ─── Baddeley Chunking ──────────────────────────────────────────────────────
+
+interface FactChunk {
+  theme: string;
+  category: QueryCategory;
+  facts: ScoredFact[];
+}
+
+const MAX_CHUNKS = 5; // Baddeley: working memory ≈ 4±1 chunks
+
 /**
- * Format merged results grouped by category, within budget.
+ * Group facts into semantic chunks (Baddeley working memory model).
+ * Instead of N individual facts, produces max 5 thematic groups.
+ */
+function chunkBySemanticProximity(allFacts: ScoredFact[]): FactChunk[] {
+  if (allFacts.length === 0) return [];
+
+  // Sort by score descending
+  const sorted = [...allFacts].sort((a, b) => b.score - a.score);
+  const chunks: FactChunk[] = [];
+
+  for (const sf of sorted) {
+    // Try to fit into an existing chunk (same category + word overlap > 0.3)
+    let placed = false;
+    for (const chunk of chunks) {
+      if (chunk.category === sf.category && chunk.facts.length < 6) {
+        // Check word overlap with chunk theme
+        const descWords = new Set(sf.fact.description.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+        const themeWords = new Set(chunk.theme.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+        let overlap = 0;
+        for (const w of descWords) { if (themeWords.has(w)) overlap++; }
+        const sim = themeWords.size > 0 ? overlap / themeWords.size : 0;
+        if (sim > 0.2) {
+          chunk.facts.push(sf);
+          placed = true;
+          break;
+        }
+      }
+    }
+
+    if (!placed && chunks.length < MAX_CHUNKS) {
+      // New chunk
+      chunks.push({
+        theme: CATEGORY_LABELS[sf.category],
+        category: sf.category,
+        facts: [sf],
+      });
+    } else if (!placed && chunks.length >= MAX_CHUNKS) {
+      // Overflow: add to the most relevant existing chunk
+      const bestChunk = chunks
+        .filter(c => c.category === sf.category)
+        .sort((a, b) => a.facts.length - b.facts.length)[0];
+      if (bestChunk && bestChunk.facts.length < 8) {
+        bestChunk.facts.push(sf);
+      }
+    }
+  }
+
+  return chunks;
+}
+
+/**
+ * Format merged results as Baddeley-style semantic chunks.
+ * Procedural facts get special "Quand X → Y" formatting.
  */
 function formatByCategory(
   merged: MergedResults,
@@ -397,40 +531,50 @@ function formatByCategory(
   parts.push(header);
   remaining -= header.length + 1;
 
-  // Group facts by category
-  const byCategory = new Map<QueryCategory, ScoredFact[]>();
-  for (const sf of merged.facts.values()) {
-    const list = byCategory.get(sf.category) || [];
-    list.push(sf);
-    byCategory.set(sf.category, list);
-  }
+  // Separate procedural facts for special formatting
+  const allFacts = [...merged.facts.values()];
+  const proceduralFacts = allFacts.filter(sf => sf.fact.metadata?.memory_type === "procedural");
+  const nonProceduralFacts = allFacts.filter(sf => sf.fact.metadata?.memory_type !== "procedural");
 
-  // Sort facts within each category by score descending
-  for (const [, list] of byCategory) {
-    list.sort((a, b) => b.score - a.score);
-  }
+  // Chunk non-procedural facts (Baddeley: max 5 semantic groups)
+  const chunks = chunkBySemanticProximity(nonProceduralFacts);
 
-  // Emit categories in priority order
-  for (const cat of CATEGORY_ORDER) {
-    const facts = byCategory.get(cat);
-    if (!facts || facts.length === 0) continue;
-
-    const catBudget = Math.min(CATEGORY_BUDGETS[cat], remaining);
+  // Emit chunks
+  for (const chunk of chunks) {
+    const catBudget = Math.min(CATEGORY_BUDGETS[chunk.category] || 1000, remaining);
     if (catBudget < 50) continue;
 
-    const label = CATEGORY_LABELS[cat];
-    let section = `\n${label}:`;
+    let section = `\n${chunk.theme}:`;
     let sectionLen = section.length + 1;
 
-    for (const sf of facts) {
+    for (const sf of chunk.facts) {
       const line = `\n- [${sf.fact.relation}] ${sf.fact.description}`;
       if (sectionLen + line.length > catBudget) break;
       section += line;
       sectionLen += line.length;
     }
 
-    // Only emit if we added at least one fact
-    if (sectionLen > label.length + 3) {
+    if (sectionLen > chunk.theme.length + 3) {
+      parts.push(section);
+      remaining -= sectionLen;
+    }
+  }
+
+  // Emit procedural facts with "Quand X → Y" format
+  if (proceduralFacts.length > 0 && remaining > 100) {
+    let section = `\nProcedures connues:`;
+    let sectionLen = section.length + 1;
+
+    for (const sf of proceduralFacts.sort((a, b) => b.score - a.score)) {
+      // Format as "Quand [context] → [action]"
+      const desc = sf.fact.description;
+      const line = `\n- ${desc}`;
+      if (sectionLen + line.length > Math.min(800, remaining)) break;
+      section += line;
+      sectionLen += line.length;
+    }
+
+    if (sectionLen > 22) {
       parts.push(section);
       remaining -= sectionLen;
     }
@@ -545,8 +689,8 @@ export async function agenticRetrieve(
     classification.componentHints,
   );
 
-  // 3. Multi-search
-  const merged = await multiSearch(queries, graph, projectName, classification.type);
+  // 3. Multi-search (with ACT-R activation scoring + retrieval boost)
+  const merged = await multiSearch(queries, graph, graphDir, projectName, classification.type);
 
   // 4. Check if we have any results
   if (merged.facts.size === 0 && merged.entities.size === 0) return null;

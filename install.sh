@@ -736,12 +736,12 @@ else
     mkdir -p "$CLAUDE_DIR/hooks/lib"
     cp "$HORA_DIR/hooks/lib/"*.ts "$CLAUDE_DIR/hooks/lib/"
   fi
-  # Copy package.json for hooks dependencies (@huggingface/transformers etc.)
+  # Copy package.json for hooks dependencies (transformers, minisearch, zod)
   if [ -f "$HORA_DIR/hooks/package.json" ]; then
     cp "$HORA_DIR/hooks/package.json" "$CLAUDE_DIR/hooks/package.json"
     [ -f "$HORA_DIR/hooks/package-lock.json" ] && cp "$HORA_DIR/hooks/package-lock.json" "$CLAUDE_DIR/hooks/package-lock.json"
     ui_info "Installation des dependances hooks..."
-    (cd "$CLAUDE_DIR/hooks" && npm install --production --silent 2>/dev/null) || ui_warn "npm install hooks echoue ${DIM}(non-bloquant)${RESET}"
+    (cd "$CLAUDE_DIR/hooks" && npm install --omit=dev --silent 2>/dev/null) || ui_warn "npm install hooks echoue ${DIM}(non-bloquant)${RESET}"
   fi
 fi
 ui_ok "hooks/ ${DIM}($HOOKS_COUNT hooks + lib/$LIB_COUNT)${RESET}"
@@ -830,6 +830,11 @@ if [ -d "$HORA_DIR/dashboard" ]; then
     ui_detail "[DRY-RUN] dashboard/ serait copie"
   else
     cp -r "$HORA_DIR/dashboard/"* "$CLAUDE_DIR/dashboard/"
+    # Install dashboard dependencies if package.json exists
+    if [ -f "$CLAUDE_DIR/dashboard/package.json" ]; then
+      ui_info "Installation des dependances dashboard..."
+      (cd "$CLAUDE_DIR/dashboard" && npm install --silent 2>/dev/null) || ui_warn "npm install dashboard echoue ${DIM}(non-bloquant)${RESET}"
+    fi
   fi
   ui_ok "dashboard/"
 fi

@@ -45,16 +45,29 @@ export async function embedBatch(texts: string[]): Promise<(number[] | null)[]> 
   const embedder = await getEmbedder();
   if (!embedder) return texts.map(() => null);
 
-  const results: (number[] | null)[] = [];
-  for (const text of texts) {
-    try {
-      const result = await embedder(text, { pooling: "mean", normalize: true });
-      results.push(Array.from(result.data));
-    } catch {
-      results.push(null);
+  try {
+    // Single pipeline call with full array (HuggingFace supports string[] natively)
+    const output = await embedder(texts, { pooling: "mean", normalize: true });
+    return texts.map((_, i) => {
+      try {
+        return Array.from(output[i].data);
+      } catch {
+        return null;
+      }
+    });
+  } catch {
+    // Fallback: sequential if batch fails (e.g., OOM on very large batches)
+    const results: (number[] | null)[] = [];
+    for (const text of texts) {
+      try {
+        const result = await embedder(text, { pooling: "mean", normalize: true });
+        results.push(Array.from(result.data));
+      } catch {
+        results.push(null);
+      }
     }
+    return results;
   }
-  return results;
 }
 
 /**

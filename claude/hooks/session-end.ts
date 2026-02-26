@@ -984,6 +984,15 @@ async function main() {
   const lingProfile = extractProfileLinguistic(transcript);
   writeProfileFiles(envProfile, lingProfile);
 
+  // --- 1.5. Signal extraction (cross-session crystallization) ---
+  try {
+    const { extractPreferenceSignals, appendSignals } = await import("./lib/signal-tracker.js");
+    const signals = extractPreferenceSignals(transcript, sessionId);
+    if (signals.length > 0) {
+      appendSignals(path.join(LEARNING_DIR, "SIGNALS", "preference-signals.jsonl"), signals);
+    }
+  } catch {}
+
   // --- 2. Extraction des erreurs et lecons (JSONL) ---
   const failures = extractFailures(transcript, sessionId);
   saveFailures(failures);
@@ -1035,7 +1044,7 @@ async function main() {
   // --- 6. Memory lifecycle: expire T2 + promote to T3 ---
   // Silencieux: respecte le GC interval (6h) et le lock file
   try {
-    runMemoryLifecycle(MEMORY_DIR);
+    await runMemoryLifecycle(MEMORY_DIR);
   } catch {}
 
   // --- 7. Knowledge Graph enrichment ---

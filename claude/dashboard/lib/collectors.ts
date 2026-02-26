@@ -625,6 +625,13 @@ interface RawFactEdge {
   invalid_at?: string | null;
   expired_at?: string | null;
   confidence?: number;
+  metadata?: {
+    context?: string;
+    evidence?: string;
+    alternatives?: string[];
+    category?: string;
+    source_session?: string;
+  };
 }
 
 function collectGraphData(): GraphData | null {
@@ -676,6 +683,7 @@ function collectGraphData(): GraphData | null {
         invalid_at: f.invalid_at ?? null,
         expired_at: f.expired_at ?? null,
         confidence: f.confidence ?? 0.5,
+        ...(f.metadata ? { metadata: f.metadata } : {}),
       }));
 
     // Find hub (most connected entity)

@@ -102,9 +102,17 @@ export interface MemoryHealth {
 
 // ─── Knowledge Graph ─────────────────────────────────────────────────────────
 
+export interface FactMetadata {
+  context?: string;
+  evidence?: string;
+  alternatives?: string[];
+  category?: string;
+  source_session?: string;
+}
+
 export interface GraphNode {
   id: string;
-  type: "project" | "tool" | "error_pattern" | "preference" | "concept" | "person" | "file" | "library";
+  type: "project" | "tool" | "error_pattern" | "preference" | "concept" | "person" | "file" | "library" | "pattern" | "decision";
   name: string;
   properties: Record<string, string | number | boolean>;
   created_at: string;
@@ -122,6 +130,7 @@ export interface GraphEdge {
   invalid_at: string | null;
   expired_at: string | null;
   confidence: number;
+  metadata?: FactMetadata;
 }
 
 export interface GraphData {

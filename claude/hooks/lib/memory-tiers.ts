@@ -28,6 +28,8 @@ export interface PromoteReport {
   sentimentInsights: number;
   toolPatterns: number;
   projectHealth: number;
+  crystallizedPatterns: number;
+  graphPatterns: number;
 }
 
 export interface TierStats {
@@ -365,6 +367,15 @@ export function expireT2(memoryDir: string): ExpireReport {
     }
   } catch {}
 
+  // 5. Cap preference signals (rolling window)
+  const signalLog = path.join(memoryDir, "LEARNING", "SIGNALS", "preference-signals.jsonl");
+  try {
+    const signals = parseJsonl<Record<string, unknown>>(signalLog);
+    if (signals.length > 500) {
+      writeJsonl(signalLog, signals.slice(signals.length - 500));
+    }
+  } catch {}
+
   return report;
 }
 
@@ -481,12 +492,14 @@ function mergeToolSummaries(
  * 1. Failures recurrentes (3+) → INSIGHTS/recurring-failures.md
  * 2. Sentiment par projet → INSIGHTS/project-health.md
  */
-export function promoteToT3(memoryDir: string): PromoteReport {
+export async function promoteToT3(memoryDir: string): Promise<PromoteReport> {
   const report: PromoteReport = {
     recurringFailures: 0,
     sentimentInsights: 0,
     toolPatterns: 0,
     projectHealth: 0,
+    crystallizedPatterns: 0,
+    graphPatterns: 0,
   };
 
   const insightsDir = path.join(memoryDir, "INSIGHTS");
@@ -545,7 +558,23 @@ export function promoteToT3(memoryDir: string): PromoteReport {
     }
   } catch {}
 
-  // 2. Sentiment insights from consolidated summaries
+  // 2. Crystallize preference patterns (cross-session)
+  try {
+    const { crystallizePatterns } = await import("./signal-tracker.js");
+    let graph: { getActiveFacts(): any[] } | undefined;
+    try {
+      const graphDir = path.join(memoryDir, "GRAPH");
+      if (fs.existsSync(path.join(graphDir, "entities.jsonl"))) {
+        const { HoraGraph } = await import("./knowledge-graph.js");
+        graph = new HoraGraph(graphDir);
+      }
+    } catch {}
+    const crystal = crystallizePatterns(memoryDir, graph);
+    report.crystallizedPatterns = crystal.signalsCrystallized;
+    report.graphPatterns = crystal.graphPatternsCrystallized;
+  } catch {}
+
+  // 3. Sentiment insights from consolidated summaries
   const sentimentSummaryFile = path.join(insightsDir, "sentiment-summary.jsonl");
   try {
     const summaries = parseJsonl<SentimentMonthlySummary>(sentimentSummaryFile);
@@ -638,17 +667,81 @@ export function getMemoryHealth(memoryDir: string): MemoryHealth {
     alerts.push(`Dernier GC: il y a ${daysAgo(lastGc)} jours`);
   }
 
+  // Alert if INSIGHTS/ is empty after 10+ sessions (data should be flowing)
+  const sessionCount = sessionsStats.items;
+  if (sessionCount >= 10 && insightsStats.items === 0) {
+    alerts.push(`INSIGHTS/ vide apres ${sessionCount} sessions — verifier le pipeline failures/sentiment`);
+  }
+
+  // Alert if failures-log.jsonl doesn't exist despite sessions
+  const failuresLogPath = path.join(memoryDir, "LEARNING", "FAILURES", "failures-log.jsonl");
+  if (sessionCount >= 5) {
+    try {
+      if (!fs.existsSync(failuresLogPath)) {
+        alerts.push("failures-log.jsonl absent — les erreurs conversationnelles ne sont pas capturees");
+      }
+    } catch {}
+  }
+
   return { t1, t2, t3, lastGc, alerts };
+}
+
+// ─── ACT-R Graph Expiry ──────────────────────────────────────────────────────
+
+/**
+ * Expire graph facts using ACT-R activation model.
+ * Facts with activation below threshold are superseded.
+ * Returns number of facts expired.
+ */
+async function expireGraphFacts(memoryDir: string): Promise<number> {
+  const graphDir = path.join(memoryDir, "GRAPH");
+  if (!fs.existsSync(path.join(graphDir, "entities.jsonl"))) return 0;
+
+  try {
+    const { HoraGraph } = await import("./knowledge-graph.js");
+    const { loadActivationLog, computeActivation, shouldExpire, activationLogPath } = await import("./activation-model.js");
+
+    const graph = new HoraGraph(graphDir);
+    const actLog = loadActivationLog(activationLogPath(graphDir));
+    const activeFacts = graph.getActiveFacts();
+
+    let expiredCount = 0;
+    for (const fact of activeFacts) {
+      const actEntry = actLog.get(fact.id);
+      if (!actEntry) {
+        // No activation data — use recency-based fallback
+        const ageDays = daysAgo(fact.valid_at);
+        if (ageDays > 90) {
+          graph.supersedeFact(fact.id);
+          expiredCount++;
+        }
+        continue;
+      }
+
+      const activation = computeActivation(actEntry);
+      if (shouldExpire(activation)) {
+        graph.supersedeFact(fact.id);
+        expiredCount++;
+      }
+    }
+
+    if (expiredCount > 0) {
+      graph.save();
+    }
+    return expiredCount;
+  } catch {
+    return 0;
+  }
 }
 
 // ─── Main orchestrator ──────────────────────────────────────────────────────
 
 /**
- * Run the full memory lifecycle: expire T2 + promote to T3.
+ * Run the full memory lifecycle: expire T2 + promote to T3 + expire graph facts.
  * Respects GC lock and minimum interval.
  * Call this from session-end.ts after extraction.
  */
-export function runMemoryLifecycle(memoryDir: string): { expire: ExpireReport; promote: PromoteReport } | null {
+export async function runMemoryLifecycle(memoryDir: string): Promise<{ expire: ExpireReport; promote: PromoteReport } | null> {
   // Check if GC should run (interval check)
   if (!shouldRunGc(memoryDir)) {
     return null; // Too recent, skip
@@ -661,7 +754,27 @@ export function runMemoryLifecycle(memoryDir: string): { expire: ExpireReport; p
 
   try {
     const expireReport = expireT2(memoryDir);
-    const promoteReport = promoteToT3(memoryDir);
+    const promoteReport = await promoteToT3(memoryDir);
+
+    // ACT-R based graph fact expiry
+    try {
+      await expireGraphFacts(memoryDir);
+    } catch {}
+
+    // Dream cycle: consolidate episodes into semantic knowledge
+    try {
+      const graphDir = path.join(memoryDir, "GRAPH");
+      if (fs.existsSync(path.join(graphDir, "entities.jsonl"))) {
+        const { HoraGraph } = await import("./knowledge-graph.js");
+        const { runDreamCycle } = await import("./dream-cycle.js");
+        const graph = new HoraGraph(graphDir);
+        const dreamReport = runDreamCycle(graph);
+        if (dreamReport.patternsDistilled > 0 || dreamReport.factsReconsolidated > 0) {
+          graph.save();
+        }
+      }
+    } catch {}
+
     markGcRun(memoryDir);
     return { expire: expireReport, promote: promoteReport };
   } finally {

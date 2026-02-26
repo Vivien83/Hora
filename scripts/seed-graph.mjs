@@ -357,28 +357,40 @@ function extractFromSession(session) {
     if (fid) factIds.push(fid);
   }
 
-  // Project uses tools
+  // Project uses/built_with tools
   const targetProject = projectEntityId || horaId;
+  const CORE_STACK = new Set(["typescript", "node.js", "react", "next.js", "tailwind css", "bun"]);
   for (const tool of toolsFound) {
+    const isCore = CORE_STACK.has(tool.name.toLowerCase());
+    const relation = isCore ? "built_with" : "uses";
+    const desc = isCore
+      ? `${session.projectName || "HORA"} est construit avec ${tool.name} comme technologie fondamentale de sa stack, confirmee par l'usage dans les sessions de travail`
+      : `${session.projectName || "HORA"} utilise ${tool.name} dans son workflow de developpement ou son execution pour des taches specifiques`;
     const fid = addFact(
       targetProject,
       tool.id,
-      "uses",
-      `${session.projectName || "HORA"} utilise ${tool.name}`,
-      0.8,
+      relation,
+      desc,
+      isCore ? 0.9 : 0.8,
       ts,
     );
     if (fid) factIds.push(fid);
   }
 
-  // Project involves concepts
+  // Project implements/related_to concepts
+  const IMPLEMENTED_CONCEPTS = new Set(["knowledge graph", "memory tiers", "bi-temporality", "embeddings", "library-first", "SSOT", "ghost failures", "TDD"]);
   for (const concept of conceptsFound) {
+    const isImplemented = IMPLEMENTED_CONCEPTS.has(concept.name);
+    const relation = isImplemented ? "implements" : "related_to";
+    const desc = isImplemented
+      ? `${session.projectName || "HORA"} implemente le concept de ${concept.name} dans son architecture, principe applique dans le code et les workflows du systeme`
+      : `${session.projectName || "HORA"} est lie au concept de ${concept.name}, mentionne dans le contexte des sessions de travail sur le projet`;
     const fid = addFact(
       targetProject,
       concept.id,
-      "involves",
-      `${session.projectName || "HORA"} implique ${concept.name}`,
-      0.7,
+      relation,
+      desc,
+      isImplemented ? 0.9 : 0.7,
       ts,
     );
     if (fid) factIds.push(fid);
@@ -436,8 +448,8 @@ function extractFromSession(session) {
       const fid = addFact(
         projectEntityId,
         crossfitId,
-        "serves",
-        "Spotter sert la box CrossFit GLHF Craponne",
+        "works_well_for",
+        "Spotter fonctionne comme application de booking pour la box CrossFit GLHF a Craponne, gerant les reservations de cours et le suivi des athletes",
         0.9,
         ts,
       );
@@ -448,12 +460,12 @@ function extractFromSession(session) {
   // Detect HORA sub-project relationships
   if (session.projectName && session.projectName !== "HORA" &&
     /hora/i.test(content) && !/^hora/i.test(session.projectName)) {
-    // This project is related to HORA ecosystem
+    // This project is a component of HORA ecosystem
     const fid = addFact(
       horaId,
       projectEntityId || horaId,
-      "ecosystem",
-      `${session.projectName} fait partie de l'ecosysteme HORA`,
+      "has_component",
+      `${session.projectName} est un sous-systeme de l'architecture HORA, contribuant a l'ensemble du systeme d'orchestration et de memoire`,
       0.7,
       ts,
     );
@@ -466,7 +478,7 @@ function extractFromSession(session) {
       horaId,
       projectEntityId,
       "has_component",
-      "HORA inclut un dashboard de visualisation",
+      "HORA contient un dashboard React de visualisation temps reel qui affiche les sessions, le sentiment, la sante memoire et le knowledge graph sous forme de carte neuronale interactive",
       0.9,
       ts,
     );
@@ -479,7 +491,7 @@ function extractFromSession(session) {
       horaId,
       projectEntityId,
       "has_component",
-      "HORA inclut un systeme de hooks TypeScript",
+      "HORA contient un systeme de hooks TypeScript qui intercepte les evenements Claude Code (prompt-submit, session-end, tool-use) pour enrichir la memoire et proteger le systeme",
       0.9,
       ts,
     );

@@ -709,6 +709,12 @@ async function main() {
           sections.push(`Sante projets:\n${truncate(projectHealth, MAX_SECTION_CHARS)}`);
         }
       } catch {}
+      try {
+        const crystallized = readFile(path.join(insightsDir, "crystallized-patterns.md"));
+        if (crystallized && crystallized.length > 20) {
+          sections.push(`Preferences cristallisees:\n${truncate(crystallized, MAX_SECTION_CHARS)}`);
+        }
+      } catch {}
 
       if (sections.length > 0) {
         parts.push(`[HORA]\n${sections.join("\n")}`);
@@ -762,8 +768,31 @@ async function main() {
           maxBudget: 6000,
         });
         if (graphContext) {
-          parts.push(`[HORA KNOWLEDGE GRAPH]\n${graphContext}`);
+          // Check for externalized prompt template
+          const templatePath = path.join(process.cwd(), ".hora", "prompt-template.md");
+          let template: string | null = null;
+          try {
+            if (fs.existsSync(templatePath)) {
+              template = fs.readFileSync(templatePath, "utf-8").trim();
+            }
+          } catch {}
+
+          if (template && template.includes("{{KNOWLEDGE_GRAPH}}")) {
+            // Use externalized template
+            parts.push(template.replace("{{KNOWLEDGE_GRAPH}}", graphContext));
+          } else {
+            parts.push(`[HORA KNOWLEDGE GRAPH]\n${graphContext}`);
+          }
         }
+
+        // Detect and save communities (periodic, alongside graph load)
+        try {
+          const { detectCommunities, saveCommunities } = await import("./lib/graph-communities.js");
+          const communities = detectCommunities(graph);
+          if (communities.length > 0) {
+            saveCommunities(GRAPH_DIR, communities);
+          }
+        } catch {}
       } catch {
         // Fallback silencieux — l'injection classique suffit
       }

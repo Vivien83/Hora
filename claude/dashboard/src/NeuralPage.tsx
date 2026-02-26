@@ -45,6 +45,14 @@ interface ForceNode extends GraphNode {
   fy?: number | undefined;
 }
 
+interface ForceLinkMetadata {
+  context?: string;
+  evidence?: string;
+  alternatives?: string[];
+  category?: string;
+  source_session?: string;
+}
+
 interface ForceLink {
   source: string;
   target: string;
@@ -55,6 +63,31 @@ interface ForceLink {
   relation: string;
   description: string;
   valid_at: string;
+  metadata?: ForceLinkMetadata;
+}
+
+// Relation category colors
+const CATEGORY_COLORS: Record<string, string> = {
+  structural: "#6366f1",
+  technological: "#06b6d4",
+  learning: "#f59e0b",
+  experience: "#10b981",
+  actor: "#ec4899",
+  conceptual: "#8b5cf6",
+};
+
+function getRelationCategory(relation: string): string {
+  const structural = ["has_component", "depends_on", "extends", "implements", "configures", "replaces", "hosts"];
+  const technological = ["uses", "integrates", "built_with", "migrated_from"];
+  const learning = ["decided_for", "decided_against", "learned_that", "caused_by", "solved_by", "blocked_by", "workaround_for"];
+  const experience = ["works_well_for", "fails_for", "performs_better_than", "anti_pattern_in"];
+  const actor = ["works_on", "prefers", "frustrated_with", "satisfied_with", "created", "maintains"];
+  if (structural.includes(relation)) return "structural";
+  if (technological.includes(relation)) return "technological";
+  if (learning.includes(relation)) return "learning";
+  if (experience.includes(relation)) return "experience";
+  if (actor.includes(relation)) return "actor";
+  return "conceptual";
 }
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
@@ -125,17 +158,22 @@ function buildForceData(
     val: Math.max(5, Math.min(20, (degree[e.id] || 0) * 2 + 5)),
   }));
 
-  const links: ForceLink[] = facts.map((f) => ({
-    source: f.source,
-    target: f.target,
-    color: hexToRgba("#ffffff", 0.05 + f.confidence * 0.2),
-    confidence: f.confidence,
-    isRecent: isRecent(f.valid_at, 24),
-    id: f.id,
-    relation: f.relation,
-    description: f.description,
-    valid_at: f.valid_at,
-  }));
+  const links: ForceLink[] = facts.map((f) => {
+    const category = f.metadata?.category || getRelationCategory(f.relation);
+    const catColor = CATEGORY_COLORS[category] || CATEGORY_COLORS.conceptual;
+    return {
+      source: f.source,
+      target: f.target,
+      color: hexToRgba(catColor, 0.15 + f.confidence * 0.35),
+      confidence: f.confidence,
+      isRecent: isRecent(f.valid_at, 24),
+      id: f.id,
+      relation: f.relation,
+      description: f.description,
+      valid_at: f.valid_at,
+      metadata: f.metadata,
+    };
+  });
 
   return { nodes, links };
 }
@@ -280,24 +318,32 @@ function DetailPanel({
             <div style={{ fontSize: "12px", color: C.dim }}>Aucun fait actif</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              {connectedFacts.slice(0, 20).map((f) => (
-                <div
-                  key={f.id}
-                  style={{
-                    padding: "8px 10px",
-                    background: C.bg,
-                    borderRadius: "4px",
-                    borderLeft: `2px solid ${hexToRgba("#ffffff", 0.1 + f.confidence * 0.4)}`,
-                  }}
-                >
-                  <div style={{ fontSize: "11px", color: C.text, lineHeight: 1.4 }}>
-                    {f.description || f.relation}
+              {connectedFacts.slice(0, 20).map((f) => {
+                const cat = (f as any).metadata?.category || getRelationCategory(f.relation);
+                const catColor = CATEGORY_COLORS[cat] || CATEGORY_COLORS.conceptual;
+                return (
+                  <div
+                    key={f.id}
+                    style={{
+                      padding: "8px 10px",
+                      background: C.bg,
+                      borderRadius: "4px",
+                      borderLeft: `2px solid ${catColor}`,
+                    }}
+                  >
+                    <div style={{ fontSize: "11px", color: C.text, lineHeight: 1.4 }}>
+                      {f.description || f.relation}
+                    </div>
+                    <div style={{ fontSize: "10px", color: C.dim, marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ color: catColor, fontWeight: 600 }}>{f.relation}</span>
+                      <span>·</span>
+                      <span>conf. {(f.confidence * 100).toFixed(0)}%</span>
+                      <span>·</span>
+                      <span>{formatDate(f.valid_at)}</span>
+                    </div>
                   </div>
-                  <div style={{ fontSize: "10px", color: C.dim, marginTop: "4px" }}>
-                    {f.relation} · conf. {(f.confidence * 100).toFixed(0)}% · {formatDate(f.valid_at)}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -358,22 +404,29 @@ function LinkDetailPanel({
           >
             {link.relation}
           </div>
-          <span
-            style={{
-              display: "inline-block",
-              marginTop: "6px",
-              fontSize: "10px",
-              fontWeight: 600,
-              letterSpacing: "0.05em",
-              textTransform: "uppercase",
-              color: C.bg,
-              background: C.accent,
-              padding: "2px 8px",
-              borderRadius: "4px",
-            }}
-          >
-            fait
-          </span>
+          <div style={{ display: "flex", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
+            {(() => {
+              const cat = link.metadata?.category || getRelationCategory(link.relation);
+              const catColor = CATEGORY_COLORS[cat] || CATEGORY_COLORS.conceptual;
+              return (
+                <span
+                  style={{
+                    display: "inline-block",
+                    fontSize: "10px",
+                    fontWeight: 600,
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                    color: C.bg,
+                    background: catColor,
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                  }}
+                >
+                  {cat}
+                </span>
+              );
+            })()}
+          </div>
         </div>
         <button
           onClick={onClose}
@@ -430,6 +483,18 @@ function LinkDetailPanel({
           </div>
         )}
 
+        {/* Context from metadata */}
+        {link.metadata?.context && (
+          <div style={{ marginBottom: "16px" }}>
+            <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+              Contexte
+            </div>
+            <div style={{ fontSize: "12px", color: C.muted, lineHeight: 1.5, fontStyle: "italic" }}>
+              {link.metadata.context}
+            </div>
+          </div>
+        )}
+
         {/* Metadata */}
         <div style={{ marginBottom: "16px" }}>
           <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
@@ -440,6 +505,7 @@ function LinkDetailPanel({
               { label: "Confiance", value: `${confPct}%` },
               { label: "Valide depuis", value: formatDate(link.valid_at) },
               { label: "Relation", value: link.relation },
+              ...(link.metadata?.source_session ? [{ label: "Source", value: link.metadata.source_session }] : []),
             ].map((row) => (
               <div
                 key={row.label}

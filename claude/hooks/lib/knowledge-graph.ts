@@ -17,6 +17,15 @@ import * as path from "path";
 import * as crypto from "crypto";
 import { getRelationCategory } from "./relation-ontology.js";
 
+// ─── Binary Embedding Storage ───────────────────────────────────────────────
+
+interface EmbeddingIndexEntry {
+  id: string;
+  type: "entity" | "fact";
+  offset: number; // byte offset in embeddings.bin
+  dim: number;    // dimension (384)
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface FactMetadata {
@@ -25,6 +34,9 @@ export interface FactMetadata {
   alternatives?: string[];
   category?: string;
   source_session?: string;
+  memory_type?: "episodic" | "semantic" | "procedural";
+  reconsolidation_count?: number;
+  history?: Array<{ description: string; valid_at: string; confidence: number }>;
 }
 
 export interface EntityNode {
@@ -59,6 +71,7 @@ export interface Episode {
   timestamp: string;
   entities_extracted: string[];
   facts_extracted: string[];
+  consolidated?: boolean;
 }
 
 export interface SearchResult {
@@ -193,6 +206,14 @@ export class HoraGraph {
     return path.join(this.graphDir, "episodes.jsonl");
   }
 
+  private get embeddingsBinFile(): string {
+    return path.join(this.graphDir, "embeddings.bin");
+  }
+
+  private get embeddingIndexFile(): string {
+    return path.join(this.graphDir, "embedding-index.jsonl");
+  }
+
   private load(): void {
     const rawEntities = parseJsonl<EntityNode>(this.entitiesFile);
     for (const e of rawEntities) {
@@ -206,12 +227,100 @@ export class HoraGraph {
     }
 
     this.episodes = parseJsonl<Episode>(this.episodesFile);
+
+    // Load binary embeddings (new format) — overwrites any inline nulls
+    this.loadBinaryEmbeddings();
+  }
+
+  /**
+   * Load embeddings from binary storage (Float32Array).
+   * Falls back gracefully if binary files don't exist yet (pre-migration).
+   */
+  private loadBinaryEmbeddings(): void {
+    const index = parseJsonl<EmbeddingIndexEntry>(this.embeddingIndexFile);
+    if (index.length === 0) return;
+
+    let binBuffer: Buffer;
+    try {
+      binBuffer = fs.readFileSync(this.embeddingsBinFile);
+    } catch {
+      return; // No binary file yet — inline embeddings (if any) will be used
+    }
+
+    for (const entry of index) {
+      const start = entry.offset;
+      const byteLen = entry.dim * 4;
+      if (start + byteLen > binBuffer.length) continue; // Corrupted entry, skip
+
+      // Read Float32Array from buffer at correct offset
+      const floatArr = new Float32Array(
+        binBuffer.buffer,
+        binBuffer.byteOffset + start,
+        entry.dim,
+      );
+      const embedding = Array.from(floatArr);
+
+      if (entry.type === "entity") {
+        const entity = this.entities.get(entry.id);
+        if (entity) entity.embedding = embedding;
+      } else {
+        const fact = this.facts.get(entry.id);
+        if (fact) fact.embedding = embedding;
+      }
+    }
   }
 
   save(): void {
     ensureDir(this.graphDir);
-    writeJsonlAtomic(this.entitiesFile, [...this.entities.values()]);
-    writeJsonlAtomic(this.factsFile, [...this.facts.values()]);
+
+    // Build binary embedding data
+    const indexEntries: EmbeddingIndexEntry[] = [];
+    const floatArrays: Float32Array[] = [];
+    let currentOffset = 0;
+
+    for (const entity of this.entities.values()) {
+      if (entity.embedding && entity.embedding.length > 0) {
+        const arr = new Float32Array(entity.embedding);
+        indexEntries.push({ id: entity.id, type: "entity", offset: currentOffset, dim: arr.length });
+        floatArrays.push(arr);
+        currentOffset += arr.length * 4;
+      }
+    }
+
+    for (const fact of this.facts.values()) {
+      if (fact.embedding && fact.embedding.length > 0) {
+        const arr = new Float32Array(fact.embedding);
+        indexEntries.push({ id: fact.id, type: "fact", offset: currentOffset, dim: arr.length });
+        floatArrays.push(arr);
+        currentOffset += arr.length * 4;
+      }
+    }
+
+    // Write binary embeddings file atomically
+    if (floatArrays.length > 0) {
+      const totalBytes = currentOffset;
+      const buffer = Buffer.alloc(totalBytes);
+      let pos = 0;
+      for (const arr of floatArrays) {
+        Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength).copy(buffer, pos);
+        pos += arr.byteLength;
+      }
+      const tmpBin = this.embeddingsBinFile + `.tmp.${process.pid}`;
+      fs.writeFileSync(tmpBin, buffer);
+      fs.renameSync(tmpBin, this.embeddingsBinFile);
+    } else {
+      // No embeddings — clean up binary files if they exist
+      try { fs.unlinkSync(this.embeddingsBinFile); } catch {}
+    }
+
+    // Write embedding index atomically
+    writeJsonlAtomic(this.embeddingIndexFile, indexEntries);
+
+    // Write entities/facts WITHOUT inline embeddings (embeddings are in binary)
+    const entitiesToWrite = [...this.entities.values()].map(e => ({ ...e, embedding: null }));
+    const factsToWrite = [...this.facts.values()].map(f => ({ ...f, embedding: null }));
+    writeJsonlAtomic(this.entitiesFile, entitiesToWrite);
+    writeJsonlAtomic(this.factsFile, factsToWrite);
     writeJsonlAtomic(this.episodesFile, this.episodes);
   }
 
@@ -303,6 +412,30 @@ export class HoraGraph {
     validAt?: string,
     metadata?: FactMetadata,
   ): string {
+    // Dedup: check for semantically identical existing facts (same source+target)
+    const existingFacts = this.getActiveFacts().filter(
+      (f) => f.source === source && f.target === target,
+    );
+    for (const existing of existingFacts) {
+      if (existing.embedding) {
+        // Check embedding similarity if the new fact also has an embedding
+        // (embedding is set after addFact, so we compare descriptions as fallback)
+        const descSim = this.descriptionSimilarity(existing.description, description);
+        if (descSim > 0.85) {
+          // Near-duplicate — supersede old, keep the newer one
+          this.supersedeFact(existing.id);
+          break;
+        }
+      } else {
+        // No embedding — use description similarity
+        const descSim = this.descriptionSimilarity(existing.description, description);
+        if (descSim > 0.85) {
+          this.supersedeFact(existing.id);
+          break;
+        }
+      }
+    }
+
     const id = genId();
     const timestamp = now();
     const fact: FactEdge = {
@@ -326,6 +459,52 @@ export class HoraGraph {
     this.touchEntity(target);
 
     return id;
+  }
+
+  /**
+   * Check for semantic dedup using embedding cosine similarity.
+   * Call after embeddings are set on both facts.
+   * Returns true if a duplicate was found and superseded.
+   */
+  deduplicateByEmbedding(factId: string, threshold: number = 0.92): boolean {
+    const fact = this.facts.get(factId);
+    if (!fact || !fact.embedding || fact.expired_at !== null) return false;
+
+    for (const existing of this.facts.values()) {
+      if (existing.id === factId) continue;
+      if (existing.expired_at !== null) continue;
+      if (!existing.embedding) continue;
+      if (existing.source !== fact.source || existing.target !== fact.target) continue;
+
+      const sim = dotProduct(fact.embedding, existing.embedding);
+      if (sim > threshold) {
+        // Supersede the older one (keep the newer)
+        const existingDate = new Date(existing.created_at).getTime();
+        const factDate = new Date(fact.created_at).getTime();
+        if (factDate >= existingDate) {
+          this.supersedeFact(existing.id);
+        } else {
+          this.supersedeFact(factId);
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Simple text-based description similarity using word overlap (Jaccard).
+   * Used as fallback when embeddings aren't available yet.
+   */
+  private descriptionSimilarity(a: string, b: string): number {
+    const wordsA = new Set(a.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    const wordsB = new Set(b.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    if (wordsA.size === 0 || wordsB.size === 0) return 0;
+    let intersection = 0;
+    for (const w of wordsA) {
+      if (wordsB.has(w)) intersection++;
+    }
+    return intersection / (wordsA.size + wordsB.size - intersection);
   }
 
   /**
@@ -366,6 +545,69 @@ export class HoraGraph {
     }
 
     return null;
+  }
+
+  /**
+   * Reconsolidate a fact: update its content without superseding.
+   * Only semantic and procedural facts are reconsolidable; episodic facts are immutable.
+   * Preserves history of previous states (max 5 versions).
+   *
+   * Returns true if reconsolidation succeeded.
+   */
+  reconsolidateFact(factId: string, updates: {
+    description?: string;
+    confidence?: number;
+    metadata?: Partial<FactMetadata>;
+  }): boolean {
+    const fact = this.facts.get(factId);
+    if (!fact || fact.expired_at !== null) return false;
+
+    // Episodic facts are immutable (time-bound context)
+    const memoryType = fact.metadata?.memory_type;
+    if (memoryType === "episodic") return false;
+
+    // Save previous state in history
+    const history = fact.metadata?.history || [];
+    history.push({
+      description: fact.description,
+      valid_at: fact.valid_at,
+      confidence: fact.confidence,
+    });
+    // Keep max 5 history entries
+    if (history.length > 5) history.splice(0, history.length - 5);
+
+    // Apply updates
+    if (updates.description) fact.description = updates.description;
+    if (updates.confidence !== undefined) fact.confidence = updates.confidence;
+    fact.valid_at = now(); // Reconsolidation refreshes valid_at
+
+    // Merge metadata
+    const reconCount = (fact.metadata?.reconsolidation_count || 0) + 1;
+    fact.metadata = {
+      ...fact.metadata,
+      ...updates.metadata,
+      history,
+      reconsolidation_count: reconCount,
+    };
+
+    // Clear embedding so it gets recomputed
+    fact.embedding = null;
+
+    return true;
+  }
+
+  /**
+   * Get all episodes.
+   */
+  getEpisodes(): Episode[] {
+    return this.episodes;
+  }
+
+  /**
+   * Get all facts (including expired).
+   */
+  getAllFacts(): FactEdge[] {
+    return [...this.facts.values()];
   }
 
   /**
@@ -460,16 +702,23 @@ export class HoraGraph {
 
   /**
    * Semantic search across all embedded entities and facts.
-   * Score = cosine_similarity * recency_decay
+   * Score = cosine_similarity * activation_factor * confidence
+   * Falls back to recency_decay if no activation log provided.
    * Returns top results sorted by score descending.
    */
   semanticSearch(
     queryEmbedding: number[],
-    opts: { limit?: number; minScore?: number; types?: Array<"entity" | "fact"> } = {},
+    opts: {
+      limit?: number;
+      minScore?: number;
+      types?: Array<"entity" | "fact">;
+      activationLog?: Map<string, { lastActivation: number }>;
+    } = {},
   ): SearchResult[] {
     const limit = opts.limit ?? 10;
     const minScore = opts.minScore ?? 0.0;
     const types = opts.types ?? ["entity", "fact"];
+    const actLog = opts.activationLog;
     const refDate = new Date();
     const results: SearchResult[] = [];
 
@@ -490,8 +739,21 @@ export class HoraGraph {
         if (!fact.embedding) continue;
         if (fact.expired_at !== null) continue; // Only search active facts
         const sim = dotProduct(queryEmbedding, fact.embedding);
-        const decay = recencyDecay(fact.valid_at, refDate);
-        const score = sim * decay;
+
+        let scoreFactor: number;
+        if (actLog) {
+          // ACT-R activation-based scoring
+          const actEntry = actLog.get(fact.id);
+          const activation = actEntry?.lastActivation ?? -1;
+          // sigmoid normalization: maps activation to 0-1, centered on threshold
+          const actF = 1 / (1 + Math.exp(-(activation + 2)));
+          scoreFactor = actF * fact.confidence;
+        } else {
+          // Fallback: recency decay
+          scoreFactor = recencyDecay(fact.valid_at, refDate);
+        }
+
+        const score = sim * scoreFactor;
         if (score >= minScore) {
           results.push({ type: "fact", id: fact.id, score, fact });
         }

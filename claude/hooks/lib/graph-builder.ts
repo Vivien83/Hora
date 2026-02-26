@@ -86,6 +86,50 @@ function claudeAvailable(): boolean {
   }
 }
 
+// ─── Memory Type Classification (Tulving) ───────────────────────────────────
+
+const PROCEDURAL_RELATIONS = new Set([
+  "follows_pattern", "implements", "configured_with", "extends",
+  "built_with", "integrates", "depends_on", "tested_with",
+]);
+
+const EPISODIC_INDICATORS = [
+  /\d{4}-\d{2}-\d{2}/, // ISO date
+  /session/i, /aujourd'hui/i, /yesterday/i, /hier/i,
+  /cette fois/i, /this time/i, /just now/i,
+];
+
+/**
+ * Classify a fact into Tulving's memory taxonomy:
+ * - episodic: time-bound events, specific sessions
+ * - procedural: patterns, workflows, configurations
+ * - semantic: general knowledge (default)
+ */
+function classifyMemoryType(
+  relation: string,
+  description: string,
+  validAt: string,
+): "episodic" | "semantic" | "procedural" {
+  // Procedural: relation is a pattern/implementation relation
+  if (PROCEDURAL_RELATIONS.has(relation)) return "procedural";
+
+  // Episodic: contains temporal markers or specific session references
+  for (const indicator of EPISODIC_INDICATORS) {
+    if (indicator.test(description)) return "episodic";
+  }
+
+  // Episodic: if validAt is within last 48h, likely episode-specific
+  const ageMs = Date.now() - new Date(validAt).getTime();
+  if (ageMs < 48 * 60 * 60 * 1000 && ageMs >= 0) {
+    // Recent fact with temporal relation = episodic
+    if (["encountered", "solved_by", "caused_by", "learned_that"].includes(relation)) {
+      return "episodic";
+    }
+  }
+
+  return "semantic";
+}
+
 // ─── Core Functions ─────────────────────────────────────────────────────────
 
 /**
@@ -328,14 +372,23 @@ export function applyToGraph(
       // This ensures valid_at reflects real-world truth time, not graph recording time
       const validAt = fact.valid_at || sessionTimestamp;
 
+      // Classify memory_type (Tulving taxonomy)
+      const normalizedRelation = normalizeRelation(fact.relation);
+      const memoryType = classifyMemoryType(normalizedRelation, fact.description, validAt);
+      const enrichedMetadata = {
+        ...fact.metadata,
+        memory_type: memoryType,
+        source_session: sessionData.sessionId.slice(0, 8),
+      };
+
       const factId = graph.addFact(
         sourceEntity.id,
         targetEntity.id,
-        normalizeRelation(fact.relation),
+        normalizedRelation,
         fact.description,
         fact.confidence ?? 0.8,
         validAt,
-        fact.metadata,
+        enrichedMetadata,
       );
       newFactIds.push(factId);
       const activeFacts = graph.getActiveFacts();
