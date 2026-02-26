@@ -22,6 +22,7 @@ import { runMemoryLifecycle } from "./lib/memory-tiers.js";
 import { HoraGraph } from "./lib/knowledge-graph.js";
 import { buildGraphFromSession } from "./lib/graph-builder.js";
 import { migrateExistingData } from "./lib/graph-migration.js";
+import { disposeEmbedder } from "./lib/embeddings.js";
 
 const CLAUDE_DIR = path.join(homedir(), ".claude");
 const MEMORY_DIR = path.join(CLAUDE_DIR, "MEMORY");
@@ -1090,6 +1091,9 @@ async function main() {
 
   // NE PAS supprimer le state file — il est utilise par prompt-submit
   // pour detecter isFirst. Il sera ecrase naturellement par la session suivante.
+
+  // Dispose ONNX pipeline to avoid native thread crash on exit
+  await disposeEmbedder();
 
   process.exit(0);
 }

@@ -20,6 +20,7 @@ export async function getEmbedder(): Promise<any> {
     const { pipeline } = await import("@huggingface/transformers");
     pipelineInstance = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
       quantized: true,  // quantized ONNX for speed
+      dtype: "fp32",    // explicit dtype to suppress ONNX warning
     });
     return pipelineInstance;
   } catch {
@@ -67,6 +68,19 @@ export async function embedBatch(texts: string[]): Promise<(number[] | null)[]> 
       }
     }
     return results;
+  }
+}
+
+/**
+ * Dispose the ONNX pipeline to avoid native thread crashes on process.exit().
+ * Call this before exiting when embeddings were used.
+ */
+export async function disposeEmbedder(): Promise<void> {
+  if (pipelineInstance) {
+    try {
+      await pipelineInstance.dispose?.();
+    } catch {}
+    pipelineInstance = null;
   }
 }
 
