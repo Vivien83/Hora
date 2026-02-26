@@ -27,7 +27,6 @@ set -o pipefail
 # ─────────────────────────────────────────────────────────────────────────────
 
 HORA_STATE_DIR="${HOME}/.claude/.hora"
-GIT_CACHE="${HORA_STATE_DIR}/git-cache.sh"
 USAGE_CACHE="${HORA_STATE_DIR}/usage-cache.json"
 GIT_CACHE_TTL=5     # secondes
 USAGE_CACHE_TTL=60  # secondes
@@ -47,6 +46,10 @@ if [ -z "$PROJECT_ROOT" ]; then
     PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 fi
 PROJECT_HORA_DIR="${PROJECT_ROOT}/.hora"
+
+# Project-scoped git cache (avoids cross-session conflicts with multiple projects)
+_proj_hash=$(printf '%s' "$PROJECT_ROOT" | cksum | cut -d' ' -f1)
+GIT_CACHE="${HORA_STATE_DIR}/git-cache-${_proj_hash}.sh"
 
 # Project-scoped backup state (fallback to global)
 if [ -f "${PROJECT_HORA_DIR}/backup-state.json" ]; then
