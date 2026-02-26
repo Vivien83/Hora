@@ -191,13 +191,24 @@ function getLastSessionSummary(currentProject: string): LastSessionInfo | null {
       }
     } catch {}
 
-    const sessionFiles = fs.readdirSync(SESSIONS_DIR)
+    // Fallback: find most recent session file matching current project
+    const allFiles = fs.readdirSync(SESSIONS_DIR)
       .filter((f: string) => f.endsWith(".md"))
       .sort()
-      .slice(-1);
-    if (sessionFiles.length === 0) return null;
+      .reverse();
+    if (allFiles.length === 0) return null;
 
-    const content = fs.readFileSync(path.join(SESSIONS_DIR, sessionFiles[0]), "utf-8");
+    let content: string | null = null;
+    for (const f of allFiles) {
+      const c = fs.readFileSync(path.join(SESSIONS_DIR, f), "utf-8");
+      const projetIdMatch = c.match(/\*\*ProjetID\*\*\s*:\s*(\S+)/);
+      // Only include if same project, skip legacy sessions without ProjetID
+      if (projetIdMatch && projetIdMatch[1].trim() === currentProject) {
+        content = c;
+        break;
+      }
+    }
+    if (!content) return null;
 
     const nameMatch = content.match(/^# Session\s*:\s*(.+)$/m);
     const name = nameMatch ? nameMatch[1].trim() : "Sans nom";
@@ -265,14 +276,15 @@ function formatThreadForInjection(entries: ThreadEntry[], currentProject: string
       .filter((f: string) => f.endsWith(".md"))
       .sort();
 
-    // Filter by project: read each file and check **Projet** field
+    // Filter by project: read each file and check **ProjetID** field
+    // Only include sessions with matching ProjetID — skip legacy sessions without ProjetID
+    // to prevent cross-project memory leakage
     const projectSessions: string[] = [];
     for (let i = allSessionFiles.length - 1; i >= 0 && projectSessions.length < 3; i--) {
       try {
         const content = fs.readFileSync(path.join(SESSIONS_DIR, allSessionFiles[i]), "utf-8");
         const projetIdMatch = content.match(/\*\*ProjetID\*\*\s*:\s*(\S+)/);
-        // Include if same project ID or no ProjetID field (legacy)
-        if (!projetIdMatch || projetIdMatch[1].trim() === currentProject) {
+        if (projetIdMatch && projetIdMatch[1].trim() === currentProject) {
           projectSessions.unshift(allSessionFiles[i]);
         }
       } catch {}
@@ -896,7 +908,21 @@ async function main() {
           .slice(-1);
         if (workFiles.length > 0) {
           const w = readFile(path.join(MEMORY_DIR, "WORK", workFiles[0]));
-          if (w) sections.push(`En cours: ${truncate(w, MAX_WORK_CHARS)}`);
+          // Only inject WORK file if it belongs to current project (check session field)
+          if (w) {
+            const workSessionMatch = w.match(/^session:\s*(\S+)/m);
+            const workSession = workSessionMatch ? workSessionMatch[1] : null;
+            // Check if the work file's session belongs to the current project
+            // by checking thread entries for matching session+project
+            const currentPid = getProjectId();
+            const thread = readThreadFile();
+            const sessionBelongsToProject = !workSession || thread.some(
+              (e) => e.sid === workSession?.slice(0, 8) && e.project === currentPid
+            );
+            if (sessionBelongsToProject) {
+              sections.push(`En cours: ${truncate(w, MAX_WORK_CHARS)}`);
+            }
+          }
         }
       } catch {}
 
