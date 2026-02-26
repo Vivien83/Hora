@@ -96,6 +96,42 @@ if [[ "$NO_DASH" == false ]] && [[ -d "$DASHBOARD_DIR" ]]; then
   fi
 fi
 
+# ─── Project init (first time) ──────────────────────────────────
+
+NEED_COMMIT=false
+
+# Ensure .hora/ exists with project-id
+if [[ ! -f .hora/project-id ]]; then
+  mkdir -p .hora
+  # Generate project-id without tr|head (SIGPIPE-safe)
+  printf '%s' "$(date +%s%N | shasum | head -c 12)" > .hora/project-id
+  printf '\033[90m◈ HORA project initialized (.hora/project-id)\033[0m\n'
+  NEED_COMMIT=true
+fi
+
+# Ensure git repo exists IN THIS directory (not a parent repo)
+GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$GIT_ROOT" ]] || [[ "$GIT_ROOT" != "$(pwd)" ]]; then
+  printf '\033[90m◈ Initializing git repo...\033[0m\n'
+  git init -q
+  if [[ ! -f .gitignore ]]; then
+    cat > .gitignore <<'GITIGNORE'
+node_modules/
+dist/
+.env
+.env.local
+.DS_Store
+*.log
+GITIGNORE
+  fi
+  NEED_COMMIT=true
+fi
+
+if [[ "$NEED_COMMIT" == true ]]; then
+  git add -A
+  git commit -q -m "init: hora project" --allow-empty
+fi
+
 # ─── Launch Claude Code ──────────────────────────────────────────
 
-exec claude "${CLAUDE_ARGS[@]}"
+exec claude ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}
