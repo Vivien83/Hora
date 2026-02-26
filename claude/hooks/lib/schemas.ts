@@ -28,7 +28,7 @@ export const EntityNodeSchema = z.object({
   id: z.string(),
   type: z.enum(["project", "tool", "error_pattern", "preference", "concept", "person", "file", "library", "pattern", "decision"]),
   name: z.string(),
-  properties: z.record(z.union([z.string(), z.number(), z.boolean()])),
+  properties: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
   embedding: z.array(z.number()).nullable(),
   created_at: z.string(),
   last_seen: z.string(),
