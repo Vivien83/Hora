@@ -14,7 +14,7 @@ import { execSync } from "child_process";
 import { homedir } from "os";
 import { horaSessionFile, memorySessionFile, stateSessionFile, findLatestFile, readLatestAndClean, cleanupExpiredSessions } from "./lib/session-paths.js";
 import { HoraGraph } from "./lib/knowledge-graph.js";
-import { embed, cosineSimilarity } from "./lib/embeddings.js";
+import { agenticRetrieve } from "./lib/agentic-retrieval.js";
 
 const CLAUDE_DIR = path.join(homedir(), ".claude");
 const MEMORY_DIR = path.join(CLAUDE_DIR, "MEMORY");
@@ -749,98 +749,20 @@ async function main() {
       }
     } catch {}
 
-    // --- Knowledge Graph semantic injection ---
+    // --- Knowledge Graph agentic injection ---
     const GRAPH_DIR = path.join(MEMORY_DIR, "GRAPH");
     if (fs.existsSync(path.join(GRAPH_DIR, "entities.jsonl"))) {
       try {
         const graph = new HoraGraph(GRAPH_DIR);
-        const stats = graph.getStats();
-
-        if (stats.entities > 0 && stats.embeddedRatio > 0.3) {
-          const userMessage = message || "";
-          if (userMessage.length > 5) {
-            const queryEmbedding = await embed(userMessage);
-            if (queryEmbedding) {
-              // Semantic search: cosine similarity on embedded facts/entities
-              const results = graph.semanticSearch(queryEmbedding, {
-                maxResults: 20,
-                activeOnly: true,
-                minScore: 0.3,
-              });
-
-              if (results.length > 0) {
-                // BFS expansion: get neighborhood of top entities
-                const topEntityIds = results
-                  .filter(r => r.type === "entity" && r.entity)
-                  .slice(0, 5)
-                  .map(r => r.id);
-
-                const neighborhoods = topEntityIds.map(id => graph.getNeighborhood(id, 2));
-
-                // Collect unique entities and facts
-                const seenEntities = new Set<string>();
-                const seenFacts = new Set<string>();
-                const contextEntities: Array<{ name: string; type: string }> = [];
-                const contextFacts: string[] = [];
-
-                // From search results
-                for (const r of results) {
-                  if (r.type === "entity" && r.entity && !seenEntities.has(r.id)) {
-                    seenEntities.add(r.id);
-                    contextEntities.push({ name: r.entity.name, type: r.entity.type });
-                  }
-                  if (r.type === "fact" && r.fact && !seenFacts.has(r.id)) {
-                    seenFacts.add(r.id);
-                    contextFacts.push(r.fact.description);
-                  }
-                }
-
-                // From BFS neighborhoods
-                for (const sub of neighborhoods) {
-                  for (const e of sub.entities) {
-                    if (!seenEntities.has(e.id)) {
-                      seenEntities.add(e.id);
-                      contextEntities.push({ name: e.name, type: e.type });
-                    }
-                  }
-                  for (const f of sub.facts) {
-                    if (!seenFacts.has(f.id)) {
-                      seenFacts.add(f.id);
-                      contextFacts.push(f.description);
-                    }
-                  }
-                }
-
-                // Budget adaptatif: max 6000 chars
-                const MAX_GRAPH_BUDGET = 6000;
-                let graphContext = "";
-                let budget = MAX_GRAPH_BUDGET;
-
-                if (contextEntities.length > 0) {
-                  const entitiesText = `Entites connues: ${contextEntities.map(e => `${e.name} (${e.type})`).join(", ")}`;
-                  if (entitiesText.length < budget) {
-                    graphContext += entitiesText + "\n";
-                    budget -= entitiesText.length + 1;
-                  }
-                }
-
-                if (contextFacts.length > 0) {
-                  graphContext += "Faits pertinents:\n";
-                  budget -= 20;
-                  for (const fact of contextFacts) {
-                    const line = `- ${fact}`;
-                    if (line.length > budget) break;
-                    graphContext += line + "\n";
-                    budget -= line.length + 1;
-                  }
-                }
-
-                if (graphContext.trim()) {
-                  parts.push(`[HORA KNOWLEDGE GRAPH]\n${graphContext.trim()}`);
-                }
-              }
-            }
-          }
+        const graphContext = await agenticRetrieve({
+          message: message || "",
+          graph,
+          graphDir: GRAPH_DIR,
+          projectName: path.basename(process.cwd()),
+          maxBudget: 6000,
+        });
+        if (graphContext) {
+          parts.push(`[HORA KNOWLEDGE GRAPH]\n${graphContext}`);
         }
       } catch {
         // Fallback silencieux — l'injection classique suffit

@@ -15,12 +15,21 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
+import { getRelationCategory } from "./relation-ontology.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+export interface FactMetadata {
+  context?: string;
+  evidence?: string;
+  alternatives?: string[];
+  category?: string;
+  source_session?: string;
+}
+
 export interface EntityNode {
   id: string;
-  type: "project" | "tool" | "error_pattern" | "preference" | "concept" | "person" | "file" | "library";
+  type: "project" | "tool" | "error_pattern" | "preference" | "concept" | "person" | "file" | "library" | "pattern" | "decision";
   name: string;
   properties: Record<string, string | number | boolean>;
   embedding: number[] | null;
@@ -40,6 +49,7 @@ export interface FactEdge {
   created_at: string;
   expired_at: string | null;
   confidence: number;
+  metadata?: FactMetadata;
 }
 
 export interface Episode {
@@ -291,6 +301,7 @@ export class HoraGraph {
     description: string,
     confidence: number = 1.0,
     validAt?: string,
+    metadata?: FactMetadata,
   ): string {
     const id = genId();
     const timestamp = now();
@@ -306,6 +317,7 @@ export class HoraGraph {
       created_at: timestamp,
       expired_at: null,
       confidence,
+      ...(metadata ? { metadata } : {}),
     };
     this.facts.set(id, fact);
 
@@ -317,8 +329,13 @@ export class HoraGraph {
   }
 
   /**
-   * Supersede an existing fact: sets expired_at on the old fact.
-   * Optionally creates a replacement fact.
+   * Supersede an existing fact with explicit bi-temporal tracking.
+   *
+   * Bi-temporal semantics (Graphiti-compatible):
+   *   - invalid_at: when the fact stopped being true in the real world
+   *   - expired_at: when the fact was superseded in the graph (always now())
+   *
+   * @param invalidAt - When the fact became invalid in reality. Defaults to now().
    */
   supersedeFact(
     factId: string,
@@ -327,12 +344,15 @@ export class HoraGraph {
       description?: string;
       confidence?: number;
     },
+    invalidAt?: string,
   ): string | null {
     const oldFact = this.facts.get(factId);
     if (!oldFact) return null;
 
-    // Expire the old fact
-    oldFact.expired_at = now();
+    // Bi-temporal: mark both graph-time (expired_at) and real-world-time (invalid_at)
+    const timestamp = now();
+    oldFact.expired_at = timestamp;
+    oldFact.invalid_at = invalidAt || timestamp;
 
     // Create replacement if provided
     if (replacement) {
@@ -356,22 +376,33 @@ export class HoraGraph {
   }
 
   /**
-   * Get facts active at a given date.
-   * A fact is active at date D if:
-   *   - created_at <= D
-   *   - expired_at is null OR expired_at > D
+   * Get facts active at a given date using bi-temporal filtering.
+   *
+   * Bi-temporal (Graphiti-compatible):
+   *   - Graph dimension: created_at <= D AND (expired_at is null OR expired_at > D)
+   *   - Real-world dimension: valid_at <= D AND (invalid_at is null OR invalid_at > D)
+   *
+   * A fact must be active in BOTH dimensions to be returned.
    */
   getActiveFactsAt(date: string): FactEdge[] {
     const d = new Date(date);
     if (isNaN(d.getTime())) return [];
 
     return [...this.facts.values()].filter((f) => {
+      // Graph dimension: was the fact recorded and not yet superseded?
       const created = new Date(f.created_at);
       if (created > d) return false;
-
       if (f.expired_at !== null) {
         const expired = new Date(f.expired_at);
         if (expired <= d) return false;
+      }
+
+      // Real-world dimension: was the fact true at that date?
+      const validAt = new Date(f.valid_at);
+      if (validAt > d) return false;
+      if (f.invalid_at !== null) {
+        const invalidAt = new Date(f.invalid_at);
+        if (invalidAt <= d) return false;
       }
 
       return true;
@@ -548,6 +579,45 @@ export class HoraGraph {
     }
     results.sort((a, b) => a.valid_at.localeCompare(b.valid_at));
     return results;
+  }
+
+  // ─── Filtered Retrieval ─────────────────────────────────────────────────
+
+  /**
+   * Find active facts filtered by relation type.
+   */
+  findFactsByRelation(relations: string[]): FactEdge[] {
+    const relationSet = new Set(relations);
+    return this.getActiveFacts().filter((f) => relationSet.has(f.relation));
+  }
+
+  /**
+   * Find entities filtered by type.
+   */
+  findEntitiesByType(types: Array<EntityNode["type"]>): EntityNode[] {
+    const typeSet = new Set(types);
+    return [...this.entities.values()].filter((e) => typeSet.has(e.type));
+  }
+
+  /**
+   * Get subgraph around a project entity (found by name).
+   * Returns neighborhood of depth 1 if entity exists, null otherwise.
+   */
+  getProjectSubgraph(projectName: string): SubGraph | null {
+    const entity = this.findEntityByName(projectName);
+    if (!entity) return null;
+    return this.getNeighborhood(entity.id, 1);
+  }
+
+  /**
+   * Find active facts by category.
+   * Uses metadata.category if set, otherwise derives from relation via ontology.
+   */
+  findFactsByCategory(category: string): FactEdge[] {
+    return this.getActiveFacts().filter((f) => {
+      if (f.metadata?.category === category) return true;
+      return getRelationCategory(f.relation) === category;
+    });
   }
 
   // ─── Stats ──────────────────────────────────────────────────────────────

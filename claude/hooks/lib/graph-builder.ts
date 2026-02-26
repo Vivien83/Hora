@@ -8,8 +8,9 @@
  */
 
 import { execSync } from "child_process";
-import type { EntityNode, FactEdge, HoraGraph } from "./knowledge-graph.js";
+import type { EntityNode, FactEdge, FactMetadata, HoraGraph } from "./knowledge-graph.js";
 import { embedBatch } from "./embeddings.js";
+import { normalizeRelation, getOntologyForPrompt } from "./relation-ontology.js";
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -25,6 +26,8 @@ export interface ExtractionResult {
     relation: string;
     description: string;
     valid_at?: string;
+    confidence?: number;
+    metadata?: FactMetadata;
   }>;
   superseded: Array<{
     existing_fact_description: string;
@@ -145,12 +148,30 @@ export function buildExtractionPrompt(
     ? sessionData.archive.slice(0, 3000) + "..."
     : sessionData.archive;
 
-  return `Tu es un extracteur de knowledge graph pour un systeme de memoire IA.
-A partir de ce resume de session de travail, extrais :
+  const ontology = getOntologyForPrompt();
 
-1. ENTITES (types: project, tool, error_pattern, preference, concept, person, file, library)
-2. FAITS (relations entre entites avec description en langage naturel)
-3. CONTRADICTIONS avec les faits existants
+  return `Tu es un extracteur de knowledge graph pour un systeme de memoire IA.
+A partir de ce resume de session de travail, extrais des FAITS RICHES et CONTEXTUELS.
+
+TYPES D'ENTITES : project, tool, error_pattern, preference, concept, person, file, library, pattern, decision
+
+${ontology}
+
+REGLES STRICTES :
+1. "involves" est INTERDIT. Utilise une relation precise de l'ontologie ci-dessus.
+2. Chaque description DOIT faire minimum 20 mots et expliquer le POURQUOI, pas juste le QUOI.
+3. La confidence doit etre calibree : 0.5 (mentionne vaguement), 0.7 (utilise clairement), 0.9 (prouve/confirme).
+4. Ajoute metadata.context pour expliquer d'ou vient ce fait.
+
+EXEMPLES :
+BAD: {"relation":"involves","description":"HORA implique TypeScript","confidence":1.0}
+GOOD: {"relation":"built_with","description":"HORA est entierement construit en TypeScript strict comme choix architectural fondamental pour la type-safety et l'autocompletion dans tout le systeme de hooks et le dashboard","confidence":0.9,"metadata":{"context":"Stack definie dans CLAUDE.md, confirmee par tous les fichiers source"}}
+
+BAD: {"relation":"uses","description":"HORA utilise embeddings","confidence":1.0}
+GOOD: {"relation":"integrates","description":"Le knowledge graph de HORA integre des embeddings vectoriels locaux via @huggingface/transformers pour calculer la similarite cosinus entre les requetes utilisateur et les faits stockes, permettant l'injection semantique contextuelle","confidence":0.9,"metadata":{"context":"Implemente dans embeddings.ts et utilise par prompt-submit.ts pour le retrieval"}}
+
+BAD: {"relation":"involves","description":"HORA implique dashboard","confidence":1.0}
+GOOD: {"relation":"has_component","description":"HORA contient un dashboard React de visualisation temps reel qui affiche les sessions, le sentiment, la sante memoire et le knowledge graph sous forme de carte neuronale interactive avec react-force-graph-2d","confidence":0.9,"metadata":{"context":"Dashboard dans claude/dashboard/, lance avec npm run dev sur port 3948"}}
 
 Entites existantes (reutilise ces noms exacts pour eviter les doublons) :
 ${entityList || "(aucune)"}
@@ -167,7 +188,7 @@ Session a analyser :
 - Resume: ${archiveText}
 
 Reponds UNIQUEMENT en JSON valide (pas de markdown, pas de commentaires) :
-{"entities":[{"type":"...","name":"...","properties":{}}],"facts":[{"source_name":"...","target_name":"...","relation":"...","description":"..."}],"superseded":[{"existing_fact_description":"...","reason":"..."}]}
+{"entities":[{"type":"...","name":"...","properties":{}}],"facts":[{"source_name":"...","target_name":"...","relation":"...","description":"...","confidence":0.8,"metadata":{"context":"..."}}],"superseded":[{"existing_fact_description":"...","reason":"..."}]}
 Max 10 entites, max 15 faits, max 5 contradictions.`;
 }
 
@@ -218,15 +239,25 @@ function validateExtraction(raw: Record<string, unknown>): ExtractionResult | nu
       typeof e === "object" && e !== null && typeof e.name === "string" && typeof e.type === "string",
   );
 
-  const validFacts = facts.filter(
-    (f: Record<string, unknown>) =>
-      typeof f === "object" &&
-      f !== null &&
-      typeof f.source_name === "string" &&
-      typeof f.target_name === "string" &&
-      typeof f.relation === "string" &&
-      typeof f.description === "string",
-  );
+  const validFacts = facts
+    .filter(
+      (f: Record<string, unknown>) =>
+        typeof f === "object" &&
+        f !== null &&
+        typeof f.source_name === "string" &&
+        typeof f.target_name === "string" &&
+        typeof f.relation === "string" &&
+        typeof f.description === "string",
+    )
+    .map((f: Record<string, unknown>) => ({
+      source_name: f.source_name as string,
+      target_name: f.target_name as string,
+      relation: f.relation as string,
+      description: f.description as string,
+      ...(f.valid_at ? { valid_at: f.valid_at as string } : {}),
+      ...(typeof f.confidence === "number" ? { confidence: f.confidence } : {}),
+      ...(f.metadata && typeof f.metadata === "object" ? { metadata: f.metadata as FactMetadata } : {}),
+    }));
 
   const validSuperseded = superseded.filter(
     (s: Record<string, unknown>) =>
@@ -237,7 +268,7 @@ function validateExtraction(raw: Record<string, unknown>): ExtractionResult | nu
 
   return {
     entities: validEntities as ExtractionResult["entities"],
-    facts: validFacts as ExtractionResult["facts"],
+    facts: validFacts,
     superseded: validSuperseded as ExtractionResult["superseded"],
   };
 }
@@ -279,6 +310,9 @@ export function applyToGraph(
   }
 
   // 2. Add facts (resolve source/target by name)
+  // Bi-temporal: valid_at = when the fact was true in the real world (session time)
+  // created_at = when the fact was recorded in the graph (set by addFact → now())
+  const sessionTimestamp = new Date().toISOString(); // fallback
   let factCount = 0;
   for (const fact of extraction.facts) {
     if (factCount >= 20) break; // GF-7: cap
@@ -290,13 +324,18 @@ export function applyToGraph(
       // GF-5: skip if either entity not found
       if (!sourceEntity || !targetEntity) continue;
 
+      // Bi-temporal: use fact.valid_at if LLM provided it, else session ID as proxy
+      // This ensures valid_at reflects real-world truth time, not graph recording time
+      const validAt = fact.valid_at || sessionTimestamp;
+
       const factId = graph.addFact(
         sourceEntity.id,
         targetEntity.id,
-        fact.relation,
+        normalizeRelation(fact.relation),
         fact.description,
-        1.0,
-        fact.valid_at,
+        fact.confidence ?? 0.8,
+        validAt,
+        fact.metadata,
       );
       newFactIds.push(factId);
       const activeFacts = graph.getActiveFacts();
