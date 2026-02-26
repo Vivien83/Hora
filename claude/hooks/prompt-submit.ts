@@ -526,6 +526,207 @@ function getRoutingHint(mode: string): string {
   return hints[mode] || "";
 }
 
+// ========================================
+// G3 — Effort level classification
+// ========================================
+
+function classifyEffort(message: string): string | null {
+  const msg = message.toLowerCase();
+
+  // Critique → MAXIMAL
+  const maximalWords = [
+    "auth", "payment", "paiement", "database", "migration",
+    "deploy", "production", "securite", "security", "credentials",
+    "mot de passe", "password", "stripe", "oauth",
+  ];
+  if (maximalWords.some((w) => msg.includes(w))) {
+    return "Effort MAXIMAL — validation utilisateur requise avant de coder";
+  }
+
+  // Complexe → INTENSIF
+  const intensifWords = [
+    "refactor", "migration", "architecture", "redesign",
+    "restructure", "plusieurs fichiers", "multi-fichiers", "codebase",
+    "nouvelle archi", "new architecture",
+  ];
+  if (intensifWords.some((w) => msg.includes(w))) {
+    return "Effort INTENSIF — PLAN + AUDIT approfondi obligatoire";
+  }
+
+  // Trivial → MINIMAL
+  const minimalWords = [
+    "typo", "rename", "fix typo", "coquille", "faute de frappe",
+    "majuscule", "minuscule",
+  ];
+  if (minimalWords.some((w) => msg.includes(w))) {
+    return "Effort MINIMAL — correction directe";
+  }
+
+  // Moyen → STANDARD
+  const standardWords = [
+    "bug", "fix", "erreur", "error", "probleme", "issue",
+    "corrige", "repare", "ajoute", "modifie", "change",
+  ];
+  if (standardWords.some((w) => msg.includes(w))) {
+    return "Effort STANDARD — EXPLORE + AUDIT obligatoire";
+  }
+
+  return null;
+}
+
+// ========================================
+// G2 — Steering Rules parse + rotation
+// ========================================
+
+interface SteeringRule {
+  number: number;
+  title: string;
+  bad: string;
+  correct: string;
+}
+
+function parseSteeringRules(filePath: string): SteeringRule[] {
+  try {
+    const content = fs.readFileSync(filePath, "utf-8");
+    const rules: SteeringRule[] = [];
+    const sections = content.split(/^## \d+\./m).slice(1); // Split by ## N.
+
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i].trim();
+      const titleMatch = section.match(/^(.+?)$/m);
+      const badMatch = section.match(/\*\*Bad\*\*:\s*(.+)/);
+      const correctMatch = section.match(/\*\*Correct\*\*:\s*(.+)/);
+
+      if (titleMatch) {
+        rules.push({
+          number: i + 1,
+          title: titleMatch[1].trim(),
+          bad: badMatch ? badMatch[1].trim() : "",
+          correct: correctMatch ? correctMatch[1].trim() : "",
+        });
+      }
+    }
+    return rules;
+  } catch {
+    return [];
+  }
+}
+
+function selectRotatingRules(rules: SteeringRule[], messageCount: number, batchSize: number): string[] {
+  if (rules.length === 0) return [];
+
+  // Premier message : toutes les regles (titres seulement pour economiser tokens)
+  if (messageCount <= 1) {
+    return rules.map((r) => `${r.number}. ${r.title}`);
+  }
+
+  // Messages suivants : batch rotatif de 3
+  const totalBatches = Math.ceil(rules.length / batchSize);
+  const batchIndex = (messageCount - 2) % totalBatches; // -2 car premier message = toutes
+  const start = batchIndex * batchSize;
+  const batch = rules.slice(start, start + batchSize);
+
+  return batch.map((r) => `${r.number}. ${r.title} — Bad: ${r.bad} | Correct: ${r.correct}`);
+}
+
+// ========================================
+// G4 — Startup Banner
+// ========================================
+
+interface BannerStats {
+  entities: number;
+  facts: number;
+  sessions: number;
+  ts: number;
+}
+
+const BANNER_CACHE_FILE = path.join(MEMORY_DIR, ".banner-cache.json");
+const BANNER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getBannerStats(): BannerStats {
+  // Try cache first
+  try {
+    const cached = JSON.parse(fs.readFileSync(BANNER_CACHE_FILE, "utf-8")) as BannerStats;
+    if (Date.now() - cached.ts < BANNER_CACHE_TTL) return cached;
+  } catch {}
+
+  const stats: BannerStats = { entities: 0, facts: 0, sessions: 0, ts: Date.now() };
+
+  // Count entities from GRAPH/
+  const GRAPH_DIR = path.join(MEMORY_DIR, "GRAPH");
+  try {
+    const entitiesFile = path.join(GRAPH_DIR, "entities.jsonl");
+    if (fs.existsSync(entitiesFile)) {
+      const content = fs.readFileSync(entitiesFile, "utf-8").trim();
+      stats.entities = content ? content.split("\n").length : 0;
+    }
+  } catch {}
+
+  // Count facts from GRAPH/
+  try {
+    const factsFile = path.join(GRAPH_DIR, "facts.jsonl");
+    if (fs.existsSync(factsFile)) {
+      const content = fs.readFileSync(factsFile, "utf-8").trim();
+      stats.facts = content ? content.split("\n").length : 0;
+    }
+  } catch {}
+
+  // Count sessions from SESSIONS/
+  try {
+    const sessionFiles = fs.readdirSync(SESSIONS_DIR).filter((f: string) => f.endsWith(".md"));
+    stats.sessions = sessionFiles.length;
+  } catch {}
+
+  // Cache
+  try {
+    fs.writeFileSync(BANNER_CACHE_FILE, JSON.stringify(stats), "utf-8");
+  } catch {}
+
+  return stats;
+}
+
+function buildBanner(): string {
+  const stats = getBannerStats();
+
+  // Plain text banner (injected as Claude context, not terminal output)
+  // Colored version renders in hora.sh and install.sh terminal output
+  const lines = [
+    `  ██╗  ██╗ ██████╗ ██████╗  █████╗`,
+    `  ██║  ██║██╔═══██╗██╔══██╗██╔══██╗`,
+    `  ███████║██║   ██║██████╔╝███████║`,
+    `  ██╔══██║██║   ██║██╔══██╗██╔══██║`,
+    `  ██║  ██║╚██████╔╝██║  ██║██║  ██║`,
+    `  ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝`,
+    `          your memory never sleeps.`,
+    `  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+  ];
+
+  const statsLine = `  ⟐ ${stats.entities} entites │ ${stats.facts} facts │ ${stats.sessions} sessions`;
+  lines.push(statsLine);
+
+  return `[HORA BANNER]\n${lines.join("\n")}`;
+}
+
+// ========================================
+// G6 — Read last N JSONL lines (for reflections)
+// ========================================
+
+function readLastNJsonl<T>(filePath: string, n: number): T[] {
+  try {
+    if (!fs.existsSync(filePath)) return [];
+    const content = fs.readFileSync(filePath, "utf-8").trim();
+    if (!content) return [];
+    const lines = content.split("\n").filter(Boolean).slice(-n);
+    const results: T[] = [];
+    for (const line of lines) {
+      try { results.push(JSON.parse(line)); } catch {}
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
 // --- Detection nouveau chantier + suggestion branche ---
 
 const NEW_WORK_KEYWORDS = [
@@ -665,6 +866,10 @@ async function main() {
 
   // --- Contexte MEMORY (premier message seulement) ---
   if (isFirst) {
+    // --- HORA Banner (premier message) --- [G4]
+    const banner = buildBanner();
+    if (banner) parts.push(banner);
+
     const thread = readThreadFile();
     const hasThreadHistory = thread.length > 0;
 
@@ -814,6 +1019,26 @@ async function main() {
         );
       }
     } catch {}
+
+    // --- Past reflections (premier message) --- [G6]
+    try {
+      const reflPath = path.join(MEMORY_DIR, "LEARNING", "ALGORITHM", "algorithm-reflections.jsonl");
+      interface ReflectionEntry {
+        sid: string;
+        ts: string;
+        algo_respected: boolean;
+        audit_done: boolean;
+        efficiency_ratio: number;
+        note?: string;
+      }
+      const reflections = readLastNJsonl<ReflectionEntry>(reflPath, 2);
+      if (reflections.length > 0) {
+        const formatted = reflections.map((r) =>
+          `- ${r.sid} (${r.ts.slice(0, 10)}): algo=${r.algo_respected ? "OK" : "SKIP"}, audit=${r.audit_done ? "OK" : "SKIP"}, eff=${Math.round(r.efficiency_ratio * 100)}%${r.note ? " — " + r.note : ""}`
+        ).join("\n");
+        parts.push(`[HORA REFLEXION] Sessions precedentes:\n${formatted}`);
+      }
+    } catch {}
   }
 
   // --- Sentiment alert (chaque message, si score >= 4) ---
@@ -829,6 +1054,40 @@ async function main() {
       if (hint) parts.push(`[HORA] ${hint}`);
     }
   }
+
+  // --- Effort level hint (chaque message) --- [G3]
+  if (message) {
+    const effort = classifyEffort(message);
+    if (effort) parts.push(`[HORA EFFORT] ${effort}`);
+  }
+
+  // --- Steering Rules (chaque message, 3 en rotation) --- [G2]
+  const STEERING_RULES_PATH = path.join(CLAUDE_DIR, "STEERING.md");
+  try {
+    if (fs.existsSync(STEERING_RULES_PATH)) {
+      const rules = parseSteeringRules(STEERING_RULES_PATH);
+      const selected = selectRotatingRules(rules, state.messageCount, 3);
+      if (selected.length > 0) {
+        parts.push(`[HORA STEERING]\n${selected.join("\n")}`);
+      }
+    }
+  } catch {}
+
+  // --- Algorithm state (chaque message) --- [G5]
+  try {
+    const { loadAlgoState } = await import("./lib/algorithm-tracker.js");
+    const algoState = loadAlgoState(sessionId);
+    if (algoState && algoState.currentPhase !== "UNKNOWN") {
+      const phasesDone = algoState.phasesCompleted.join(" → ");
+      const { validateTransition } = await import("./lib/algorithm-tracker.js");
+      const validation = validateTransition(algoState, algoState.currentPhase);
+      let algoLine = `[HORA ALGO] Phase: ${algoState.currentPhase} | Fait: ${phasesDone || "aucune"} | Complexite: ${algoState.complexity}`;
+      if (!validation.valid && validation.warning) {
+        algoLine += ` | ⚠ ${validation.warning}`;
+      }
+      parts.push(algoLine);
+    }
+  } catch {}
 
   // --- Checkpoint reminder (contexte >= 70%) ---
   const CHECKPOINT_THRESHOLD = 70;

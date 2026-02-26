@@ -67,6 +67,18 @@ Avant toute action, determiner la complexite :
 | Multi-fichiers, refactor, nouvelle archi | **Complexe** | **EXPLORE** → **PLAN** (ISC) → **AUDIT** → CODE |
 | Auth, donnees, paiement, migration, infra | **Critique** | **EXPLORE** → **PLAN** (ISC) → **validation utilisateur** → **AUDIT** → CODE |
 
+### Niveaux d'effort
+
+| Complexite | Effort | Budget reflexion | Phases |
+|---|---|---|---|
+| Trivial | minimal | <5s | EXPLORE implicite → CODE |
+| Moyen | standard | 10-30s | EXPLORE → AUDIT → CODE |
+| Complexe | intensif | 1-3min | EXPLORE → PLAN → AUDIT → CODE |
+| Critique | maximal | 3-10min | EXPLORE → PLAN → validation → AUDIT → CODE |
+
+L'effort determine le temps passe en EXPLORE et AUDIT.
+Plus l'effort est eleve, plus l'analyse doit etre profonde.
+
 ### 1. EXPLORE — Lire avant d'ecrire. Toujours.
 
 **Quoi faire :**

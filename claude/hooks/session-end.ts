@@ -861,6 +861,67 @@ function migrateLegacyPAI(): void {
 }
 
 // ========================================
+// G6 — Structured Reflection
+// ========================================
+
+interface ReflectionEntry {
+  sid: string;
+  ts: string;
+  algo_respected: boolean;
+  audit_done: boolean;
+  efficiency_ratio: number;
+  note?: string;
+}
+
+function buildReflection(
+  transcript: string,
+  failures: FailureEntry[],
+  sentiment: number,
+  sessionId: string
+): ReflectionEntry | null {
+  if (!transcript || transcript.length < 200) return null;
+
+  const lines = transcript.split("\n");
+  const userLines = lines.filter((l) => l.startsWith("[user]:") || l.startsWith("[human]:"));
+  const assistantLines = lines.filter((l) => l.startsWith("[assistant]:"));
+  const totalLines = userLines.length + assistantLines.length;
+
+  if (totalLines < 4) return null; // Session trop courte pour reflexion
+
+  const assistantText = assistantLines.join("\n").toLowerCase();
+
+  // 1. Algorithme respecte ? Verifier si EXPLORE a precede CODE
+  const hasExplore = /\bexplore\b|\bj'ai lu\b|\bvoici ce que\b|\banalyse\b|\bfichiers concernes\b/.test(assistantText);
+  const hasCode = /\bimplemente\b|\bmodifie\b|\bj'ai ajoute\b|\bj'ai cree\b|\bedit\b|\bwrite\b/.test(assistantText);
+  const hasAudit = /\baudit\b|\bghost failure\b|\bhypothese\b|\bverifie\b/.test(assistantText);
+
+  const algoRespected = !hasCode || hasExplore; // CODE sans EXPLORE = non respecte
+
+  // 2. Audit fait ?
+  const auditDone = hasAudit || !hasCode; // Pas de code = audit non necessaire
+
+  // 3. Efficacite : ratio messages user / total
+  const efficiencyRatio = totalLines > 0 ? userLines.length / totalLines : 0.5;
+
+  // Build note
+  const notes: string[] = [];
+  if (hasCode && !hasExplore) notes.push("EXPLORE saute");
+  if (hasCode && !hasAudit) notes.push("AUDIT saute");
+  if (efficiencyRatio > 0.6) notes.push("beaucoup de clarifications demandees");
+  if (failures.length > 0) notes.push(`${failures.length} failure(s) detectee(s)`);
+  if (sentiment <= 2) notes.push("sentiment negatif");
+
+  return {
+    sid: sessionId.slice(0, 8),
+    ts: new Date().toISOString(),
+    algo_respected: algoRespected,
+    audit_done: auditDone,
+    efficiency_ratio: Math.round(efficiencyRatio * 100) / 100,
+    note: notes.length > 0 ? notes.join(", ") : undefined,
+  };
+}
+
+// ========================================
 // Main
 // ========================================
 
@@ -1037,6 +1098,41 @@ async function main() {
       `- **Date** : ${new Date().toISOString()}\n\n` +
       `---\n\n${transcript.slice(0, 5000)}`
   );
+
+  // --- 4.5. Algorithm tracking --- [G5]
+  try {
+    const { detectPhase, detectComplexity, loadAlgoState, saveAlgoState } = await import("./lib/algorithm-tracker.js");
+    const lastMsg = hookData.last_assistant_message || extractLastAssistantMessage(transcriptPath);
+    const phase = detectPhase(lastMsg);
+
+    let algoState = loadAlgoState(sessionId) || {
+      sessionId,
+      currentPhase: "UNKNOWN" as const,
+      phasesCompleted: [] as Array<"EXPLORE" | "PLAN" | "AUDIT" | "CODE" | "COMMIT">,
+      lastTransition: "",
+      complexity: detectComplexity(transcript.slice(0, 500)) as "trivial" | "moyen" | "complexe" | "critique",
+    };
+
+    if (phase !== "UNKNOWN" && phase !== algoState.currentPhase) {
+      if (algoState.currentPhase !== "UNKNOWN" && !algoState.phasesCompleted.includes(algoState.currentPhase)) {
+        algoState.phasesCompleted.push(algoState.currentPhase);
+      }
+      algoState.currentPhase = phase;
+      algoState.lastTransition = new Date().toISOString();
+    }
+    saveAlgoState(sessionId, algoState);
+  } catch {}
+
+  // --- 4.6. Structured reflection --- [G6]
+  try {
+    const reflection = buildReflection(transcript, failures, sentiment, sessionId);
+    if (reflection) {
+      appendJsonl(
+        path.join(LEARNING_DIR, "ALGORITHM", "algorithm-reflections.jsonl"),
+        reflection
+      );
+    }
+  } catch {}
 
   // --- 5. Cleanup flags + legacy migration ---
   cleanupOldFlags();

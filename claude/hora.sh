@@ -36,6 +36,35 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# ─── Banner ──────────────────────────────────────────────────────
+
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
+  GOLD='\033[38;2;212;168;83m'
+  DIM_GOLD='\033[38;2;160;128;64m'
+  B='\033[1m'
+  D='\033[2m'
+  R='\033[0m'
+  W='\033[97m'
+  printf "\n"
+  printf "${GOLD}${B}"
+  printf "  ██╗  ██╗ ██████╗ ██████╗  █████╗ \n"
+  printf "  ██║  ██║██╔═══██╗██╔══██╗██╔══██╗\n"
+  printf "  ███████║██║   ██║██████╔╝███████║\n"
+  printf "  ██╔══██║██║   ██║██╔══██╗██╔══██║\n"
+  printf "  ██║  ██║╚██████╔╝██║  ██║██║  ██║\n"
+  printf "${DIM_GOLD}  ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝${R}\n"
+  printf "\n"
+  printf "  ${D}your memory never sleeps.${R}\n"
+  printf "  ${DIM_GOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${R}\n"
+  # Dynamic stats
+  ENTITIES=0; FACTS=0; SESSIONS=0
+  [ -f "$HOME/.claude/MEMORY/GRAPH/entities.jsonl" ] && ENTITIES=$(wc -l < "$HOME/.claude/MEMORY/GRAPH/entities.jsonl" 2>/dev/null | tr -d ' ')
+  [ -f "$HOME/.claude/MEMORY/GRAPH/facts.jsonl" ] && FACTS=$(wc -l < "$HOME/.claude/MEMORY/GRAPH/facts.jsonl" 2>/dev/null | tr -d ' ')
+  [ -d "$HOME/.claude/MEMORY/SESSIONS" ] && SESSIONS=$(ls "$HOME/.claude/MEMORY/SESSIONS/"*.md 2>/dev/null | wc -l | tr -d ' ')
+  printf "  ${W}⟐${R} ${D}${ENTITIES} entites${R} ${DIM_GOLD}│${R} ${D}${FACTS} facts${R} ${DIM_GOLD}│${R} ${D}${SESSIONS} sessions${R}\n"
+  printf "\n"
+fi
+
 # ─── Start dashboard ──────────────────────────────────────────────
 
 if [[ "$NO_DASH" == false ]] && [[ -d "$DASHBOARD_DIR" ]]; then

@@ -99,15 +99,20 @@ STEP_CURRENT=0
 STEP_TOTAL=9
 
 ui_header() {
+  local GOLD='\033[38;2;212;168;83m'
+  local DIM_GOLD='\033[38;2;160;128;64m'
   printf "\n"
-  printf "${CYAN}${BOLD}"
-  printf "   _  _  ___  ___    _   \n"
-  printf "  | || |/ _ \\| _ \\  /_\\\\  \n"
-  printf "  | __ | (_) |   / / _ \\\\ \n"
-  printf "  |_||_|\\___/|_|_\\\\/_/ \\\\_\\\\\n"
+  printf "${GOLD}${BOLD}"
+  printf "  ██╗  ██╗ ██████╗ ██████╗  █████╗ \n"
+  printf "  ██║  ██║██╔═══██╗██╔══██╗██╔══██╗\n"
+  printf "  ███████║██║   ██║██████╔╝███████║\n"
+  printf "  ██╔══██║██║   ██║██╔══██╗██╔══██║\n"
+  printf "  ██║  ██║╚██████╔╝██║  ██║██║  ██║\n"
+  printf "${DIM_GOLD}"
+  printf "  ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝\n"
   printf "${RESET}\n"
-  printf "  ${DIM}Hybrid Orchestrated Reasoning Architecture${RESET}\n"
-  printf "  ${DIM}──────────────────────────────────────────${RESET}\n"
+  printf "  ${DIM}your memory never sleeps.${RESET}\n"
+  printf "  ${DIM_GOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"
   printf "\n"
   if $DRY_RUN; then
     printf "  ${YELLOW}${BOLD}DRY RUN${RESET} ${DIM}— aucune modification ne sera effectuee${RESET}\n\n"
@@ -145,8 +150,10 @@ ui_summary() {
   hooks_count=$(ls "$HORA_DIR/hooks/"*.ts 2>/dev/null | wc -l | tr -d ' ')
   agents_count=$(ls "$HORA_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ')
 
+  local GOLD='\033[38;2;212;168;83m'
+  local DIM_GOLD='\033[38;2;160;128;64m'
   printf "\n"
-  printf "  ${DIM}──────────────────────────────────────────${RESET}\n"
+  printf "  ${DIM_GOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"
   printf "\n"
   if $DRY_RUN; then
     printf "  ${YELLOW}${BOLD}DRY RUN termine${RESET} ${DIM}— rien n'a ete modifie${RESET}\n"
@@ -154,10 +161,10 @@ ui_summary() {
     printf "  ${GREEN}${BOLD}${SYM_OK} Installation terminee${RESET}\n"
   fi
   printf "\n"
-  printf "  ${DIM}Composants installes :${RESET}\n"
-  printf "    ${SYM_DOT} ${BOLD}${hooks_count}${RESET} hooks  ${DIM}|${RESET}  ${BOLD}${agents_count}${RESET} agents  ${DIM}|${RESET}  ${BOLD}${skills_count}${RESET} skills\n"
+  printf "  ${DIM}Composants :${RESET}\n"
+  printf "    ${GOLD}⟐${RESET} ${BOLD}${hooks_count}${RESET} hooks  ${DIM_GOLD}│${RESET}  ${BOLD}${agents_count}${RESET} agents  ${DIM_GOLD}│${RESET}  ${BOLD}${skills_count}${RESET} skills\n"
   printf "\n"
-  printf "  ${BOLD}Demarrer${RESET}   ${CYAN}hora${RESET}  ${DIM}(Claude + Dashboard)${RESET}\n"
+  printf "  ${BOLD}Demarrer${RESET}   ${GOLD}hora${RESET}  ${DIM}(Claude + Dashboard)${RESET}\n"
   printf "  ${BOLD}Claude${RESET}     ${DIM}hora --no-dash  ${RESET}${DIM}(sans dashboard)${RESET}\n"
   printf "  ${BOLD}Skills${RESET}     ${DIM}/hora-design  /hora-forge  /hora-refactor  /hora-security  /hora-perf${RESET}\n"
   printf "  ${BOLD}Backup${RESET}     ${DIM}bash install.sh --restore${RESET}\n"

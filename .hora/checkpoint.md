@@ -1,37 +1,24 @@
 ---
-session: a99bbbfd
-timestamp: 2026-02-26T15:30:00.000Z
-context_pct: 35
+session: 715f22fe
+timestamp: 2026-02-26T18:45:25.353Z
+context_pct: 71
 ---
 # Objectif en cours
-Test du workflow complet HORA avant partage public.
+Gaps G2-G6 (PAI vs HORA) : Steering Rules, Effort Levels, Banner, Algorithm Tracker, Structured Reflection
 
 # Etat actuel
-- 6 phases excellence memoire implementees, commitees et pushees (037f2c4)
-- Fix statusline: git cache project-scoped (047e60b) + timezone UTC (ffcece8)
-- install.sh a jour, ~/.claude/ synchronise via bash install.sh
-- Fix Zod v4: z.record() signature corrigee dans schemas.ts
-- **36/36 tests E2E PASSES** — workflow complet valide
-
-# Tests valides
-1. Knowledge Graph: 77 entites, 110 facts, 24 episodes
-2. Reconsolidation: semantic OK, episodic immutable OK
-3. BM25 Hybrid Search: buildBM25Index + hybridSearch fonctionnels
-4. ACT-R Activation: decay, multi-access, shouldExpire corrects
-5. Dream Cycle: 24 episodes traites, consolidation OK
-6. Community Detection: 1 communaute (71 entites, 110 facts)
-7. Zod Validation: parse/rejet corrects
-8. Memory Metrics: 99.5% embedding coverage
-9. memory_type: 10 facts classes (7 semantic, 2 procedural, 1 episodic)
-10. Activation Log: 10 entrees existantes
+- G2 Steering Rules : DONE — STEERING.md 12 regles + rotation 3/msg dans prompt-submit
+- G3 Effort Levels : DONE — section CLAUDE.md + classifyEffort dans prompt-submit
+- G4 Banner : DONE — ANSI Shadow dore dans hora.sh + install.sh + hook texte brut
+- G5 Algorithm Tracker : DONE — algorithm-tracker.ts + integration prompt-submit + session-end
+- G6 Structured Reflection : DONE — buildReflection session-end + injection prompt-submit
+- Tous deployes vers ~/.claude/
 
 # Decisions prises
-- minisearch + zod en dependencies production
-- npm install --omit=dev dans install.sh
-- Git cache scope par projet via cksum du PROJECT_ROOT
-- TZ=UTC pour parse_countdown sur macOS (BSD date)
-- z.record(keySchema, valueSchema) pour Zod v4 compat
+- ANSI codes terminal (hora.sh, install.sh), texte brut hook (contexte Claude)
+- Style ANSI Shadow dore (#D4A853) remplace FIGlet cyan
+- Tagline "your memory never sleeps."
+- Stats dynamiques entites/facts/sessions dans les 3 banners
 
 # Prochaines etapes
-- Commit + push du fix Zod
-- Pret pour partage public
+- Commit et push
