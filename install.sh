@@ -96,7 +96,7 @@ else
 fi
 
 STEP_CURRENT=0
-STEP_TOTAL=8
+STEP_TOTAL=9
 
 ui_header() {
   printf "\n"
@@ -157,7 +157,8 @@ ui_summary() {
   printf "  ${DIM}Composants installes :${RESET}\n"
   printf "    ${SYM_DOT} ${BOLD}${hooks_count}${RESET} hooks  ${DIM}|${RESET}  ${BOLD}${agents_count}${RESET} agents  ${DIM}|${RESET}  ${BOLD}${skills_count}${RESET} skills\n"
   printf "\n"
-  printf "  ${BOLD}Demarrer${RESET}   ${CYAN}claude${RESET}\n"
+  printf "  ${BOLD}Demarrer${RESET}   ${CYAN}hora${RESET}  ${DIM}(Claude + Dashboard)${RESET}\n"
+  printf "  ${BOLD}Claude${RESET}     ${DIM}hora --no-dash  ${RESET}${DIM}(sans dashboard)${RESET}\n"
   printf "  ${BOLD}Skills${RESET}     ${DIM}/hora-design  /hora-forge  /hora-refactor  /hora-security  /hora-perf${RESET}\n"
   printf "  ${BOLD}Backup${RESET}     ${DIM}bash install.sh --restore${RESET}\n"
   printf "\n"
@@ -894,6 +895,62 @@ fi
 [ $ISSUES -eq 0 ] && ui_ok "Donnees de session intactes" || ui_ok "$ISSUES element(s) restaure(s)"
 
 detect_orphans
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMMANDE HORA (launcher Claude + Dashboard)
+# ─────────────────────────────────────────────────────────────────────────────
+
+ui_step "Commande hora"
+
+# Copy launcher to ~/.claude/
+_cp "$HORA_DIR/hora.sh" "$CLAUDE_DIR/hora.sh"
+chmod +x "$CLAUDE_DIR/hora.sh"
+
+# Determine install location for the 'hora' command
+HORA_INSTALLED=false
+
+if [[ "$OSTYPE" == msys* ]] || [[ "$OSTYPE" == cygwin* ]] || [[ "$OSTYPE" == win* ]]; then
+  # Windows: create a .cmd wrapper next to claude
+  CLAUDE_BIN=$(command -v claude 2>/dev/null || echo "")
+  if [ -n "$CLAUDE_BIN" ]; then
+    HORA_CMD_DIR=$(dirname "$CLAUDE_BIN")
+    # Create hora.cmd that calls bash with hora.sh
+    cat > "$HORA_CMD_DIR/hora.cmd" << 'WINEOF'
+@echo off
+set "HORA_SCRIPT=%USERPROFILE%\.claude\hora.sh"
+if defined CLAUDE_CODE_GIT_BASH_PATH (
+  "%CLAUDE_CODE_GIT_BASH_PATH%" "%HORA_SCRIPT%" %*
+) else (
+  bash "%HORA_SCRIPT%" %*
+)
+WINEOF
+    HORA_INSTALLED=true
+    ui_ok "hora.cmd installe dans $HORA_CMD_DIR"
+  fi
+else
+  # macOS / Linux: symlink to the same directory as claude
+  CLAUDE_BIN=$(command -v claude 2>/dev/null || echo "")
+  if [ -n "$CLAUDE_BIN" ]; then
+    # Resolve symlinks to find the actual bin directory
+    HORA_BIN_DIR=$(dirname "$CLAUDE_BIN")
+  elif [ -d "$HOME/.local/bin" ]; then
+    HORA_BIN_DIR="$HOME/.local/bin"
+  else
+    HORA_BIN_DIR="/usr/local/bin"
+  fi
+
+  # Create/update symlink
+  if [ -d "$HORA_BIN_DIR" ]; then
+    ln -sf "$CLAUDE_DIR/hora.sh" "$HORA_BIN_DIR/hora"
+    HORA_INSTALLED=true
+    ui_ok "hora ${SYM_ARROW} $HORA_BIN_DIR/hora"
+  fi
+fi
+
+if ! $HORA_INSTALLED; then
+  ui_warn "Impossible d'installer la commande hora automatiquement"
+  ui_warn "Ajouter manuellement : ln -s $CLAUDE_DIR/hora.sh /usr/local/bin/hora"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RESUME
