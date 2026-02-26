@@ -52,9 +52,11 @@ Session N:  Rich       --> Semantic search injects only the relevant context per
 | **Long session (days)** | Memory only saved at end | Re-extraction every 20 minutes |
 | **Multiple terminals** | Sessions overwrite each other's state | Full session isolation, project-scoped checkpoints |
 | **File edited by mistake** | Hope you have git | Snapshot saved automatically before every edit |
-| **Memory after months** | Flat files, everything loaded | 3-tier memory (T1/T2/T3) with promotion, expiration, GC |
-| **Context injection** | Dump everything | Cosine similarity + BFS: only relevant facts injected |
-| **Understanding patterns** | None | Knowledge graph tracks entities, relationships, contradictions over time |
+| **Memory after months** | Flat files, everything loaded | 3-tier memory (T1/T2/T3) with ACT-R activation decay, GC |
+| **Context injection** | Dump everything | Hybrid search (semantic + BM25) with Baddeley chunking |
+| **Understanding patterns** | None | Knowledge graph with reconsolidation, dream cycle, community detection |
+| **Forgetting** | Never or all-at-once | ACT-R model: frequently recalled facts survive, unused facts decay naturally |
+| **Duplicate facts** | Accumulate forever | Auto-dedup by embedding similarity (> 0.92 cosine = same fact) |
 
 ---
 
@@ -125,15 +127,16 @@ The installer runs 8 steps with a visual UI (ASCII header, progress counter, col
 
 ## Features
 
-### 1. Knowledge Graph (Graphiti-inspired)
+### 1. Knowledge Graph (Neuroscience-inspired)
 
-HORA builds a **bi-temporal knowledge graph** inspired by [Graphiti](https://github.com/getzep/graphiti) — automatically, at the end of every session.
+HORA builds a **bi-temporal knowledge graph** inspired by [Graphiti](https://github.com/getzep/graphiti) and neuroscience (CLS theory, ACT-R, Tulving's memory taxonomy) — automatically, at the end of every session.
 
 ```
 Session ends --> claude -p extracts entities + facts + contradictions
             --> @huggingface/transformers computes 384-dim embeddings (local ONNX)
             --> Graph updated with bi-temporal metadata
-            --> Next session: semantic search retrieves relevant context
+            --> Dream cycle consolidates episodes into semantic knowledge
+            --> Next session: hybrid search (semantic + BM25) retrieves relevant context
 ```
 
 #### Three-layer structure
@@ -141,8 +144,18 @@ Session ends --> claude -p extracts entities + facts + contradictions
 | Layer | What | Example |
 |:---|:---|:---|
 | **Entities** (nodes) | Concepts extracted from sessions | `project:hora`, `tool:react-force-graph`, `preference:library-first` |
-| **Facts** (edges) | Relationships between entities with descriptions | "HORA uses react-force-graph-2d for neural visualization" |
-| **Episodes** (raw) | Source references (sessions, failures, sentiment) | `session:a1b2c3d4 → extracted 5 entities, 8 facts` |
+| **Facts** (edges) | Typed relationships with Tulving classification | `semantic`: "HORA uses TypeScript", `procedural`: "When bug auth → check Better-Auth config" |
+| **Episodes** (raw) | Source references, consolidated by dream cycle | `session:a1b2c3d4 → extracted 5 entities, 8 facts` |
+
+#### Memory types (Tulving taxonomy)
+
+Every fact is classified as one of three types, enabling type-aware retrieval:
+
+| Type | What | Mutable | Example |
+|:---|:---|:---:|:---|
+| **Semantic** | General knowledge | Yes (reconsolidation) | "HORA uses TypeScript strict" |
+| **Episodic** | Time-bound events | No (immutable) | "Fixed auth bug on Feb 20" |
+| **Procedural** | How-to patterns | Yes (reconsolidation) | "When new component → create in src/components/ with shadcn" |
 
 #### Bi-temporality (4 timestamps per fact)
 
@@ -155,13 +168,32 @@ Session ends --> claude -p extracts entities + facts + contradictions
 
 This means HORA can **travel through time** — see what was true at any point, detect contradictions, and automatically supersede outdated facts.
 
+#### Reconsolidation
+
+When a semantic or procedural fact is recalled and new evidence appears, HORA **enriches it progressively** instead of replacing it. Each reconsolidation stores the previous state in `metadata.history[]` (max 5 versions) — like how human memories are updated each time they're recalled.
+
+#### Dream Cycle (hippocampal replay)
+
+Inspired by sleep-dependent memory consolidation, the dream cycle runs during GC (every 6h):
+
+1. Replays unconsolidated episodes from the last 7 days
+2. Clusters episodes by shared entities
+3. Patterns appearing in 3+ episodes → distilled into new semantic facts
+4. Existing facts reinforced with new evidence (reconsolidation)
+5. Episodes marked as consolidated
+
+#### Community Detection
+
+Facts and entities are grouped into **communities** via BFS + label propagation. When a query matches an entity, its entire community can be surfaced for richer context.
+
 #### Zero additional cost
 
 | Component | Technology | Cost |
 |:---|:---|:---|
 | **Extraction** | `claude -p` (CLI pipe, subscription) | $0 |
 | **Embeddings** | `@huggingface/transformers` (all-MiniLM-L6-v2, local ONNX, 22MB) | $0 |
-| **Retrieval** | Cosine similarity + BFS (in-process) | $0 |
+| **BM25 search** | `minisearch` (zero deps, ~15KB) | $0 |
+| **Retrieval** | Hybrid (cosine similarity + BM25 + RRF fusion + BFS) | $0 |
 
 Everything runs locally or through your existing Claude subscription.
 
@@ -171,21 +203,33 @@ When `session-end.ts` calls `claude -p` for extraction, it sets `HORA_SKIP_HOOKS
 
 ---
 
-### 2. Semantic Injection
+### 2. Agentic Retrieval (Hybrid Search)
 
-At the start of every session, HORA injects **only the relevant context** from the knowledge graph — not a blind dump of everything.
+On **every user message**, HORA runs an agentic retrieval pipeline — classifying the task, generating targeted queries, and searching the graph with two complementary systems.
 
 ```
 User message: "Fix the auth middleware"
                 |
                 v
-    embed("Fix the auth middleware")  -->  384-dim vector  (~50ms)
+    1. Classify task (debug? feature? question?)
                 |
                 v
-    Cosine similarity vs all facts    -->  Top 20 matches  (~5ms)
+    2. Generate 2-3 search queries with weights
                 |
                 v
-    BFS depth 2 on top entities       -->  Semantic neighborhood
+    3. Hybrid search per query:
+       ├── Semantic: embed(query) → cosine similarity vs all facts
+       └── BM25: minisearch exact keyword matching
+       └── Reciprocal Rank Fusion (RRF) merges both rankings
+                |
+                v
+    4. BFS depth 2 on top entities → semantic neighborhood
+                |
+                v
+    5. ACT-R activation boost: recently recalled facts score higher
+                |
+                v
+    6. Baddeley chunking: group into max 5 thematic chunks
                 |
                 v
     Budget: min(6000 chars, 15% remaining context)
@@ -194,28 +238,49 @@ User message: "Fix the auth middleware"
     Inject as [HORA KNOWLEDGE GRAPH] section
 ```
 
-**Why this matters:** `"TS development"` matches `"TypeScript coding"` even without an alias table — because the embedding vectors are semantically close. This is fundamentally more powerful than keyword matching.
+**Why hybrid?** Semantic search finds `"TypeScript coding"` from `"TS development"` — but misses exact terms. BM25 catches `"Drizzle"` matching a fact about `"uses Drizzle ORM"`. Together via RRF, they cover both fuzzy and exact matching.
 
-**Latency:** ~350ms on first message only (model load from cache + embed + search). Subsequent messages have no overhead.
+**Why Baddeley chunking?** Working memory handles ~4 chunks, not 20 individual items. Facts are grouped by semantic proximity into thematic chunks (e.g., "Stack & Tooling", "Architecture Decisions") for better comprehension.
 
-**Fallback:** If embeddings aren't computed yet or the model isn't available, HORA falls back to the classic profile + insights injection. Zero degradation.
+**Latency:** ~350ms on first message only (model load from cache + embed + search). Subsequent messages: ~50ms.
+
+**ACT-R retrieval boost:** Every successful retrieval strengthens the recalled facts — like spaced repetition. Facts that keep being useful survive longer.
+
+**Fallback:** If embeddings aren't available, HORA falls back to BM25-only then to classic profile injection. Zero degradation.
 
 ---
 
-### 3. Memory Tiers (T1/T2/T3)
+### 3. Memory Tiers (T1/T2/T3) + ACT-R Activation
 
-HORA organizes memory like the human brain — short-term, medium-term, and long-term:
+HORA organizes memory like the human brain — short-term, medium-term, and long-term — with an **ACT-R activation model** that replaces fixed expiration thresholds.
 
 | Tier | Retention | Promotion criteria | Storage |
 |:---|:---|:---|:---|
 | **T1** (short) | 24 hours | Auto-expires | Recent sessions, raw data |
-| **T2** (medium) | 30 days | Recurring patterns (3+ occurrences) | `LEARNING/INSIGHTS/` |
+| **T2** (medium) | Adaptive (ACT-R) | Recurring patterns (3+ occurrences) | `LEARNING/INSIGHTS/` |
 | **T3** (long) | Permanent | Confirmed important | `LEARNING/INSIGHTS/` |
+
+#### ACT-R Activation Model
+
+Instead of fixed 30-day expiration, each fact has an **activation level** based on the ACT-R cognitive architecture:
+
+```
+Activation = ln(Σ(t_i^{-d})) × emotionalWeight
+```
+
+Where `t_i` = time since each access, `d` = 0.5 (decay rate).
+
+- A fact accessed **often and recently** → high activation → survives indefinitely
+- A fact accessed **once, 90 days ago** → low activation → expires naturally
+- **Emotional weight** boosts corrections and failures (1.5x) — memorable events decay slower
+
+The `shouldExpire` threshold (-2.0) means a single access survives ~45 days, but 3 accesses in a week can keep a fact alive for months.
 
 #### Automatic lifecycle
 
-- **Expiration:** T1 entries older than 24h are garbage-collected
+- **Expiration:** T1 entries older than 24h are garbage-collected. T2 facts expire based on ACT-R activation (not fixed days).
 - **Promotion:** Patterns seen 3+ times in T2 are promoted to T3
+- **Dream Cycle:** Consolidates episodes → distills patterns → reconsolidates facts (runs during GC)
 - **GC:** Runs every 6 hours (lock file prevents concurrent runs)
 - **Insights:** Recurring failures, sentiment trends, tool usage patterns — all aggregated automatically
 
@@ -224,6 +289,9 @@ MEMORY/LEARNING/INSIGHTS/
   recurring-failures.md       # Patterns that keep happening
   sentiment-summary.jsonl     # Monthly sentiment trends
   tool-monthly.jsonl          # Tool usage aggregated by month
+MEMORY/GRAPH/
+  activation-log.jsonl        # ACT-R access history per fact
+  communities.jsonl           # Detected entity communities
 ```
 
 ---
@@ -717,10 +785,14 @@ episodes         |   paths.ts
 
 ```
 MEMORY/GRAPH/
-  entities.jsonl    # {id, type, name, properties, embedding[384], created_at, last_seen}
-  facts.jsonl       # {id, source, target, relation, description, embedding[384],
-                    #  valid_at, invalid_at, created_at, expired_at, confidence}
-  episodes.jsonl    # {id, source_type, source_ref, timestamp, entities[], facts[]}
+  entities.jsonl       # {id, type, name, properties, embedding[384], created_at, last_seen}
+  facts.jsonl          # {id, source, target, relation, description, embedding[384],
+                       #  valid_at, invalid_at, created_at, expired_at, confidence,
+                       #  metadata: {memory_type, reconsolidation_count, history[]}}
+  episodes.jsonl       # {id, source_type, source_ref, timestamp, entities[], facts[],
+                       #  consolidated?}
+  activation-log.jsonl # {factId, accessTimes[], emotionalWeight, lastActivation}
+  communities.jsonl    # {id, name, entities[], facts[], summary, updated_at}
 ```
 
 Embeddings are stored inline (384 floats per entity/fact). Estimated volume after 6 months: ~2 MB. Loadable in < 200ms.
@@ -729,7 +801,7 @@ Embeddings are stored inline (384 floats per entity/fact). Estimated volume afte
 
 | Component | Dependencies |
 |:---|:---|
-| **Hooks** (runtime) | `tsx` + `@huggingface/transformers` (for embeddings) |
+| **Hooks** (runtime) | `tsx` + `@huggingface/transformers` (embeddings) + `minisearch` (BM25) + `zod` (validation) |
 | **Dashboard** | React 19, Vite 6, Recharts, react-force-graph-2d, chokidar |
 | **Security** | Node.js built-ins only (custom YAML parser) |
 
@@ -812,14 +884,23 @@ hora/
     |   |-- backup-monitor.ts     #   PostToolUse: auto-backup trigger
     |   |-- doc-sync.ts           #   PostToolUse: project-knowledge staleness tracking
     |   |-- session-end.ts        #   Stop: full extraction + graph enrichment
-    |   |-- package.json          #   Dependencies: @huggingface/transformers, vitest
+    |   |-- package.json          #   Dependencies: @huggingface/transformers, minisearch, zod
     |   |-- lib/                  #   Shared modules
-    |       |-- knowledge-graph.ts  # HoraGraph: CRUD, semantic search, bi-temporal facts
+    |       |-- knowledge-graph.ts  # HoraGraph: CRUD, semantic search, bi-temporal facts,
+    |       |                       #   reconsolidation, dedup, memory_type classification
     |       |-- embeddings.ts       # Local ONNX embeddings (all-MiniLM-L6-v2, 384-dim)
     |       |-- graph-builder.ts    # LLM extraction via claude -p + embedding computation
     |       |-- graph-migration.ts  # Lazy migration of existing sessions to graph
     |       |-- memory-tiers.ts     # T1/T2/T3 lifecycle, promotion, GC, insights
     |       |-- session-paths.ts    # Session-scoped file paths (isolation)
+    |       |-- agentic-retrieval.ts # Task classification → query gen → hybrid search → chunking
+    |       |-- activation-model.ts # ACT-R cognitive activation (decay, retrieval boost)
+    |       |-- hybrid-search.ts    # BM25 (minisearch) + semantic + RRF fusion
+    |       |-- dream-cycle.ts      # Hippocampal replay: episode consolidation + distillation
+    |       |-- graph-communities.ts # Community detection (BFS + label propagation)
+    |       |-- schemas.ts          # Zod runtime validation for all JSONL structures
+    |       |-- memory-metrics.ts   # Quality metrics (coverage, dedup ratio, activation avg)
+    |       |-- signal-tracker.ts   # Cross-session preference crystallization
     |
     |-- agents/                   # 7 specialized agents
     |   |-- architect.md          #   Opus: architecture, system design
@@ -876,7 +957,7 @@ hora/
         |-- SESSIONS/             #   Session archives
         |-- SECURITY/             #   Security audit trail
         |-- STATE/                #   Thread state, session names
-        |-- GRAPH/                #   Knowledge graph (entities, facts, episodes with embeddings)
+        |-- GRAPH/                #   Knowledge graph (entities, facts, episodes, activation log, communities)
         |-- WORK/                 #   Working memory
 ```
 
@@ -886,10 +967,11 @@ hora/
 
 | Capability | Details |
 |:---|:---|
-| **Knowledge graph** | Bi-temporal entities/facts/episodes, Graphiti-inspired, auto-enriched |
+| **Knowledge graph** | Bi-temporal, Tulving-classified (semantic/episodic/procedural), reconsolidation, dream cycle |
 | **Vector embeddings** | Local ONNX (all-MiniLM-L6-v2, 384-dim), zero API cost |
-| **Semantic injection** | Cosine similarity + BFS depth 2, budget-adaptive |
-| **Memory tiers** | T1 (24h) → T2 (30d) → T3 (permanent), auto-promotion, GC |
+| **Hybrid search** | Semantic + BM25 (minisearch) + RRF fusion + BFS + Baddeley chunking |
+| **ACT-R activation** | Adaptive decay replaces fixed expiry — frequent facts survive, unused decay |
+| **Memory tiers** | T1 (24h) → T2 (ACT-R adaptive) → T3 (permanent), auto-promotion, GC + dream cycle |
 | **Periodic re-extraction** | Every 20 minutes during long sessions |
 | **Layered security** | 3 layers + audit trail (17 blocked, 18 confirm, 6 alert patterns) |
 | **Self-learning memory** | Hybrid env + linguistic extraction, silent |
