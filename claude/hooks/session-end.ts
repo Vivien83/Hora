@@ -1095,7 +1095,8 @@ async function main() {
   // Dispose ONNX pipeline to avoid native thread crash on exit
   await disposeEmbedder();
 
-  process.exit(0);
+  // Let Node exit naturally (no process.exit) to allow ONNX native threads
+  // to clean up. process.exit() kills threads mid-flight → mutex crash.
 }
 
-main().catch(() => process.exit(0));
+main().catch(() => {});
