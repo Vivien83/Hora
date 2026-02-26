@@ -248,11 +248,12 @@ parse_countdown() {
     local ts_epoch now_epoch diff h m
     # GNU date (Linux, Git Bash on Windows)
     ts_epoch=$(date -d "$ts" +%s 2>/dev/null)
-    # BSD date (macOS) fallback
+    # BSD date (macOS) fallback — force UTC since API returns +00:00 timestamps
     if [ -z "$ts_epoch" ]; then
         local clean_ts="${ts%%Z*}"
         clean_ts="${clean_ts%%+*}"
-        ts_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$clean_ts" +%s 2>/dev/null)
+        clean_ts="${clean_ts%%.*}"
+        ts_epoch=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "$clean_ts" +%s 2>/dev/null)
     fi
     [ -z "$ts_epoch" ] && return
     now_epoch=$(date +%s)
