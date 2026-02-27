@@ -37,6 +37,14 @@ const MIGRATION_FLAG = path.join(MEMORY_DIR, ".migration-hora-v2-done");
 const PROJECT_DISPLAY = path.basename(process.cwd());
 const isSubagent = process.argv.includes("--subagent");
 
+// Feedback visuel via stderr (visible dans le terminal pendant le hook)
+const GOLD = "\x1b[38;2;212;168;83m";
+const DIM = "\x1b[2m";
+const RST = "\x1b[0m";
+function horaLog(msg: string): void {
+  process.stderr.write(`${DIM}|${RST}${GOLD}HORA${RST}${DIM}|${RST} ${DIM}${msg}${RST}\n`);
+}
+
 interface HookInput {
   session_id?: string;
   transcript_path?: string;
@@ -288,9 +296,23 @@ function writeAllThreadEntries(newEntries: ThreadEntry[]): void {
 
 function extractLastAssistantMessage(transcriptPath: string): string {
   try {
-    const raw = fs.readFileSync(transcriptPath, "utf-8");
+    // PERF: lire seulement les derniers 50KB du transcript (pas tout le fichier)
+    const stat = fs.statSync(transcriptPath);
+    const TAIL_SIZE = 50_000;
+    let raw: string;
+    if (stat.size > TAIL_SIZE) {
+      const fd = fs.openSync(transcriptPath, "r");
+      const buf = Buffer.alloc(TAIL_SIZE);
+      fs.readSync(fd, buf, 0, TAIL_SIZE, stat.size - TAIL_SIZE);
+      fs.closeSync(fd);
+      raw = buf.toString("utf-8");
+      // Couper la premiere ligne partielle
+      const firstNewline = raw.indexOf("\n");
+      if (firstNewline > 0) raw = raw.slice(firstNewline + 1);
+    } else {
+      raw = fs.readFileSync(transcriptPath, "utf-8");
+    }
     const lines = raw.split("\n").filter(Boolean);
-    // Parcourir en sens inverse pour trouver le dernier message assistant
     for (let i = lines.length - 1; i >= 0; i--) {
       try {
         const entry = JSON.parse(lines[i]);
@@ -926,7 +948,33 @@ function buildReflection(
 // ========================================
 
 async function main() {
-  if (isSubagent) process.exit(0);
+  if (isSubagent) {
+    // Lire stdin pour obtenir le session_id du parent
+    const subInput = await new Promise<string>((resolve) => {
+      let d = "";
+      process.stdin.on("data", (c: Buffer) => (d += c));
+      process.stdin.on("end", () => resolve(d));
+      setTimeout(() => resolve(d), 2000);
+    });
+    let parentSid = "unknown";
+    try { parentSid = JSON.parse(subInput).session_id || "unknown"; } catch {}
+    const sid8 = parentSid.slice(0, 8);
+
+    // Decrementer le compteur d'agents actifs (session-scoped)
+    const sessDir = path.join(homedir(), ".claude", ".hora", "sessions", sid8);
+    const agentsFile = path.join(sessDir, "active-agents.json");
+    try {
+      const state = JSON.parse(fs.readFileSync(agentsFile, "utf-8"));
+      if (state.agents && state.agents.length > 0) {
+        state.agents.shift(); // retirer le plus ancien
+        state.count = state.agents.length;
+        state.updated = new Date().toISOString();
+        fs.writeFileSync(agentsFile + ".tmp", JSON.stringify(state));
+        fs.renameSync(agentsFile + ".tmp", agentsFile);
+      }
+    } catch {}
+    process.exit(0);
+  }
 
   const input = await new Promise<string>((resolve) => {
     let data = "";
@@ -943,56 +991,54 @@ async function main() {
   const sessionId = hookData.session_id || "unknown";
   const transcriptPath = hookData.transcript_path;
 
+  horaLog("sauvegarde du contexte...");
+
+  // Nettoyer les fichiers d'etat statusline (session-scoped)
+  const sid8 = sessionId.slice(0, 8);
+  const sessStateDir = path.join(homedir(), ".claude", ".hora", "sessions", sid8);
+  for (const staleFile of ["current-task.json", "active-agents.json"]) {
+    try { fs.unlinkSync(path.join(sessStateDir, staleFile)); } catch {}
+  }
+
   // --- Thread state: sauvegarder le dernier message assistant (a chaque Stop) ---
+  // PERF: utilise last_assistant_message du hook (pas de lecture transcript)
   if (transcriptPath) {
     try {
-      const lastAssistant =
-        hookData.last_assistant_message || extractLastAssistantMessage(transcriptPath);
-      const summary = summarizeAssistantResponse(lastAssistant);
-      if (summary.length > 10) {
-        // Recuperer le nom de session
-        let sessionName = "Sans nom";
-        try {
-          const names = JSON.parse(
-            fs.readFileSync(path.join(MEMORY_DIR, "STATE", "session-names.json"), "utf-8")
-          );
-          sessionName = names[sessionId] || "Sans nom";
-        } catch {}
-
-        // Generer un resume de session (premier + dernier echanges significatifs)
-        let sessionSummary = "";
-        try {
-          const transcript = parseTranscript(transcriptPath);
-          if (transcript) {
-            const tLines = transcript.split("\n").filter((l) => l.trim().length > 20);
-            const userLines = tLines.filter(
-              (l) => l.startsWith("[user]:") || l.startsWith("[human]:")
+      const lastAssistant = hookData.last_assistant_message || "";
+      if (lastAssistant.length > 0) {
+        const summary = summarizeAssistantResponse(lastAssistant);
+        if (summary.length > 10) {
+          let sessionName = "Sans nom";
+          try {
+            const names = JSON.parse(
+              fs.readFileSync(path.join(MEMORY_DIR, "STATE", "session-names.json"), "utf-8")
             );
-            const assistLines = tLines.filter((l) => l.startsWith("[assistant]:"));
-            const summaryParts: string[] = [];
-            if (userLines.length > 0) summaryParts.push(userLines[0].slice(0, 150));
-            if (assistLines.length > 0) summaryParts.push(assistLines[0].slice(0, 150));
-            if (userLines.length > 1)
-              summaryParts.push(userLines[userLines.length - 1].slice(0, 150));
-            sessionSummary = summaryParts.join(" | ");
-          }
-        } catch {}
+            sessionName = names[sessionId] || "Sans nom";
+          } catch {}
 
-        const threadFile = stateSessionFile(sessionId, "thread-state");
-        fs.mkdirSync(path.dirname(threadFile), { recursive: true });
-        fs.writeFileSync(
-          threadFile,
-          JSON.stringify({
-            session_id: sessionId.slice(0, 8),
-            project: getProjectId(),
-            timestamp: new Date().toISOString(),
-            assistant_summary: summary,
-            raw_length: lastAssistant.length,
-            session_name: sessionName,
-            session_summary: sessionSummary || summary,
-          }),
-          "utf-8"
-        );
+          // Lire le resume existant pour l'enrichir (pas de re-parse transcript)
+          const threadFile = stateSessionFile(sessionId, "thread-state");
+          let existingSummary = "";
+          try {
+            const existing = JSON.parse(fs.readFileSync(threadFile, "utf-8"));
+            existingSummary = existing.session_summary || "";
+          } catch {}
+
+          fs.mkdirSync(path.dirname(threadFile), { recursive: true });
+          fs.writeFileSync(
+            threadFile,
+            JSON.stringify({
+              session_id: sessionId.slice(0, 8),
+              project: getProjectId(),
+              timestamp: new Date().toISOString(),
+              assistant_summary: summary,
+              raw_length: lastAssistant.length,
+              session_name: sessionName,
+              session_summary: existingSummary || summary,
+            }),
+            "utf-8"
+          );
+        }
       }
     } catch {}
   }
@@ -1005,7 +1051,8 @@ async function main() {
   } catch {}
 
   // --- Thread: extraire TOUTES les paires user/assistant du transcript ---
-  if (transcriptPath) {
+  // PERF: seulement si messageCount >= 3 (inutile de lire le transcript pour 1-2 messages)
+  if (transcriptPath && (state.messageCount || 0) >= 3) {
     try {
       const allExchanges = extractAllExchanges(transcriptPath, sessionId, getProjectId());
       writeAllThreadEntries(allExchanges);
@@ -1017,8 +1064,9 @@ async function main() {
     process.exit(0);
   }
 
-  // Verifier si extraction recente pour cette session (re-extraction toutes les 2h)
-  const EXTRACTION_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes
+  // Verifier si extraction recente pour cette session
+  // PERF: intervalle 45min au lieu de 20min pour reduire les blocages
+  const EXTRACTION_INTERVAL_MS = 45 * 60 * 1000; // 45 minutes
   const flagFile = `${EXTRACTED_FLAG}-${sessionId.slice(0, 8)}`;
   let isReExtraction = false;
   try {
@@ -1031,6 +1079,8 @@ async function main() {
     }
   } catch {}
 
+  horaLog("extraction memoire en cours...");
+
   // Lire le transcript
   const transcript = parseTranscript(transcriptPath);
   if (!transcript || transcript.length < 200) {
@@ -1042,6 +1092,7 @@ async function main() {
   fs.writeFileSync(flagFile, new Date().toISOString());
 
   // --- 1. Extraction de profil (hybride env + linguistique) ---
+  horaLog("profil utilisateur...");
   const envProfile = extractProfileEnv();
   const lingProfile = extractProfileLinguistic(transcript);
   writeProfileFiles(envProfile, lingProfile);
@@ -1056,14 +1107,17 @@ async function main() {
   } catch {}
 
   // --- 2. Extraction des erreurs et lecons (JSONL) ---
+  horaLog("analyse des erreurs...");
   const failures = extractFailures(transcript, sessionId);
   saveFailures(failures);
 
   // --- 3. Analyse de sentiment (JSONL) ---
+  horaLog("sentiment...");
   const sentiment = analyzeSentiment(transcript);
   saveSentiment(sessionId, sentiment, state.messageCount || 0);
 
   // --- 4. Archive de session (update si re-extraction) ---
+  horaLog("archivage session...");
   let sessionFile = path.join(SESSIONS_DIR, `${timestamp()}_${sessionId.slice(0, 8)}.md`);
   if (isReExtraction) {
     // Trouver l'archive existante pour cette session
@@ -1138,55 +1192,67 @@ async function main() {
   cleanupOldFlags();
   migrateLegacyPAI();
 
-  // --- 6. Memory lifecycle: expire T2 + promote to T3 ---
-  // Silencieux: respecte le GC interval (6h) et le lock file
-  try {
-    await runMemoryLifecycle(MEMORY_DIR);
-  } catch {}
-
-  // --- 7. Knowledge Graph enrichment ---
-  try {
-    const graphDir = path.join(MEMORY_DIR, "GRAPH");
-    fs.mkdirSync(graphDir, { recursive: true });
-    const graph = new HoraGraph(graphDir);
-
-    // Build session archive for extraction
-    const archive = transcript.slice(0, 5000);
-    const toolUsage: Record<string, number> = {};
+  // --- 6+7. Memory lifecycle + Graph enrichment (avec timeout global) ---
+  // PERF: timeout 45s max pour l'extraction lourde
+  const HEAVY_TIMEOUT_MS = 45_000;
+  const heavyWork = async () => {
+    // 6. Memory lifecycle: expire T2 + promote to T3
+    horaLog("cycle memoire (tiers)...");
     try {
-      const toolLog = path.join(MEMORY_DIR, ".tool-usage.jsonl");
-      const raw = fs.readFileSync(toolLog, "utf-8").trim();
-      for (const line of raw.split("\n").slice(-50)) {
-        try {
-          const e = JSON.parse(line);
-          if (e.session === sessionId.slice(0, 8) && e.tool) {
-            toolUsage[e.tool] = (toolUsage[e.tool] || 0) + (e.count || 1);
-          }
-        } catch {}
-      }
+      await runMemoryLifecycle(MEMORY_DIR);
     } catch {}
 
-    await buildGraphFromSession(graph, {
-      sessionId,
-      archive,
-      failures,
-      sentiment,
-      toolUsage,
-      projectId: getProjectId(),
-    });
+    // 7. Knowledge Graph enrichment
+    horaLog("enrichissement knowledge graph...");
+    try {
+      const graphDir = path.join(MEMORY_DIR, "GRAPH");
+      fs.mkdirSync(graphDir, { recursive: true });
+      const graph = new HoraGraph(graphDir);
 
-    // Lazy migration of existing sessions (max 3 per run)
-    if (!fs.existsSync(path.join(graphDir, ".migrated"))) {
-      await migrateExistingData(graph, MEMORY_DIR);
-    }
+      const archive = transcript.slice(0, 5000);
+      const toolUsage: Record<string, number> = {};
+      try {
+        const toolLog = path.join(MEMORY_DIR, ".tool-usage.jsonl");
+        const raw = fs.readFileSync(toolLog, "utf-8").trim();
+        for (const line of raw.split("\n").slice(-50)) {
+          try {
+            const e = JSON.parse(line);
+            if (e.session === sessionId.slice(0, 8) && e.tool) {
+              toolUsage[e.tool] = (toolUsage[e.tool] || 0) + (e.count || 1);
+            }
+          } catch {}
+        }
+      } catch {}
 
-    graph.save();
-  } catch {
-    // Echec silencieux — graph enrichment is best-effort
+      await buildGraphFromSession(graph, {
+        sessionId,
+        archive,
+        failures,
+        sentiment,
+        toolUsage,
+        projectId: getProjectId(),
+      });
+
+      // Lazy migration (max 3 per run) — skip si timeout proche
+      if (!fs.existsSync(path.join(graphDir, ".migrated"))) {
+        await migrateExistingData(graph, MEMORY_DIR);
+      }
+
+      graph.save();
+    } catch {}
+  };
+
+  // Race: heavy work vs timeout
+  const timedOut = await Promise.race([
+    heavyWork().then(() => false),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(true), HEAVY_TIMEOUT_MS)),
+  ]);
+
+  if (timedOut) {
+    horaLog("timeout 45s atteint — suite au prochain cycle");
+  } else {
+    horaLog("memoire synchronisee ✓");
   }
-
-  // NE PAS supprimer le state file — il est utilise par prompt-submit
-  // pour detecter isFirst. Il sera ecrase naturellement par la session suivante.
 
   // Dispose ONNX pipeline to avoid native thread crash on exit
   await disposeEmbedder();

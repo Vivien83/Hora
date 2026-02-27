@@ -4,6 +4,7 @@
 #
 #  Usage:
 #    hora              # Launch claude + dashboard
+#    hora --yolo       # Mode YOLO: auto-approve sauf ops dangereuses
 #    hora --no-dash    # Launch claude only (skip dashboard)
 #    hora [claude args] # Pass any args to claude (e.g. hora -p "hello")
 #
@@ -16,15 +17,23 @@ set -euo pipefail
 DASHBOARD_DIR="${HOME}/.claude/dashboard"
 DASHBOARD_PID=""
 NO_DASH=false
+YOLO=false
 
-# Parse --no-dash flag (remove from args before passing to claude)
+# Parse hora flags (remove from args before passing to claude)
 CLAUDE_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --no-dash|--no-dashboard) NO_DASH=true ;;
+    --yolo) YOLO=true ;;
     *) CLAUDE_ARGS+=("$arg") ;;
   esac
 done
+
+# YOLO mode: auto-approve tout sauf les operations dangereuses
+# hora-security.ts reste actif comme filet de securite
+if [[ "$YOLO" == true ]]; then
+  CLAUDE_ARGS+=("--allowedTools" "Edit" "Write" "MultiEdit" "Bash(npm:*)" "Bash(npx:*)" "Bash(node:*)" "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git add:*)" "Bash(git commit:*)" "Bash(git branch:*)" "Bash(git checkout:*)" "Bash(git stash:*)" "Bash(ls:*)" "Bash(mkdir:*)" "Bash(cp:*)" "Bash(mv:*)" "Bash(cat:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(wc:*)" "Bash(diff:*)" "Bash(echo:*)" "Bash(printf:*)" "Bash(test:*)" "Bash(which:*)" "Bash(pwd:*)" "Bash(date:*)" "Read" "Glob" "Grep" "WebSearch" "WebFetch" "Task" "TaskCreate" "TaskUpdate" "TaskList" "TaskGet" "NotebookEdit")
+fi
 
 # ─── Cleanup on exit ──────────────────────────────────────────────
 
@@ -54,7 +63,11 @@ if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
   printf "  ██║  ██║╚██████╔╝██║  ██║██║  ██║\n"
   printf "${DIM_GOLD}  ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝${R}\n"
   printf "\n"
-  printf "  ${D}your memory never sleeps.${R}\n"
+  if [[ "$YOLO" == true ]]; then
+    printf "  ${D}your memory never sleeps.${R}  ${GOLD}${B}YOLO${R}\n"
+  else
+    printf "  ${D}your memory never sleeps.${R}\n"
+  fi
   printf "  ${DIM_GOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${R}\n"
   # Dynamic stats
   ENTITIES=0; FACTS=0; SESSIONS=0
