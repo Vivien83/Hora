@@ -213,15 +213,16 @@ async function getGraph() {
       for (const e of g.getAllEntities()) {
         if (!e.embedding) {
           const emb = await embed(e.name + " " + (e.properties?.description || ""));
-          if (emb) g.updateEntityEmbedding(e.id, emb);
+          if (emb) g.setEntityEmbedding(e.id, emb);
         }
       }
       for (const f of g.getAllFacts()) {
         if (!f.embedding) {
           const emb = await embed(f.description || f.relation);
-          if (emb) g.updateFactEmbedding(f.id, emb);
+          if (emb) g.setFactEmbedding(f.id, emb);
         }
       }
+      g.save();
     } catch { /* embeddings unavailable */ }
   }
   return graphInstance as InstanceType<typeof HoraGraph>;
