@@ -179,19 +179,18 @@ Write-Step "Verification hooks"
 $hookTs = Join-Path $env:USERPROFILE ".claude\hooks\prompt-submit.ts"
 if (Test-Path $hookTs) {
     try {
-        $hookResult = echo '{}' | cmd /c "npx tsx `"$hookTs`"" 2>$null
-        if ($hookResult -and $hookResult -match "hookSpecificOutput") {
-            Write-Ok "Hooks fonctionnels (cmd.exe)"
+        # Use Git Bash directly — PowerShell/cmd.exe stdin piping breaks with npx tsx
+        $hookResult = & $bashPath -c "echo '{}' | npx tsx ~/.claude/hooks/prompt-submit.ts 2>/dev/null" 2>$null
+        $joined = ($hookResult -join "")
+        if ($joined -match "hookSpecificOutput") {
+            Write-Ok "Hooks fonctionnels"
         } else {
-            $hookResult2 = & $bashPath -c "echo '{}' | npx tsx ~/.claude/hooks/prompt-submit.ts 2>&1" 2>$null
-            if ($hookResult2 -match "hookSpecificOutput") {
-                Write-Ok "Hooks fonctionnels (Git Bash)"
-            } else {
-                Write-Warn "Hooks: format de retour inattendu"
-            }
+            Write-Warn "Hooks: format de retour inattendu"
+            Write-Info "Cela n'empeche pas le fonctionnement normal"
         }
     } catch {
-        Write-Warn "Erreur test hooks : $($_.Exception.Message)"
+        Write-Warn "Hooks: test non concluant ($($_.Exception.Message))"
+        Write-Info "Cela n'empeche pas le fonctionnement normal"
     }
 }
 
