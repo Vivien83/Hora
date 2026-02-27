@@ -19,6 +19,7 @@
 
 import { useRef, useCallback, useMemo, useEffect, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
+import { forceRadial, forceCenter } from "d3-force-3d";
 import type { DashboardData, MemoryHealth } from "./types";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -424,10 +425,24 @@ export function NeuralMemoryMap({ data, health, width, height }: NeuralMemoryMap
       if (graphRef.current) {
         graphRef.current.d3Force("charge")?.strength(-120);
         graphRef.current.d3Force("link")?.distance(80);
+        // Pull isolated nodes (no links) closer to center with radial force
+        const linkedIds = new Set<string>();
+        graphData.links.forEach((l: any) => {
+          linkedIds.add(typeof l.source === "object" ? l.source.id : l.source);
+          linkedIds.add(typeof l.target === "object" ? l.target.id : l.target);
+        });
+        graphRef.current.d3Force(
+          "radial",
+          forceRadial(50, 0, 0).strength((node: any) =>
+            linkedIds.has(node.id) ? 0 : 0.3
+          ),
+        );
+        // Strengthen center force so nothing drifts too far
+        graphRef.current.d3Force("center", forceCenter(0, 0).strength(0.05));
       }
     }, 100);
     return () => clearTimeout(timer);
-  }, []);
+  }, [graphData]);
 
   // Tier legend
   const tiers = [
