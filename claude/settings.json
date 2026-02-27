@@ -1,52 +1,5 @@
 {
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Write|Edit|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npx tsx ~/.claude/hooks/snapshot.ts"
-          }
-        ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npx tsx ~/.claude/hooks/librarian-check.ts"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|Edit|Write|Read|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npx tsx ~/.claude/hooks/hora-security.ts"
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npx tsx ~/.claude/hooks/tool-use.ts"
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npx tsx ~/.claude/hooks/context-checkpoint.ts"
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit",
@@ -67,17 +20,49 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
+    "PreToolUse": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "npx tsx ~/.claude/hooks/prompt-submit.ts"
-          },
+            "command": "npx tsx ~/.claude/hooks/context-checkpoint.ts"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write|Read|MultiEdit",
+        "hooks": [
           {
             "type": "command",
-            "command": "npx tsx ~/.claude/hooks/hora-session-name.ts"
+            "command": "npx tsx ~/.claude/hooks/hora-security.ts"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/librarian-check.ts"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/snapshot.ts"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/tool-use.ts"
           }
         ]
       }
@@ -100,6 +85,21 @@
           {
             "type": "command",
             "command": "npx tsx ~/.claude/hooks/session-end.ts --subagent"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/prompt-submit.ts"
+          },
+          {
+            "type": "command",
+            "command": "npx tsx ~/.claude/hooks/hora-session-name.ts"
           }
         ]
       }
