@@ -744,8 +744,11 @@ interface TranscriptJsonlEntry {
 function projectDirToClaudePath(projectDir: string): string {
   // /Users/vivienmartin/Desktop/hora 2 -> -Users-vivienmartin-Desktop-hora-2
   // C:\Users\alexis\Desktop\hora -> C--Users-alexis-Desktop-hora (Windows)
-  return projectDir
-    .replace(/\\/g, "/")   // normalize backslashes to forward slashes
+  // /c/Users/alexis/Desktop/hora -> C--Users-alexis-Desktop-hora (Git Bash MSYS)
+  let p = projectDir.replace(/\\/g, "/");
+  // Convert MSYS paths (/c/Users/...) to Windows-style (C:/Users/...)
+  p = p.replace(/^\/([a-zA-Z])\//, (_m, drive: string) => `${drive.toUpperCase()}:/`);
+  return p
     .replace(/:/g, "-")    // drive letter colon to dash (C: -> C-)
     .replace(/\//g, "-")   // slashes to dashes
     .replace(/\s+/g, "-"); // spaces to dashes
