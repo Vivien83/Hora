@@ -376,6 +376,23 @@ export function expireT2(memoryDir: string): ExpireReport {
     }
   } catch {}
 
+  // 6. Compress legacy failure transcripts (gzip, no data loss)
+  const legacyDir = path.join(memoryDir, "LEARNING", "FAILURES", "_legacy");
+  try {
+    if (fs.existsSync(legacyDir)) {
+      const { execSync } = require("child_process");
+      const dirs = fs.readdirSync(legacyDir).filter((d: string) => d.match(/^\d{4}-/));
+      for (const dir of dirs) {
+        const transcript = path.join(legacyDir, dir, "transcript.jsonl");
+        if (fs.existsSync(transcript)) {
+          try {
+            execSync(`gzip -9 "${transcript}"`, { timeout: 10_000 });
+          } catch { /* gzip failed, skip */ }
+        }
+      }
+    }
+  } catch {}
+
   return report;
 }
 
