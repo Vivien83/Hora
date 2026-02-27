@@ -13,6 +13,9 @@ import { MemoryHealth } from "./MemoryHealth";
 import { NeuralPage } from "./NeuralPage";
 import { ChatView } from "./ChatView";
 import { MemoryChat } from "./MemoryChat";
+import { HookTelemetry } from "./HookTelemetry";
+import { MemoryDiff } from "./MemoryDiff";
+import { SessionReplay } from "./SessionReplay";
 
 const C = {
   bg: "#0A0A0B",
@@ -340,6 +343,10 @@ export function App() {
               </Section>
             )}
 
+            <Section title="Diff inter-sessions">
+              <MemoryDiff />
+            </Section>
+
             <Section title="Profil utilisateur">
               <ProfileCard profile={data.profile} />
             </Section>
@@ -457,6 +464,13 @@ export function App() {
           </Section>
         )}
 
+        {/* Telemetry section */}
+        {section === "telemetry" && (
+          <Section title="Telemetrie des hooks">
+            <HookTelemetry />
+          </Section>
+        )}
+
         {/* Neural section */}
         {section === "neural" && (
           data.graphData ? (
@@ -478,6 +492,11 @@ export function App() {
               </div>
             </Section>
           )
+        )}
+
+        {/* Replay section */}
+        {section === "replay" && (
+          <SessionReplay />
         )}
       </main>
 

@@ -46,13 +46,13 @@ function getProjectId(): string {
 const SESSION_THREAD_FILE = path.join(STATE_DIR, "session-thread.json");
 const THREAD_ARCHIVE_FILE = path.join(STATE_DIR, "session-thread-archive.json");
 
-// Limite stricte par section injectée
-const MAX_SECTION_CHARS = 400;
-const MAX_WORK_CHARS = 300;
+// Limites par défaut (overridées dynamiquement par context-budget)
+let MAX_SECTION_CHARS = 400;
+let MAX_WORK_CHARS = 300;
 
 // Thread limits
-const MAX_THREAD_ENTRIES = 20;
-const MAX_THREAD_CHARS = 5000;
+let MAX_THREAD_ENTRIES = 20;
+let MAX_THREAD_CHARS = 5000;
 const MAX_USER_SUMMARY = 200;
 
 interface HookInput {
@@ -824,6 +824,21 @@ async function main() {
   const sessionId = hookData.session_id || "unknown";
   const message = hookData.prompt || hookData.message || "";
 
+  // --- Context Budget Optimizer ---
+  try {
+    const { readContextPercent, allocateBudget } = await import("./lib/context-budget.js");
+    const contextPctFile = horaSessionFile(sessionId, "context-pct.txt");
+    const pct = readContextPercent(contextPctFile);
+    const budget = allocateBudget(pct);
+    MAX_SECTION_CHARS = budget.maxSectionChars;
+    MAX_WORK_CHARS = budget.maxWorkChars;
+    MAX_THREAD_CHARS = budget.maxThreadChars;
+    if (budget.level !== "full") {
+      // Réduire aussi le nombre d'entrées thread
+      MAX_THREAD_ENTRIES = budget.level === "emergency" ? 0 : budget.level === "minimal" ? 5 : 10;
+    }
+  } catch { /* context-budget unavailable, use defaults */ }
+
   // --- Sentiment Predict ---
   const sentimentAlert = processSentiment(sessionId, message);
 
@@ -991,8 +1006,16 @@ async function main() {
     } catch {}
 
     // --- Knowledge Graph agentic injection ---
+    // Skip if context budget says so (> 80% context used)
+    let budgetSkipGraph = false;
+    try {
+      const { readContextPercent, allocateBudget } = await import("./lib/context-budget.js");
+      const pctFile = horaSessionFile(sessionId, "context-pct.txt");
+      const pct = readContextPercent(pctFile);
+      budgetSkipGraph = allocateBudget(pct).skipGraph;
+    } catch {}
     const GRAPH_DIR = path.join(MEMORY_DIR, "GRAPH");
-    if (fs.existsSync(path.join(GRAPH_DIR, "entities.jsonl"))) {
+    if (!budgetSkipGraph && fs.existsSync(path.join(GRAPH_DIR, "entities.jsonl"))) {
       try {
         const graph = new HoraGraph(GRAPH_DIR);
         const graphContext = await agenticRetrieve({
@@ -1032,6 +1055,24 @@ async function main() {
         // Fallback silencieux — l'injection classique suffit
       }
     }
+
+    // --- Cross-project awareness (first message only) ---
+    try {
+      const { findCrossProjectLinks } = await import("./lib/cross-project.js");
+      const links = findCrossProjectLinks(
+        process.cwd(),
+        path.basename(process.cwd()),
+        PROFILE_DIR,
+        GRAPH_DIR,
+      );
+      const relevant = links.filter((l) => l.relevance >= 0.3);
+      if (relevant.length > 0) {
+        const summary = relevant.map((l) =>
+          `- ${l.project}: ${l.sharedDeps.length} deps partagees (${l.sharedDeps.slice(0, 5).join(", ")})`
+        ).join("\n");
+        parts.push(`[HORA Cross-Project]\n${summary}`);
+      }
+    } catch { /* cross-project unavailable */ }
 
     // Thread injection (premier message, filtre par projet courant)
     if (hasThreadHistory) {
@@ -1082,6 +1123,15 @@ async function main() {
     if (mode) {
       const hint = getRoutingHint(mode);
       if (hint) parts.push(`[HORA] ${hint}`);
+    } else {
+      // Skill auto-suggest si pas de mode explicite détecté
+      try {
+        const { suggestSkill } = await import("./lib/skill-suggest.js");
+        const suggestion = suggestSkill(MEMORY_DIR, message, sessionId);
+        if (suggestion && suggestion.confidence >= 0.3) {
+          parts.push(`[HORA] Hint: ${suggestion.reason}`);
+        }
+      } catch { /* skill-suggest unavailable */ }
     }
   }
 

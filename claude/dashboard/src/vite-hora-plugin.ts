@@ -9,7 +9,7 @@ import type { IncomingMessage, ServerResponse } from "http";
 import { watch } from "chokidar";
 import { homedir } from "os";
 import { join } from "path";
-import { appendFileSync, readFileSync, existsSync } from "fs";
+import { appendFileSync, readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { collectAll } from "../lib/collectors";
 
 const MEMORY_DIR = join(homedir(), ".claude", "MEMORY");
@@ -492,6 +492,275 @@ ${matchedFacts.map((f) => `- ${f.source} —[${f.relation}]→ ${f.target}: ${f.
           });
         } catch (e) {
           console.error("[hora-chat] error:", e);
+          json(res, { error: String(e) }, 500);
+        }
+      });
+
+      // ── /api/hora/sessions-list — List archived sessions ─────────
+      srv.middlewares.use("/api/hora/sessions-list", (_req: IncomingMessage, res: ServerResponse) => {
+        cors(res);
+        try {
+          const sessionsDir = join(homedir(), ".claude", "MEMORY", "SESSIONS");
+          if (!existsSync(sessionsDir)) {
+            json(res, { sessions: [] });
+            return;
+          }
+          const files = readdirSync(sessionsDir)
+            .filter((f) => f.endsWith(".md") && f !== ".gitkeep");
+          const sessions = files
+            .map((f) => {
+              try {
+                const filePath = join(sessionsDir, f);
+                const st = statSync(filePath);
+                const content = readFileSync(filePath, "utf-8");
+                const firstLine = content.split("\n").find((l) => l.trim().length > 0) ?? "";
+                const summary = firstLine.replace(/^#+\s*/, "").slice(0, 120);
+                return {
+                  id: f.replace(/\.md$/, ""),
+                  date: f.slice(0, 19).replace(/T/, " ").replace(/-/g, (m, offset: number) => offset > 9 ? ":" : "-"),
+                  summary,
+                  sizeKb: Math.round(st.size / 1024 * 10) / 10,
+                };
+              } catch {
+                return null;
+              }
+            })
+            .filter(Boolean)
+            .sort((a, b) => (b!.id > a!.id ? 1 : -1))
+            .slice(0, 50);
+          json(res, { sessions });
+        } catch (e) {
+          json(res, { error: String(e) }, 500);
+        }
+      });
+
+      // ── /api/hora/session/* — Single session detail ──────────────
+      srv.middlewares.use("/api/hora/session", (req: IncomingMessage, res: ServerResponse) => {
+        cors(res);
+        try {
+          // Extract session ID from URL: /api/hora/session/some-id
+          const urlPath = req.url ?? "";
+          const sessionId = decodeURIComponent(urlPath.replace(/^\//, "").replace(/\?.*$/, ""));
+          if (!sessionId) {
+            json(res, { error: "session id required" }, 400);
+            return;
+          }
+          const sessionsDir = join(homedir(), ".claude", "MEMORY", "SESSIONS");
+          const filePath = join(sessionsDir, sessionId + ".md");
+          if (!existsSync(filePath)) {
+            json(res, { error: "session not found" }, 404);
+            return;
+          }
+          const content = readFileSync(filePath, "utf-8");
+          const st = statSync(filePath);
+
+          // Extract sid suffix (after underscore) for matching sentiment
+          const sidMatch = sessionId.match(/_([a-z0-9-]+)$/);
+          const sid = sidMatch ? sidMatch[1] : "";
+
+          // Read sentiment
+          let sentiment: number | null = null;
+          const sentimentPath = join(homedir(), ".claude", "MEMORY", "LEARNING", "ALGORITHM", "sentiment-log.jsonl");
+          if (existsSync(sentimentPath)) {
+            try {
+              const lines = readFileSync(sentimentPath, "utf-8").split("\n").filter(Boolean);
+              for (const line of lines) {
+                try {
+                  const entry = JSON.parse(line);
+                  if (entry.sid === sid || entry.sid === sessionId.slice(0, 8)) {
+                    sentiment = entry.score ?? null;
+                  }
+                } catch { /* skip malformed */ }
+              }
+            } catch { /* file read error */ }
+          }
+
+          // Read failures from FAILURES subdirectories matching session date prefix
+          const datePrefix = sessionId.slice(0, 19); // e.g. 2026-02-19T17-47-05
+          const failuresBase = join(homedir(), ".claude", "MEMORY", "LEARNING", "FAILURES");
+          const failures: Array<{ type: string; summary: string }> = [];
+          if (existsSync(failuresBase)) {
+            try {
+              const subdirs = readdirSync(failuresBase).filter((d) => !d.startsWith(".") && d !== "_legacy");
+              for (const subdir of subdirs) {
+                const subdirPath = join(failuresBase, subdir);
+                try {
+                  const failFiles = readdirSync(subdirPath).filter((f) => f.startsWith(datePrefix));
+                  for (const ff of failFiles) {
+                    try {
+                      const fc = readFileSync(join(subdirPath, ff), "utf-8");
+                      const title = fc.split("\n").find((l) => l.trim().length > 0)?.replace(/^#+\s*/, "").slice(0, 200) ?? ff;
+                      failures.push({ type: "failure", summary: title });
+                    } catch { /* skip */ }
+                  }
+                } catch { /* skip unreadable subdir */ }
+              }
+            } catch { /* failures dir read error */ }
+          }
+
+          json(res, {
+            content,
+            sentiment,
+            failures,
+            date: st.mtime.toISOString(),
+          });
+        } catch (e) {
+          json(res, { error: String(e) }, 500);
+        }
+      });
+
+      // ── /api/hora/telemetry — Hook telemetry data ──────────────────
+      srv.middlewares.use("/api/hora/telemetry", (_req: IncomingMessage, res: ServerResponse) => {
+        cors(res);
+        try {
+          const toolUsagePath = join(MEMORY_DIR, ".tool-usage.jsonl");
+          const monthlyPath = join(MEMORY_DIR, "INSIGHTS", "tool-monthly.jsonl");
+
+          // Parse last 7 days from .tool-usage.jsonl
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+          interface ToolEntry { ts: string; session: string; tool: string }
+          const entries: ToolEntry[] = [];
+
+          if (existsSync(toolUsagePath)) {
+            const lines = readFileSync(toolUsagePath, "utf-8").split("\n").filter(Boolean);
+            for (const line of lines) {
+              try {
+                const entry = JSON.parse(line) as ToolEntry;
+                if (new Date(entry.ts) >= sevenDaysAgo) {
+                  entries.push(entry);
+                }
+              } catch {
+                // Skip malformed lines
+              }
+            }
+          }
+
+          // Aggregate tool counts
+          const toolCounts: Record<string, number> = {};
+          const hourBuckets = new Array(24).fill(0) as number[];
+          const dailyMap: Record<string, number> = {};
+          const sessions = new Set<string>();
+
+          for (const e of entries) {
+            // Tool counts
+            toolCounts[e.tool] = (toolCounts[e.tool] ?? 0) + 1;
+
+            // Hourly activity
+            const d = new Date(e.ts);
+            hourBuckets[d.getHours()] += 1;
+
+            // Daily activity
+            const dayKey = e.ts.slice(0, 10); // YYYY-MM-DD
+            dailyMap[dayKey] = (dailyMap[dayKey] ?? 0) + 1;
+
+            // Unique sessions
+            if (e.session) sessions.add(e.session);
+          }
+
+          // Top tools sorted
+          const totalCalls = entries.length || 1;
+          const topTools = Object.entries(toolCounts)
+            .sort(([, a], [, b]) => b - a)
+            .map(([tool, count]) => ({
+              tool,
+              count,
+              pct: Math.round((count / totalCalls) * 100),
+            }));
+
+          // Hourly activity array
+          const hourlyActivity = hourBuckets.map((count, hour) => ({ hour, count }));
+
+          // Daily activity sorted
+          const dailyActivity = Object.entries(dailyMap)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([date, count]) => ({ date, count }));
+
+          // Monthly history (optional file)
+          let monthlyHistory: unknown[] = [];
+          if (existsSync(monthlyPath)) {
+            try {
+              const mLines = readFileSync(monthlyPath, "utf-8").split("\n").filter(Boolean);
+              monthlyHistory = mLines.map((l) => JSON.parse(l));
+            } catch {
+              // Skip if malformed
+            }
+          }
+
+          json(res, {
+            toolCounts,
+            hourlyActivity,
+            dailyActivity,
+            topTools,
+            sessionCount: sessions.size,
+            monthlyHistory,
+            totalCalls: entries.length,
+          });
+        } catch (e) {
+          json(res, { error: String(e) }, 500);
+        }
+      });
+
+      // ── /api/hora/memory-diff — Graph diff between sessions ────────
+      srv.middlewares.use("/api/hora/memory-diff", (_req: IncomingMessage, res: ServerResponse) => {
+        cors(res);
+        try {
+          const snapshotFile = join(MEMORY_DIR, "GRAPH", "snapshots", "snapshots.jsonl");
+          if (!existsSync(snapshotFile)) {
+            json(res, { snapshots: [], diff: null, noPrevious: true });
+            return;
+          }
+          const raw = readFileSync(snapshotFile, "utf-8").trim();
+          if (!raw) {
+            json(res, { snapshots: [], diff: null, noPrevious: true });
+            return;
+          }
+          const lines = raw.split("\n").filter(Boolean);
+          const snapshots = lines.slice(-2).map((l) => {
+            try { return JSON.parse(l); } catch { return null; }
+          }).filter(Boolean);
+
+          if (snapshots.length < 2) {
+            json(res, { snapshots, diff: null, noPrevious: true });
+            return;
+          }
+
+          const before = snapshots[0];
+          const after = snapshots[1];
+          const beforeEntitySet = new Set<string>(before.entityIds ?? []);
+          const afterEntitySet = new Set<string>(after.entityIds ?? []);
+          const beforeFactSet = new Set<string>(before.factIds ?? []);
+          const afterFactSet = new Set<string>(after.factIds ?? []);
+          const afterActiveSet = new Set<string>(after.activeFactIds ?? []);
+
+          const entitiesAdded = (after.entityIds ?? []).filter((id: string) => !beforeEntitySet.has(id));
+          const entitiesRemoved = (before.entityIds ?? []).filter((id: string) => !afterEntitySet.has(id));
+          const factsAdded = (after.factIds ?? []).filter((id: string) => !beforeFactSet.has(id));
+          const factsRemoved = (before.factIds ?? []).filter((id: string) => !afterFactSet.has(id));
+          const factsSuperseded = (before.activeFactIds ?? []).filter(
+            (id: string) => afterFactSet.has(id) && !afterActiveSet.has(id),
+          );
+          const totalChanges = entitiesAdded.length + entitiesRemoved.length +
+            factsAdded.length + factsRemoved.length + factsSuperseded.length;
+          const totalItems = Math.max((before.entityCount ?? 0) + (before.factCount ?? 0), 1);
+          const changeScore = Math.min(100, Math.round((totalChanges / totalItems) * 100));
+
+          const diff = {
+            from: before.ts,
+            to: after.ts,
+            entities: { added: entitiesAdded, removed: entitiesRemoved },
+            facts: { added: factsAdded, removed: factsRemoved, superseded: factsSuperseded },
+            summary: {
+              entitiesAdded: entitiesAdded.length,
+              entitiesRemoved: entitiesRemoved.length,
+              factsAdded: factsAdded.length,
+              factsSuperseded: factsSuperseded.length,
+            },
+            changeScore,
+          };
+
+          json(res, { snapshots, diff, noPrevious: false });
+        } catch (e) {
           json(res, { error: String(e) }, 500);
         }
       });

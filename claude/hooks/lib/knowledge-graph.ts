@@ -96,6 +96,26 @@ export interface GraphStats {
   topEntities: Array<{ name: string; type: string; connections: number }>;
 }
 
+export interface GraphSnapshot {
+  ts: string;
+  entityCount: number;
+  factCount: number;
+  activeFactCount: number;
+  entityIds: string[];
+  factIds: string[];
+  activeFactIds: string[];
+  episodeCount: number;
+}
+
+export interface GraphDiff {
+  from: string;
+  to: string;
+  entities: { added: string[]; removed: string[] };
+  facts: { added: string[]; removed: string[]; superseded: string[] };
+  summary: { entitiesAdded: number; entitiesRemoved: number; factsAdded: number; factsSuperseded: number };
+  changeScore: number;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function genId(): string {
@@ -931,6 +951,66 @@ export class HoraGraph {
       episodes: this.episodes.length,
       embeddedRatio: Math.round(embeddedRatio * 100) / 100,
       topEntities,
+    };
+  }
+
+  // ─── Snapshots & Diff ─────────────────────────────────────────────────
+
+  /**
+   * Capture a lightweight snapshot of the current graph state.
+   * No embeddings — just IDs and counts for diff tracking.
+   */
+  snapshotState(): GraphSnapshot {
+    const activeFacts = this.getActiveFacts();
+    return {
+      ts: now(),
+      entityCount: this.entities.size,
+      factCount: this.facts.size,
+      activeFactCount: activeFacts.length,
+      entityIds: [...this.entities.keys()],
+      factIds: [...this.facts.keys()],
+      activeFactIds: activeFacts.map((f) => f.id),
+      episodeCount: this.episodes.length,
+    };
+  }
+
+  /**
+   * Compare two snapshots and produce a diff with change score.
+   */
+  static diffSnapshots(before: GraphSnapshot, after: GraphSnapshot): GraphDiff {
+    const beforeEntitySet = new Set(before.entityIds);
+    const afterEntitySet = new Set(after.entityIds);
+    const beforeFactSet = new Set(before.factIds);
+    const afterFactSet = new Set(after.factIds);
+    const beforeActiveSet = new Set(before.activeFactIds);
+    const afterActiveSet = new Set(after.activeFactIds);
+
+    const entitiesAdded = after.entityIds.filter((id) => !beforeEntitySet.has(id));
+    const entitiesRemoved = before.entityIds.filter((id) => !afterEntitySet.has(id));
+    const factsAdded = after.factIds.filter((id) => !beforeFactSet.has(id));
+    const factsRemoved = before.factIds.filter((id) => !afterFactSet.has(id));
+    // Superseded = was active before, still exists but no longer active
+    const factsSuperseded = before.activeFactIds.filter(
+      (id) => afterFactSet.has(id) && !afterActiveSet.has(id),
+    );
+
+    const totalChanges = entitiesAdded.length + entitiesRemoved.length +
+      factsAdded.length + factsRemoved.length + factsSuperseded.length;
+    const totalItems = Math.max(before.entityCount + before.factCount, 1);
+    const changeScore = Math.min(100, Math.round((totalChanges / totalItems) * 100));
+
+    return {
+      from: before.ts,
+      to: after.ts,
+      entities: { added: entitiesAdded, removed: entitiesRemoved },
+      facts: { added: factsAdded, removed: factsRemoved, superseded: factsSuperseded },
+      summary: {
+        entitiesAdded: entitiesAdded.length,
+        entitiesRemoved: entitiesRemoved.length,
+        factsAdded: factsAdded.length,
+        factsSuperseded: factsSuperseded.length,
+      },
+      changeScore,
     };
   }
 }

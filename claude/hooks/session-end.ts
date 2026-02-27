@@ -1239,6 +1239,15 @@ async function main() {
       }
 
       graph.save();
+
+      // Save graph snapshot for diff tracking
+      try {
+        const snapshotDir = path.join(MEMORY_DIR, "GRAPH", "snapshots");
+        fs.mkdirSync(snapshotDir, { recursive: true });
+        const snapshot = graph.snapshotState();
+        const snapshotFile = path.join(snapshotDir, "snapshots.jsonl");
+        fs.appendFileSync(snapshotFile, JSON.stringify(snapshot) + "\n");
+      } catch {}
     } catch {}
   };
 
