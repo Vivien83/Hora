@@ -17,14 +17,14 @@
 </p>
 
 <p align="center">
-  <a href="#-quick-start">Quick Start</a> &bull;
-  <a href="#-features">Features</a> &bull;
-  <a href="#-knowledge-graph">Knowledge Graph</a> &bull;
-  <a href="#-dashboard">Dashboard</a> &bull;
-  <a href="#-skills--agents">Skills & Agents</a> &bull;
-  <a href="#%EF%B8%8F-architecture">Architecture</a> &bull;
-  <a href="#-web-saas-conventions">Web/SaaS Stack</a> &bull;
-  <a href="#-customization">Customization</a> &bull;
+  <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#features">Features</a> &bull;
+  <a href="#1-knowledge-graph-neuroscience-inspired">Knowledge Graph</a> &bull;
+  <a href="#15-dashboard-v3--real-time--neural--telemetry">Dashboard</a> &bull;
+  <a href="#skills--agents">Skills & Agents</a> &bull;
+  <a href="#architecture">Architecture</a> &bull;
+  <a href="#16-websaas-conventions-built-in">Web/SaaS Stack</a> &bull;
+  <a href="#customization">Customization</a> &bull;
   <a href="MEMORY.md"><strong>Memory System Deep Dive</strong></a>
 </p>
 
@@ -454,7 +454,7 @@ The HORA algorithm (EXPLORE → PLAN → AUDIT → CODE → COMMIT) runs on **ev
 | Complexity | Algorithm depth |
 |:---|:---|
 | Trivial (typo, 1-3 lines) | EXPLORE (implicit) → CODE |
-| Medium (feature, bug) | EXPLORE → PLAN → AUDIT → CODE |
+| Medium (feature, bug) | EXPLORE → AUDIT → CODE |
 | Complex (multi-file, archi) | EXPLORE → full PLAN with ISC → AUDIT → CODE |
 | Critical (auth, data, migration) | Full algorithm + **user validation required** |
 
@@ -600,6 +600,7 @@ Two-pane viewer: session list (date, summary, size) on the left, full session co
 | `/hora-parallel-research` | Multi-angle research | 3-5 angles → Researchers → Synthesizer |
 | `/hora-backup` | Immediate backup | Delegates to backup agent |
 | `/hora-vision` | Visual UI audit — detects anti-patterns from screenshots | 23-point checklist, multimodal |
+| `/hora-health` | Memory health diagnostics — 8 checks on tiers, embeddings, GC | T1/T2/T3 balance, coverage, disk |
 | `/hora-dashboard` | HORA analytics dashboard | React 19, Vite 6, Recharts, react-force-graph-2d |
 
 > Every skill includes an **AUDIT step** that identifies ghost failures (silent failure modes) before any code is written.
@@ -732,17 +733,19 @@ episodes         |   paths.ts
 
 ```
 MEMORY/GRAPH/
-  entities.jsonl       # {id, type, name, properties, embedding[384], created_at, last_seen}
-  facts.jsonl          # {id, source, target, relation, description, embedding[384],
-                       #  valid_at, invalid_at, created_at, expired_at, confidence,
-                       #  metadata: {memory_type, reconsolidation_count, history[]}}
-  episodes.jsonl       # {id, source_type, source_ref, timestamp, entities[], facts[],
-                       #  consolidated?}
-  activation-log.jsonl # {factId, accessTimes[], emotionalWeight, lastActivation}
-  communities.jsonl    # {id, name, entities[], facts[], summary, updated_at}
+  entities.jsonl         # {id, type, name, properties, embedding: null, created_at, last_seen}
+  facts.jsonl            # {id, source, target, relation, description, embedding: null,
+                         #  valid_at, invalid_at, created_at, expired_at, confidence,
+                         #  metadata: {memory_type, reconsolidation_count, history[]}}
+  episodes.jsonl         # {id, source_type, source_ref, timestamp, entities[], facts[],
+                         #  consolidated?}
+  activation-log.jsonl   # {factId, accessTimes[], emotionalWeight, lastActivation}
+  communities.jsonl      # {id, name, entities[], facts[], summary, updated_at}
+  embeddings.bin         # Binary Float32Array (384 floats per vector, concatenated)
+  embedding-index.jsonl  # {id, type: "entity"|"fact", offset, length} — index into embeddings.bin
 ```
 
-Embeddings are stored inline (384 floats per entity/fact). Estimated volume after 6 months: ~2 MB. Loadable in < 200ms.
+Embeddings are stored in a **binary file** (`embeddings.bin`) for performance, indexed by `embedding-index.jsonl`. JSONL fields contain `embedding: null` — the real vectors live in the binary file. Estimated volume after 6 months: ~2 MB. Loadable in < 200ms.
 
 ### Dependencies
 
@@ -922,7 +925,8 @@ hora/
         |-- SESSIONS/             #   Session archives
         |-- SECURITY/             #   Security audit trail
         |-- STATE/                #   Thread state, session names
-        |-- GRAPH/                #   Knowledge graph (entities, facts, episodes, activation log, communities)
+        |-- GRAPH/                #   Knowledge graph (entities, facts, episodes, activation log, communities,
+        |                        #     embeddings.bin, embedding-index.jsonl)
         |-- WORK/                 #   Working memory
 ```
 
