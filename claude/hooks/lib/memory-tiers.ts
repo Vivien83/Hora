@@ -55,7 +55,7 @@ const GC_LOCK_TIMEOUT_MS = 60 * 1000; // 60 secondes
 
 const T2_SESSION_MAX_AGE_DAYS = 30;
 const T2_SENTIMENT_MAX_AGE_DAYS = 90;
-const T2_TOOL_USAGE_MAX_AGE_DAYS = 30;
+const T2_TOOL_USAGE_MAX_AGE_DAYS = 7;
 const T2_FAILURES_MAX_AGE_DAYS = 30;
 
 const RECURRING_FAILURE_THRESHOLD = 3;
@@ -658,7 +658,7 @@ export function getMemoryHealth(memoryDir: string): MemoryHealth {
     oldestDays: sessionsStats.oldestDays,
   };
 
-  if (t2Items > 500) {
+  if (t2Items > 5000) {
     alerts.push(`T2 surcharge: ${t2Items} items (consolidation recommandee)`);
   }
 
