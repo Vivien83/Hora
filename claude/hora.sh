@@ -85,7 +85,8 @@ export HORA_PROJECT_DIR="$(pwd)"
 
 if [[ "$NO_DASH" == false ]] && [[ -d "$DASHBOARD_DIR" ]]; then
   # Check if dashboard is already running on port 3847
-  if lsof -iTCP:3847 -sTCP:LISTEN -t &>/dev/null; then
+  # lsof is macOS/Linux only; use netstat on Windows (Git Bash)
+  if command -v lsof &>/dev/null && lsof -iTCP:3847 -sTCP:LISTEN -t &>/dev/null; then
     printf '\033[90m◈ HORA Dashboard already running → http://localhost:3847\033[0m\n'
   else
     # Ensure dependencies are installed
@@ -119,19 +120,32 @@ NEED_COMMIT=false
 # Ensure .hora/ exists with project-id
 if [[ ! -f .hora/project-id ]]; then
   mkdir -p .hora
-  # Generate project-id without tr|head (SIGPIPE-safe)
-  printf '%s' "$(date +%s%N | shasum | head -c 12)" > .hora/project-id
+  # Generate project-id (sha256sum on Windows Git Bash, shasum on macOS)
+  if command -v sha256sum &>/dev/null; then
+    printf '%s' "$(date +%s%N | sha256sum | head -c 12)" > .hora/project-id
+  else
+    printf '%s' "$(date +%s%N | shasum | head -c 12)" > .hora/project-id
+  fi
   printf '\033[90m◈ HORA project initialized (.hora/project-id)\033[0m\n'
   NEED_COMMIT=true
 fi
 
 # Ensure git repo exists IN THIS directory (not a parent repo)
+# Normalize paths: on Windows Git Bash, pwd returns /c/... but git returns C:/...
 GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-if [[ -z "$GIT_ROOT" ]] || [[ "$GIT_ROOT" != "$(pwd)" ]]; then
+CURRENT_DIR="$(pwd)"
+if [[ -n "$GIT_ROOT" ]]; then
+  GIT_ROOT_NORM="$(cd "$GIT_ROOT" 2>/dev/null && pwd || echo "")"
+else
+  GIT_ROOT_NORM=""
+fi
+if [[ -z "$GIT_ROOT_NORM" ]] || [[ "$GIT_ROOT_NORM" != "$CURRENT_DIR" ]]; then
   printf '\033[90m◈ Initializing git repo...\033[0m\n'
-  git init -q
-  if [[ ! -f .gitignore ]]; then
-    cat > .gitignore <<'GITIGNORE'
+  if git init -q 2>/dev/null; then
+    # Suppress CRLF warnings on Windows
+    git config core.autocrlf input 2>/dev/null || true
+    if [[ ! -f .gitignore ]]; then
+      cat > .gitignore <<'GITIGNORE'
 node_modules/
 dist/
 .env
@@ -139,13 +153,14 @@ dist/
 .DS_Store
 *.log
 GITIGNORE
+    fi
+    NEED_COMMIT=true
   fi
-  NEED_COMMIT=true
 fi
 
-if [[ "$NEED_COMMIT" == true ]]; then
-  git add -A
-  git commit -q -m "init: hora project" --allow-empty
+if [[ "$NEED_COMMIT" == true ]] && git rev-parse --git-dir &>/dev/null; then
+  git add -A 2>/dev/null || true
+  git commit -q -m "init: hora project" --allow-empty 2>/dev/null || true
 fi
 
 # ─── Launch Claude Code ──────────────────────────────────────────

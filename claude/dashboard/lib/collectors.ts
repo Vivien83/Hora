@@ -743,7 +743,12 @@ interface TranscriptJsonlEntry {
 
 function projectDirToClaudePath(projectDir: string): string {
   // /Users/vivienmartin/Desktop/hora 2 -> -Users-vivienmartin-Desktop-hora-2
-  return projectDir.replace(/\//g, "-").replace(/\s+/g, "-");
+  // C:\Users\alexis\Desktop\hora -> C--Users-alexis-Desktop-hora (Windows)
+  return projectDir
+    .replace(/\\/g, "/")   // normalize backslashes to forward slashes
+    .replace(/:/g, "-")    // drive letter colon to dash (C: -> C-)
+    .replace(/\//g, "-")   // slashes to dashes
+    .replace(/\s+/g, "-"); // spaces to dashes
 }
 
 function extractTextContent(content: string | Array<{ type?: string; text?: string; thinking?: string }> | undefined): string {
