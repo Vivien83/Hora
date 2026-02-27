@@ -83,6 +83,13 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
 }
 
+const fadeInStyle = `
+@keyframes horaFadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+`;
+
 export function HookTelemetry() {
   const [data, setData] = useState<TelemetryData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +153,7 @@ export function HookTelemetry() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <style>{fadeInStyle}</style>
       {/* Stats row */}
       <div
         style={{
@@ -164,6 +172,8 @@ export function HookTelemetry() {
             display: "flex",
             flexDirection: "column",
             gap: "4px",
+            animation: "horaFadeUp 0.4s ease-out both",
+            animationDelay: "0s",
           }}
         >
           <span
@@ -202,6 +212,8 @@ export function HookTelemetry() {
             display: "flex",
             flexDirection: "column",
             gap: "4px",
+            animation: "horaFadeUp 0.4s ease-out both",
+            animationDelay: "0.05s",
           }}
         >
           <span
@@ -240,6 +252,8 @@ export function HookTelemetry() {
             display: "flex",
             flexDirection: "column",
             gap: "4px",
+            animation: "horaFadeUp 0.4s ease-out both",
+            animationDelay: "0.1s",
           }}
         >
           <span
@@ -278,6 +292,8 @@ export function HookTelemetry() {
             display: "flex",
             flexDirection: "column",
             gap: "4px",
+            animation: "horaFadeUp 0.4s ease-out both",
+            animationDelay: "0.15s",
           }}
         >
           <span
@@ -314,6 +330,8 @@ export function HookTelemetry() {
           border: `1px solid ${C.border}`,
           borderRadius: "8px",
           padding: "20px 24px",
+          animation: "horaFadeUp 0.5s ease-out both",
+          animationDelay: "0.2s",
         }}
       >
         <div style={{ fontSize: "11px", color: C.dim, marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -342,7 +360,7 @@ export function HookTelemetry() {
                 tickLine={false}
               />
               <Tooltip content={<SimpleTooltip />} cursor={{ fill: C.border }} />
-              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+              <Bar dataKey="count" radius={[0, 4, 4, 0]} isAnimationActive animationDuration={800} animationEasing="ease-out">
                 {top10.map((entry, index) => {
                   const ratio = entry.count / maxToolCount;
                   const opacity = 0.4 + ratio * 0.6;
@@ -365,6 +383,8 @@ export function HookTelemetry() {
           border: `1px solid ${C.border}`,
           borderRadius: "8px",
           padding: "20px 24px",
+          animation: "horaFadeUp 0.5s ease-out both",
+          animationDelay: "0.35s",
         }}
       >
         <div style={{ fontSize: "11px", color: C.dim, marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -386,7 +406,7 @@ export function HookTelemetry() {
               tickLine={false}
             />
             <Tooltip content={<HourlyTooltip />} cursor={{ fill: C.border }} />
-            <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+            <Bar dataKey="count" radius={[4, 4, 0, 0]} isAnimationActive animationDuration={1000} animationEasing="ease-out">
               {data.hourlyActivity.map((entry, index) => {
                 const ratio = entry.count / maxHourlyCount;
                 const opacity = entry.count === 0 ? 0.1 : 0.3 + ratio * 0.7;
@@ -404,6 +424,8 @@ export function HookTelemetry() {
           border: `1px solid ${C.border}`,
           borderRadius: "8px",
           padding: "20px 24px",
+          animation: "horaFadeUp 0.5s ease-out both",
+          animationDelay: "0.5s",
         }}
       >
         <div style={{ fontSize: "11px", color: C.dim, marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -440,6 +462,9 @@ export function HookTelemetry() {
                 stroke={C.accent}
                 strokeWidth={2}
                 fill="url(#areaGrad)"
+                isAnimationActive
+                animationDuration={1200}
+                animationEasing="ease-out"
               />
             </AreaChart>
           </ResponsiveContainer>
