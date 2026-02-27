@@ -206,6 +206,23 @@ async function getGraph() {
   if (!graphInstance || now - graphLoadTime > GRAPH_CACHE_MS) {
     graphInstance = new HoraGraph(GRAPH_DIR);
     graphLoadTime = now;
+    // Auto-embed entries missing embeddings
+    try {
+      const { embed } = await import("../../hooks/lib/embeddings");
+      const g = graphInstance as InstanceType<typeof HoraGraph>;
+      for (const e of g.getAllEntities()) {
+        if (!e.embedding) {
+          const emb = await embed(e.name + " " + (e.properties?.description || ""));
+          if (emb) g.updateEntityEmbedding(e.id, emb);
+        }
+      }
+      for (const f of g.getAllFacts()) {
+        if (!f.embedding) {
+          const emb = await embed(f.description || f.relation);
+          if (emb) g.updateFactEmbedding(f.id, emb);
+        }
+      }
+    } catch { /* embeddings unavailable */ }
   }
   return graphInstance as InstanceType<typeof HoraGraph>;
 }
