@@ -1,10 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { resolve } from "path";
+import { homedir } from "os";
 import { horaPlugin } from "./src/vite-hora-plugin";
 
-// Project dir = parent of claude/dashboard (the HORA project root)
-const projectDir = resolve(__dirname, "..", "..");
+// Project dir from env (set by hora.sh) or fallback to home
+const projectDir = process.env.HORA_PROJECT_DIR ?? homedir();
 
 export default defineConfig({
   plugins: [react(), horaPlugin(projectDir)],

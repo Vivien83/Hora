@@ -12,6 +12,7 @@ import { SecurityEvents } from "./SecurityEvents";
 import { MemoryHealth } from "./MemoryHealth";
 import { NeuralPage } from "./NeuralPage";
 import { ChatView } from "./ChatView";
+import { MemoryChat } from "./MemoryChat";
 
 const C = {
   bg: "#0A0A0B",
@@ -125,6 +126,7 @@ function ProfileCard({ profile }: { profile: DashboardData["profile"] }) {
 export function App() {
   const { data, error, isLive, lastUpdate } = useHoraData();
   const [section, setSection] = useState<NavSection>("overview");
+  const [chatTab, setChatTab] = useState<"transcripts" | "ask">("ask");
 
   if (error) {
     return (
@@ -400,7 +402,45 @@ export function App() {
 
         {/* Chat section */}
         {section === "chat" && (
-          <ChatView messages={data.transcripts} />
+          <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 48px)" }}>
+            {/* Tabs */}
+            <div
+              style={{
+                display: "flex",
+                gap: "0",
+                borderBottom: `1px solid ${C.border}`,
+                marginBottom: "0",
+              }}
+            >
+              {(["ask", "transcripts"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setChatTab(tab)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    borderBottom: chatTab === tab ? "2px solid #D4A853" : "2px solid transparent",
+                    color: chatTab === tab ? "#e4e4e7" : C.muted,
+                    fontSize: "13px",
+                    fontWeight: chatTab === tab ? 600 : 400,
+                    padding: "10px 16px",
+                    cursor: "pointer",
+                    transition: "all 100ms",
+                  }}
+                >
+                  {tab === "ask" ? "Ask HORA" : "Transcripts"}
+                </button>
+              ))}
+            </div>
+            {/* Tab content */}
+            <div style={{ flex: 1, minHeight: 0 }}>
+              {chatTab === "ask" ? (
+                <MemoryChat graphStats={data.graphData?.stats} />
+              ) : (
+                <ChatView messages={data.transcripts} />
+              )}
+            </div>
+          </div>
         )}
 
         {/* Security section */}

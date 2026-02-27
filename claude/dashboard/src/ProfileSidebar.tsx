@@ -38,7 +38,7 @@ const NAV_ITEMS: Array<{ key: NavSection; label: string }> = [
   { key: "project", label: "Projet" },
   { key: "memory", label: "Memoire" },
   { key: "neural", label: "Neural" },
-  { key: "chat", label: "Chat" },
+  { key: "chat", label: "Chat / Ask" },
   { key: "security", label: "Securite" },
   { key: "tools", label: "Outils" },
 ];

@@ -80,6 +80,9 @@ fi
 
 # ─── Start dashboard ──────────────────────────────────────────────
 
+# Export project dir for dashboard (Vite + collect script)
+export HORA_PROJECT_DIR="$(pwd)"
+
 if [[ "$NO_DASH" == false ]] && [[ -d "$DASHBOARD_DIR" ]]; then
   # Check if dashboard is already running on port 3847
   if lsof -iTCP:3847 -sTCP:LISTEN -t &>/dev/null; then

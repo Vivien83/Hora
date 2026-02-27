@@ -13,7 +13,7 @@ import { collectAll } from "../lib/collectors";
 function main() {
   console.log("HORA Dashboard — collecte des donnees...");
 
-  const projectDir = process.cwd();
+  const projectDir = process.env.HORA_PROJECT_DIR ?? process.cwd();
   const data = collectAll(projectDir);
 
   const outputDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public");

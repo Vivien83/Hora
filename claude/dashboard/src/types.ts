@@ -155,6 +155,33 @@ export interface TranscriptMessage {
   sessionId: string;
 }
 
+// ─── Memory Chat ────────────────────────────────────────────────────────────
+
+export interface ChatMessageEntity {
+  id: string;
+  name: string;
+  type: string;
+  connections: number;
+}
+
+export interface ChatMessageFact {
+  relation: string;
+  description: string;
+  confidence: number;
+  source: string;
+  target: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "hora";
+  content: string;
+  timestamp: string;
+  entities?: ChatMessageEntity[];
+  facts?: ChatMessageFact[];
+  stats?: { totalSearched: number; returned: number; durationMs: number };
+}
+
 export interface DashboardData {
   generatedAt: string;
   profile: ProfileData;
