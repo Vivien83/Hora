@@ -402,12 +402,17 @@ function HoraMessage({ msg }: { msg: ChatMessage & { answer?: string; llmUsed?: 
       )}
 
       {/* Actions bar */}
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "8px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
         <CopyButton text={copyContext} label="Copier le contexte" />
         {msg.stats && (
           <span style={{ fontSize: "10px", color: C.dim }}>
             {msg.stats.durationMs}ms · {msg.stats.returned} resultats
-            {msg.llmUsed && msg.stats.tokensUsed ? ` · ${msg.stats.tokensUsed} tokens` : ""}
+            {msg.llmUsed && msg.stats.inputTokens ? ` · ${msg.stats.inputTokens}↑ ${msg.stats.outputTokens}↓` : ""}
+          </span>
+        )}
+        {msg.llmUsed && msg.stats?.costUsd != null && msg.stats.costUsd > 0 && (
+          <span style={{ fontSize: "10px", color: C.gold, fontWeight: 600 }}>
+            ${msg.stats.costUsd.toFixed(4)}
           </span>
         )}
         {!msg.llmUsed && msg.stats && (
@@ -426,14 +431,45 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [config, setConfig] = useState<ConfigState>({ provider: null, model: null, keySet: false });
+  const [totalCost, setTotalCost] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load config on mount
+  // Load config + history on mount
   useEffect(() => {
     fetch("/api/hora-chat-config")
       .then((r) => r.json())
       .then(setConfig)
+      .catch(() => {});
+    fetch("/api/hora-chat-history")
+      .then((r) => r.json())
+      .then((data) => {
+        setTotalCost(data.totalCostUsd ?? 0);
+        // Restore recent messages from history
+        const entries = data.entries ?? [];
+        if (entries.length > 0) {
+          const restored: Array<ChatMessage & { answer?: string; llmUsed?: boolean }> = [];
+          for (const e of entries.slice(-40)) {
+            restored.push({
+              id: e.ts + Math.random().toString(36).slice(2, 5),
+              role: e.role,
+              content: e.role === "hora" ? (e.answer ?? e.content ?? "") : (e.content ?? ""),
+              timestamp: e.ts,
+              answer: e.answer,
+              llmUsed: !!e.model,
+              stats: e.role === "hora" ? {
+                totalSearched: 0,
+                returned: (e.entities ?? 0) + (e.facts ?? 0),
+                durationMs: e.durationMs ?? 0,
+                inputTokens: e.inputTokens,
+                outputTokens: e.outputTokens,
+                costUsd: e.costUsd,
+              } : undefined,
+            });
+          }
+          setMessages(restored);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -478,11 +514,12 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
         timestamp: new Date().toISOString(),
         entities: data.entities,
         facts: data.facts,
-        stats: data.stats ? { ...data.stats, tokensUsed: data.stats.tokensUsed } : undefined,
+        stats: data.stats ?? undefined,
         answer: data.answer ?? undefined,
         llmUsed: data.stats?.llmUsed ?? false,
       };
       setMessages((prev) => [...prev, horaMsg]);
+      if (data.stats?.totalCostUsd != null) setTotalCost(data.stats.totalCostUsd);
     } catch (e) {
       const errorMsg: ChatMessage = {
         id: genId(),
@@ -541,6 +578,22 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
           {!config.keySet && (
             <span style={{ fontSize: "10px", color: C.goldDim }}>
               retrieval only — configurer un LLM pour les reponses
+            </span>
+          )}
+          {totalCost > 0 && (
+            <span
+              style={{
+                fontSize: "10px",
+                color: C.gold,
+                padding: "2px 6px",
+                background: `${C.gold}10`,
+                border: `1px solid ${C.gold}20`,
+                borderRadius: "4px",
+                fontWeight: 600,
+                fontFamily: "monospace",
+              }}
+            >
+              ${totalCost.toFixed(4)}
             </span>
           )}
         </div>

@@ -179,7 +179,7 @@ export interface ChatMessage {
   timestamp: string;
   entities?: ChatMessageEntity[];
   facts?: ChatMessageFact[];
-  stats?: { totalSearched: number; returned: number; durationMs: number };
+  stats?: { totalSearched: number; returned: number; durationMs: number; inputTokens?: number; outputTokens?: number; costUsd?: number; totalCostUsd?: number; tokensUsed?: number };
 }
 
 export interface DashboardData {

@@ -9,10 +9,12 @@ import type { IncomingMessage, ServerResponse } from "http";
 import { watch } from "chokidar";
 import { homedir } from "os";
 import { join } from "path";
+import { appendFileSync, readFileSync, existsSync } from "fs";
 import { collectAll } from "../lib/collectors";
 
 const MEMORY_DIR = join(homedir(), ".claude", "MEMORY");
 const GRAPH_DIR = join(MEMORY_DIR, "GRAPH");
+const CHAT_HISTORY_PATH = join(homedir(), ".claude", "hora-chat-history.jsonl");
 const DEBOUNCE_MS = 500;
 
 // Lazy-loaded graph instance (cached across requests)
@@ -49,11 +51,74 @@ interface LLMConfig {
   model: string;
 }
 
+// ─── Chat history persistence ────────────────────────────────────────────────
+
+interface HistoryEntry {
+  ts: string;
+  role: "user" | "hora";
+  content: string;
+  answer?: string;
+  entities?: number;
+  facts?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+  durationMs?: number;
+  model?: string;
+}
+
+function appendHistory(entry: HistoryEntry): void {
+  try {
+    appendFileSync(CHAT_HISTORY_PATH, JSON.stringify(entry) + "\n", "utf-8");
+  } catch {
+    // Non-critical — don't break chat if history write fails
+  }
+}
+
+function loadHistory(limit = 200): HistoryEntry[] {
+  if (!existsSync(CHAT_HISTORY_PATH)) return [];
+  try {
+    const lines = readFileSync(CHAT_HISTORY_PATH, "utf-8").trim().split("\n").filter(Boolean);
+    return lines.slice(-limit).map((l) => JSON.parse(l));
+  } catch {
+    return [];
+  }
+}
+
+function totalCost(): number {
+  const entries = loadHistory(10000);
+  return entries.reduce((sum, e) => sum + (e.costUsd ?? 0), 0);
+}
+
+// ─── LLM Call ────────────────────────────────────────────────────────────────
+
+// Pricing per 1M tokens (input/output) — Feb 2026
+const PRICING: Record<string, { input: number; output: number }> = {
+  "claude-haiku-4-5-20251001": { input: 0.80, output: 4.00 },
+  "claude-3-5-haiku-20241022": { input: 0.80, output: 4.00 },
+  "claude-sonnet-4-5-20250514": { input: 3.00, output: 15.00 },
+  "claude-sonnet-4-6-20250725": { input: 3.00, output: 15.00 },
+  "anthropic/claude-3.5-haiku": { input: 0.80, output: 4.00 },
+  "anthropic/claude-3.5-sonnet": { input: 3.00, output: 15.00 },
+};
+
+function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
+  const price = PRICING[model] ?? { input: 1.00, output: 5.00 }; // conservative fallback
+  return (inputTokens * price.input + outputTokens * price.output) / 1_000_000;
+}
+
+interface LLMResult {
+  answer: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
 async function callLLM(
   config: LLMConfig,
   systemPrompt: string,
   userMessage: string,
-): Promise<{ answer: string; tokensUsed: number }> {
+): Promise<LLMResult> {
   if (config.provider === "anthropic") {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -75,8 +140,9 @@ async function callLLM(
     }
     const data = await resp.json();
     const answer = data.content?.[0]?.text ?? "";
-    const tokensUsed = (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0);
-    return { answer, tokensUsed };
+    const inputTokens = data.usage?.input_tokens ?? 0;
+    const outputTokens = data.usage?.output_tokens ?? 0;
+    return { answer, inputTokens, outputTokens, costUsd: estimateCost(config.model, inputTokens, outputTokens) };
   }
 
   // OpenRouter
@@ -101,8 +167,35 @@ async function callLLM(
   }
   const data = await resp.json();
   const answer = data.choices?.[0]?.message?.content ?? "";
-  const tokensUsed = (data.usage?.total_tokens ?? 0);
-  return { answer, tokensUsed };
+  const inputTokens = data.usage?.prompt_tokens ?? 0;
+  const outputTokens = data.usage?.completion_tokens ?? 0;
+
+  // Fetch real billed cost from OpenRouter generation stats endpoint
+  let costUsd: number | null = null;
+  const generationId = data.id;
+  if (generationId) {
+    // Small delay to let OpenRouter index the generation
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      const genResp = await fetch(`https://openrouter.ai/api/v1/generation?id=${generationId}`, {
+        headers: { Authorization: `Bearer ${config.apiKey}` },
+      });
+      if (genResp.ok) {
+        const genData = await genResp.json();
+        if (typeof genData.data?.total_cost === "number") {
+          costUsd = genData.data.total_cost;
+        }
+      }
+    } catch {
+      // generation endpoint failed, fall through to fallbacks
+    }
+  }
+  // Fallback: usage.cost from completion response, then local estimate
+  if (costUsd === null) {
+    const usageCost = data.usage?.cost ?? null;
+    costUsd = typeof usageCost === "number" ? usageCost : estimateCost(config.model, inputTokens, outputTokens);
+  }
+  return { answer, inputTokens, outputTokens, costUsd };
 }
 
 // ─── Graph helpers ───────────────────────────────────────────────────────────
@@ -244,6 +337,14 @@ export function horaPlugin(projectDir: string): Plugin {
         res.end();
       });
 
+      // ── /api/hora-chat-history — GET chat history + cost ────────────
+      srv.middlewares.use("/api/hora-chat-history", (_req: IncomingMessage, res: ServerResponse) => {
+        cors(res);
+        const entries = loadHistory();
+        const cost = entries.reduce((sum, e) => sum + (e.costUsd ?? 0), 0);
+        json(res, { entries, totalCostUsd: cost });
+      });
+
       // ── /api/hora-chat — Memory chatbot ────────────────────────────
       srv.middlewares.use("/api/hora-chat", async (req: IncomingMessage, res: ServerResponse) => {
         cors(res);
@@ -286,7 +387,9 @@ export function horaPlugin(projectDir: string): Plugin {
           const config = loadConfig();
 
           let answer: string | null = null;
-          let tokensUsed = 0;
+          let inputTokens = 0;
+          let outputTokens = 0;
+          let costUsd = 0;
           let llmUsed = false;
 
           if (config?.apiKey) {
@@ -324,7 +427,9 @@ ${matchedFacts.map((f) => `- ${f.source} —[${f.relation}]→ ${f.target}: ${f.
 
               if (llmResult) {
                 answer = llmResult.answer;
-                tokensUsed = llmResult.tokensUsed;
+                inputTokens = llmResult.inputTokens;
+                outputTokens = llmResult.outputTokens;
+                costUsd = llmResult.costUsd;
                 llmUsed = true;
               }
             } catch (e) {
@@ -335,6 +440,22 @@ ${matchedFacts.map((f) => `- ${f.source} —[${f.relation}]→ ${f.target}: ${f.
 
           const durationMs = Date.now() - start;
 
+          // Persist to history
+          appendHistory({ ts: new Date().toISOString(), role: "user", content: message });
+          appendHistory({
+            ts: new Date().toISOString(),
+            role: "hora",
+            content: answer ?? memoryContext ?? "",
+            answer: answer ?? undefined,
+            entities: matchedEntities.length,
+            facts: matchedFacts.length,
+            inputTokens: inputTokens || undefined,
+            outputTokens: outputTokens || undefined,
+            costUsd: costUsd || undefined,
+            durationMs,
+            model: llmUsed ? config?.model : undefined,
+          });
+
           json(res, {
             answer: answer ?? null,
             context: memoryContext ?? "Aucun resultat pertinent trouve.",
@@ -344,7 +465,10 @@ ${matchedFacts.map((f) => `- ${f.source} —[${f.relation}]→ ${f.target}: ${f.
               totalSearched: (stats.entities ?? 0) + (stats.facts ?? 0),
               returned: matchedEntities.length + matchedFacts.length,
               durationMs,
-              tokensUsed,
+              inputTokens,
+              outputTokens,
+              costUsd,
+              totalCostUsd: totalCost(),
               llmUsed,
             },
           });
