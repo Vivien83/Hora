@@ -24,7 +24,8 @@
   <a href="#-skills--agents">Skills & Agents</a> &bull;
   <a href="#%EF%B8%8F-architecture">Architecture</a> &bull;
   <a href="#-web-saas-conventions">Web/SaaS Stack</a> &bull;
-  <a href="#-customization">Customization</a>
+  <a href="#-customization">Customization</a> &bull;
+  <a href="MEMORY.md"><strong>Memory System Deep Dive</strong></a>
 </p>
 
 ---
@@ -127,6 +128,8 @@ The installer runs 8 steps with a visual UI (ASCII header, progress counter, col
 
 ## Features
 
+> **Deep dive:** The memory system is documented exhaustively in **[MEMORY.md](MEMORY.md)** — every algorithm, every formula, every data structure, every threshold. What follows here is a summary.
+
 ### 1. Knowledge Graph (Neuroscience-inspired)
 
 HORA builds a **bi-temporal knowledge graph** inspired by [Graphiti](https://github.com/getzep/graphiti) and neuroscience (CLS theory, ACT-R, Tulving's memory taxonomy) — automatically, at the end of every session.
@@ -139,160 +142,49 @@ Session ends --> claude -p extracts entities + facts + contradictions
             --> Next session: hybrid search (semantic + BM25) retrieves relevant context
 ```
 
-#### Three-layer structure
-
 | Layer | What | Example |
 |:---|:---|:---|
-| **Entities** (nodes) | Concepts extracted from sessions | `project:hora`, `tool:react-force-graph`, `preference:library-first` |
-| **Facts** (edges) | Typed relationships with Tulving classification | `semantic`: "HORA uses TypeScript", `procedural`: "When bug auth → check Better-Auth config" |
-| **Episodes** (raw) | Source references, consolidated by dream cycle | `session:a1b2c3d4 → extracted 5 entities, 8 facts` |
+| **Entities** (nodes) | 10 types: project, tool, error, preference, concept, person, file, library, pattern, decision | `project:hora`, `tool:react-force-graph` |
+| **Facts** (edges) | 34 typed relations in 6 categories (structural, technological, learning, experience, actor, conceptual) + Tulving classification (semantic/episodic/procedural) | `semantic`: "HORA uses TypeScript", `procedural`: "When bug auth → check Better-Auth" |
+| **Episodes** (raw) | Session references, consolidated by dream cycle | `session:a1b2c3d4 → 5 entities, 8 facts` |
 
-#### Memory types (Tulving taxonomy)
+**Key capabilities:** bi-temporality (4 timestamps per fact — time travel queries), reconsolidation (facts enriched on recall, max 5 history versions), deduplication (Jaccard > 0.85 + cosine > 0.92), community detection (BFS + label propagation), dream cycle (hippocampal replay — consolidates episodes into semantic facts every 6h).
 
-Every fact is classified as one of three types, enabling type-aware retrieval:
+**Zero cost:** extraction via `claude -p` (subscription), embeddings via local ONNX (MiniLM-L6-v2, 22MB), BM25 via minisearch (15KB). Everything local.
 
-| Type | What | Mutable | Example |
-|:---|:---|:---:|:---|
-| **Semantic** | General knowledge | Yes (reconsolidation) | "HORA uses TypeScript strict" |
-| **Episodic** | Time-bound events | No (immutable) | "Fixed auth bug on Feb 20" |
-| **Procedural** | How-to patterns | Yes (reconsolidation) | "When new component → create in src/components/ with shadcn" |
-
-#### Bi-temporality (4 timestamps per fact)
-
-| Timestamp | Meaning |
-|:---|:---|
-| `valid_at` | When the fact became true in the real world |
-| `invalid_at` | When it stopped being true (`null` = still valid) |
-| `created_at` | When recorded in the graph |
-| `expired_at` | When superseded by a newer fact |
-
-This means HORA can **travel through time** — see what was true at any point, detect contradictions, and automatically supersede outdated facts.
-
-#### Reconsolidation
-
-When a semantic or procedural fact is recalled and new evidence appears, HORA **enriches it progressively** instead of replacing it. Each reconsolidation stores the previous state in `metadata.history[]` (max 5 versions) — like how human memories are updated each time they're recalled.
-
-#### Dream Cycle (hippocampal replay)
-
-Inspired by sleep-dependent memory consolidation, the dream cycle runs during GC (every 6h):
-
-1. Replays unconsolidated episodes from the last 7 days
-2. Clusters episodes by shared entities
-3. Patterns appearing in 3+ episodes → distilled into new semantic facts
-4. Existing facts reinforced with new evidence (reconsolidation)
-5. Episodes marked as consolidated
-
-#### Community Detection
-
-Facts and entities are grouped into **communities** via BFS + label propagation. When a query matches an entity, its entire community can be surfaced for richer context.
-
-#### Zero additional cost
-
-| Component | Technology | Cost |
-|:---|:---|:---|
-| **Extraction** | `claude -p` (CLI pipe, subscription) | $0 |
-| **Embeddings** | `@huggingface/transformers` (all-MiniLM-L6-v2, local ONNX, 22MB) | $0 |
-| **BM25 search** | `minisearch` (zero deps, ~15KB) | $0 |
-| **Retrieval** | Hybrid (cosine similarity + BM25 + RRF fusion + BFS) | $0 |
-
-Everything runs locally or through your existing Claude subscription.
-
-#### Anti-recursion
-
-When `session-end.ts` calls `claude -p` for extraction, it sets `HORA_SKIP_HOOKS=1`. All HORA hooks exit immediately when this variable is present — zero risk of infinite recursion.
+> **Full details:** [MEMORY.md — Knowledge Graph](MEMORY.md#knowledge-graph)
 
 ---
 
 ### 2. Agentic Retrieval (Hybrid Search)
 
-On **every user message**, HORA runs an agentic retrieval pipeline — classifying the task, generating targeted queries, and searching the graph with two complementary systems.
+On **every user message**, a 9-step pipeline: classify task → generate 3-5 queries → embed → semantic search + BM25 → RRF fusion → BFS expansion → ACT-R boost → Baddeley chunking (max 5 groups) → budget trim.
 
 ```
-User message: "Fix the auth middleware"
-                |
-                v
-    1. Classify task (debug? feature? question?)
-                |
-                v
-    2. Generate 2-3 search queries with weights
-                |
-                v
-    3. Hybrid search per query:
-       ├── Semantic: embed(query) → cosine similarity vs all facts
-       └── BM25: minisearch exact keyword matching
-       └── Reciprocal Rank Fusion (RRF) merges both rankings
-                |
-                v
-    4. BFS depth 2 on top entities → semantic neighborhood
-                |
-                v
-    5. ACT-R activation boost: recently recalled facts score higher
-                |
-                v
-    6. Baddeley chunking: group into max 5 thematic chunks
-                |
-                v
-    Budget: min(6000 chars, 15% remaining context)
-                |
-                v
-    Inject as [HORA KNOWLEDGE GRAPH] section
+Semantic (cosine × activation × confidence × recency)  ─┐
+                                                          ├── RRF (k=60, w=0.7/0.3)
+BM25 (fuzzy=0.2, prefix=true, boost: desc=2, ent=1.5)  ─┘
 ```
 
-**Why hybrid?** Semantic search finds `"TypeScript coding"` from `"TS development"` — but misses exact terms. BM25 catches `"Drizzle"` matching a fact about `"uses Drizzle ORM"`. Together via RRF, they cover both fuzzy and exact matching.
+**Latency:** ~350ms first message (model load), ~50ms after. **Fallback chain:** semantic+BM25 → BM25-only → classic injection → no injection.
 
-**Why Baddeley chunking?** Working memory handles ~4 chunks, not 20 individual items. Facts are grouped by semantic proximity into thematic chunks (e.g., "Stack & Tooling", "Architecture Decisions") for better comprehension.
-
-**Latency:** ~350ms on first message only (model load from cache + embed + search). Subsequent messages: ~50ms.
-
-**ACT-R retrieval boost:** Every successful retrieval strengthens the recalled facts — like spaced repetition. Facts that keep being useful survive longer.
-
-**Fallback:** If embeddings aren't available, HORA falls back to BM25-only then to classic profile injection. Zero degradation.
+> **Full details:** [MEMORY.md — Agentic Retrieval](MEMORY.md#agentic-retrieval)
 
 ---
 
 ### 3. Memory Tiers (T1/T2/T3) + ACT-R Activation
 
-HORA organizes memory like the human brain — short-term, medium-term, and long-term — with an **ACT-R activation model** that replaces fixed expiration thresholds.
-
-| Tier | Retention | Promotion criteria | Storage |
+| Tier | Retention | Brain Analogy | Storage |
 |:---|:---|:---|:---|
-| **T1** (short) | 24 hours | Auto-expires | Recent sessions, raw data |
-| **T2** (medium) | Adaptive (ACT-R) | Recurring patterns (3+ occurrences) | `LEARNING/INSIGHTS/` |
-| **T3** (long) | Permanent | Confirmed important | `LEARNING/INSIGHTS/` |
+| **T1** (short) | 24 hours | Prefrontal cortex working buffer | STATE/ |
+| **T2** (medium) | Adaptive (ACT-R) | Hippocampal episodic traces | SESSIONS/, LEARNING/ |
+| **T3** (long) | Permanent | Neocortical semantic knowledge | PROFILE/, INSIGHTS/ |
 
-#### ACT-R Activation Model
+**ACT-R formula:** `Activation = ln(Σ(t_i^{-0.5})) × emotionalWeight`. Threshold: -2.0. Single access survives ~45 days; 3 accesses in a week → months. Emotional weight (corrections/failures) = 1.5×.
 
-Instead of fixed 30-day expiration, each fact has an **activation level** based on the ACT-R cognitive architecture:
+**GC (every 6h):** expire T2 → promote to T3 (3+ occurrences) → ACT-R supersession → dream cycle. PID-based lock, 60s timeout.
 
-```
-Activation = ln(Σ(t_i^{-d})) × emotionalWeight
-```
-
-Where `t_i` = time since each access, `d` = 0.5 (decay rate).
-
-- A fact accessed **often and recently** → high activation → survives indefinitely
-- A fact accessed **once, 90 days ago** → low activation → expires naturally
-- **Emotional weight** boosts corrections and failures (1.5x) — memorable events decay slower
-
-The `shouldExpire` threshold (-2.0) means a single access survives ~45 days, but 3 accesses in a week can keep a fact alive for months.
-
-#### Automatic lifecycle
-
-- **Expiration:** T1 entries older than 24h are garbage-collected. T2 facts expire based on ACT-R activation (not fixed days).
-- **Promotion:** Patterns seen 3+ times in T2 are promoted to T3
-- **Dream Cycle:** Consolidates episodes → distills patterns → reconsolidates facts (runs during GC)
-- **GC:** Runs every 6 hours (lock file prevents concurrent runs)
-- **Insights:** Recurring failures, sentiment trends, tool usage patterns — all aggregated automatically
-
-```
-MEMORY/LEARNING/INSIGHTS/
-  recurring-failures.md       # Patterns that keep happening
-  sentiment-summary.jsonl     # Monthly sentiment trends
-  tool-monthly.jsonl          # Tool usage aggregated by month
-MEMORY/GRAPH/
-  activation-log.jsonl        # ACT-R access history per fact
-  communities.jsonl           # Detected entity communities
-```
+> **Full details:** [MEMORY.md — Memory Tiers](MEMORY.md#memory-tiers) | [MEMORY.md — Activation Model](MEMORY.md#activation-model) | [MEMORY.md — Dream Cycle](MEMORY.md#dream-cycle)
 
 ---
 
@@ -347,36 +239,22 @@ All patterns are customizable in `~/.claude/.hora/patterns.yaml`.
 
 ### 6. Self-Learning Memory
 
-At the end of every significant session (3+ messages), HORA silently extracts profile data using **two-layer hybrid extraction**:
+At the end of every significant session (3+ messages), HORA silently extracts structured knowledge via a 6-phase pipeline:
 
-#### Layer A — Environment (deterministic)
-
-| Source | Command | Data extracted |
+| Phase | What | Output |
 |:---|:---|:---|
-| Git config | `git config user.name/email` | Full name, email |
-| Git remote | `git remote get-url origin` | GitHub username |
-| Working directory | `process.cwd()` | Current project name |
-| package.json | `fs.readFileSync` (max 50KB) | Tech stack from dependencies |
-| Git ls-files | `git ls-files` (timeout 3s) | Dominant languages by extension |
+| **Thread consolidation** | All user/assistant exchanges from transcript | `STATE/session-thread.json` |
+| **Environment profile** | Git config, package.json deps, file extensions | `PROFILE/identity.md` |
+| **Linguistic profile** | Language detection, vocabulary, preferences | `PROFILE/preferences.md` |
+| **Sentiment** | Lexical scoring (1-5) per session | `LEARNING/ALGORITHM/sentiment-log.jsonl` |
+| **Failures** | Error patterns, incorrect assumptions | `LEARNING/FAILURES/failures-log.jsonl` |
+| **Knowledge graph** | Entity/fact extraction via `claude -p` + embeddings | `GRAPH/` |
 
-#### Layer B — Linguistic (transcript analysis)
-
-| Detection | Method | Example |
-|:---|:---|:---|
-| Language | >50% user lines contain FR words | `Langue: francais [transcript]` |
-| Vocabulary | Technical terms repeated 3+ times (stopwords filtered) | `hook, snapshot, statusline` |
-| Identity (fallback) | Regex patterns if git config empty | `je m'appelle X` |
-
-#### Additional extractions
-
-| What | Format | Storage |
-|:---|:---|:---|
-| **Errors & Lessons** | JSONL (user messages only, conversational patterns, max 5/session) | `LEARNING/FAILURES/failures-log.jsonl` |
-| **Sentiment** | JSONL (one line per session) | `LEARNING/ALGORITHM/sentiment-log.jsonl` |
-| **Session Archive** | Markdown (summary + first 5000 chars) | `SESSIONS/` |
-| **Thread History** | JSONL (ALL user/assistant exchanges from transcript) | `STATE/thread-state.jsonl` |
+**Signal tracker:** Preference signals ("toujours X", "jamais Y", corrections) are extracted deterministically (34 regex patterns FR+EN) and crystallized into T3 when seen across 3+ unique sessions.
 
 **Everything is silent.** HORA never interrupts your flow. You won't even notice it's learning.
+
+> **Full details:** [MEMORY.md — Self-Learning Extraction](MEMORY.md#self-learning-extraction) | [MEMORY.md — Signal Tracker](MEMORY.md#signal-tracker)
 
 ---
 
@@ -506,7 +384,7 @@ Results are stored in `.hora/project-knowledge.md` — versioned with git, injec
 
 ---
 
-### 15. Dashboard (v2 — Real-time + Neural)
+### 15. Dashboard (v3 — Real-time + Neural + Telemetry)
 
 A standalone React 19 + Vite 6 app in `claude/dashboard/` that visualizes all HORA data in real-time.
 
@@ -515,48 +393,53 @@ cd claude/dashboard && npm install && npm run dev
 # Opens at http://localhost:3847 — updates automatically via HMR
 ```
 
-**7 navigation sections:**
+**9 navigation sections:**
 
 | Section | What it shows |
 |:---|:---|
 | **Overview** | 6 stat cards, sessions table, sentiment chart, recent thread |
 | **Project** | Checkpoint, project knowledge |
-| **Memory** | Memory health (T1/T2/T3 bars), user profile, thread history, failures |
-| **Neural** | Full-page interactive knowledge graph (see below) |
-| **Chat** | Complete CLI transcript viewer — all messages, all sessions |
+| **Memory** | Memory health (T1/T2/T3 bars), memory diff, user profile, thread history, failures |
+| **Neural** | Neuroscience-inspired tier map + full knowledge graph (see below) |
+| **Chat** | LLM-powered memory chat (Ask HORA) + CLI transcript viewer |
 | **Security** | Security events (blocks, confirms, alerts) |
 | **Tools** | Tool usage timeline (7-day bar chart) |
+| **Telemetry** | Hook call stats, top tools chart, hourly heatmap, daily sparkline |
+| **Replay** | Session archive browser with sentiment badges and failure details |
 
 #### Neural Page
 
-Full-page interactive visualization of the **real knowledge graph** using `react-force-graph-2d`:
+Two visualization modes:
 
-- **Nodes** = entities from `GRAPH/entities.jsonl`, colored by type (project=teal, tool=blue, error=red, preference=green, concept=purple, person=amber, file=zinc, library=orange)
-- **Edges** = facts from `GRAPH/facts.jsonl`, thickness = confidence, opacity = recency
-- **Node size** = degree centrality (number of connected facts)
-- **Interactions:** click node for detail panel with timeline, click link for relation details, drag to reposition (positions persisted), search bar, temporal slider
-- **Breathing animation** on entities seen in the last 48 hours
-- **Particle animation** on facts created in the last 24 hours
+**1. Tier Map** (`NeuralMemoryMap.tsx`) — Neuroscience-inspired 3-tier visualization:
+- 8 memory zone nodes (T1=cyan, T2=blue, T3=purple)
+- 14 synaptic connections showing memory flow (encoding, consolidation, retrieval)
+- Node size ∝ `sqrt(items)`, breathing animation based on freshness
+- Particle animation along edges for active data flow
+- d3-force physics: charge(-120), link(80px), radial(50px for isolated nodes), center(0.05)
+
+**2. Knowledge Graph** (`NeuralPage.tsx`) — Full interactive graph:
+- Nodes = entities (9 color-coded types), size = degree centrality
+- Edges = facts (34 relation types), thickness = confidence, particles on recent facts (< 24h)
+- Click node → detail panel with timeline + connected facts
+- Click edge → relation details, confidence, metadata
+- Search bar + temporal slider + recenter button
+- Breathing animation on entities seen in last 48h
 
 #### Chat View
 
-Complete CLI transcript viewer reading raw JSONL from `~/.claude/projects/`:
+- **Ask HORA:** LLM-powered queries against the knowledge graph (agentic retrieval + context injection)
+- **Transcripts:** Complete CLI transcript viewer with project-scoped sessions, role badges, search, collapsible messages
 
-- **Scope:** current project only (based on path-encoded slug)
-- **Complete messages:** full content from Claude Code transcripts, not summaries
-- **Terminal style:** dark background, role badges (U/A), timestamps, session separators
-- **Search:** filter by content, session ID, role
-- **Collapsible:** long messages collapsed with expand button
+#### Memory Health & Diff
 
-#### Memory Health
-
-Visual monitoring of the 3-tier memory system:
-
-- Bar charts showing T1/T2/T3 entry counts
-- Alerts when memory is unhealthy (too many T1, empty T3, etc.)
+- T1/T2/T3 bar charts with entry counts, KB sizes, and health alerts
+- Memory diff between sessions: change score (0-100), entities/facts added/removed/superseded
 - Last GC timestamp, promotion stats
 
-**Real-time architecture:** Vite plugin with chokidar watches `~/.claude/MEMORY/` and `<project>/.hora/`, debounces 500ms, pushes updates via HMR WebSocket. Fallback: polling every 10s.
+**Real-time architecture:** Vite plugin with chokidar watches `~/.claude/MEMORY/` and `<project>/.hora/`, debounces 500ms, pushes updates via HMR WebSocket. Auto-embeds new graph entries on load.
+
+> **Full memory architecture:** [MEMORY.md — Neural Dashboard](MEMORY.md#neural-dashboard)
 
 ---
 
@@ -622,17 +505,81 @@ HORA explicitly **bans the generic "AI look"** in all UI work. No indigo gradien
 
 ---
 
-### 17. Additional Features
+### 17. Skill Auto-Suggest
+
+HORA deterministically suggests the optimal skill based on message keywords + 7-day tool usage history:
+
+```
+User: "refactore le module auth"  →  Suggestion: /hora-refactor (score: 0.6)
+User: "compare les ORM"           →  Suggestion: /hora-parallel-research (score: 0.3)
+```
+
+8 skill patterns, scoring: `keywordHits × 0.3 + sessionToolMatch × 0.3 + weeklyPattern × 0.1`, threshold ≥ 0.3.
+
+---
+
+### 18. Context Budget Optimizer
+
+Adapts injection sizes based on remaining context to prevent overflow:
+
+| Context Used | Level | Graph | Thread | Sections |
+|:---|:---|:---:|:---:|:---:|
+| < 60% | **full** | Yes | 5000 chars | 400 chars |
+| 60-80% | **reduced** | Yes | 2500 chars | 280 chars |
+| 80-90% | **minimal** | No | 500 chars | 150 chars |
+| > 90% | **emergency** | No | None | 80 chars |
+
+> **Full details:** [MEMORY.md — Context Injection](MEMORY.md#context-injection)
+
+---
+
+### 19. Cross-Project Awareness
+
+Discovers other known projects and computes relevance based on shared npm dependencies (60% weight) and shared graph entities (40% weight). Results cached 1 hour.
+
+```
+Working on hora-engine:
+  → hora (relevance: 0.36) — shared: typescript, zod, drizzle-orm
+  → spotter (relevance: 0.24) — shared: react, vite
+```
+
+---
+
+### 20. Memory Health Check
+
+Diagnostic skill (`/hora-health`) with 8 checks: T1/T2/T3 balance, embedding coverage, GC status, graph stats, activation distribution, and disk usage.
+
+---
+
+### 21. Hook Telemetry Dashboard
+
+Dashboard page with 4 stat cards (sessions, calls, distinct tools, peak hour) + 3 animated Recharts charts (top 10 tools, hourly heatmap, daily sparkline). Data from `.tool-usage.jsonl`.
+
+---
+
+### 22. Memory Diff
+
+Compares graph snapshots between sessions. Change score 0-100 with color coding: 0=none, ≤10=minor, ≤30=moderate, ≤60=significant, >60=major. Tracks entities added/removed and facts added/superseded.
+
+---
+
+### 23. Session Replay
+
+Two-pane viewer: session list (date, summary, size) on the left, full session content with sentiment badge (1-5) and failures on the right. Reads from `SESSIONS/*.md`.
+
+---
+
+### 24. Additional Features
 
 | Feature | Description |
 |:---|:---|
-| **Intelligent Routing** | `prompt-submit` detects intent and suggests the right skill |
-| **Doc Sync** | Tracks structuring file changes and reminds to update `project-knowledge.md` |
+| **Doc Sync** | Tracks 5+ structuring file changes, reminds to update `project-knowledge.md` (7-day staleness check) |
 | **Librarian Agent** | Enforces library-first at file creation time in `utils/`, `helpers/`, `lib/` |
-| **Sentiment Predict** | Heuristic tone analysis (1-5), alerts on frustration, anti-false-positive |
+| **Sentiment Predict** | Lexical scoring (1-5) with trend detection (3 messages ≥ 3.5 monotonic = reinforced frustration) |
 | **Vision Audit** | 23-point multimodal screenshot checklist across 5 categories |
 | **Custom Spinners** | 50 French messages replacing generic Claude Code spinners |
-| **Tool Analytics** | Every tool call logged to `MEMORY/.tool-usage.jsonl` |
+| **Tool Analytics** | Every tool call logged to `MEMORY/.tool-usage.jsonl`, 7-day retention, monthly aggregation |
+| **Algorithm Tracker** | Detects HORA phases (EXPLORE/PLAN/AUDIT/CODE/COMMIT), validates transitions, classifies complexity |
 
 ---
 
@@ -827,8 +774,9 @@ Every hook wraps its logic in `try/catch` and exits `0` on error. **Hooks never 
 ```
 UserPromptSubmit (fires on every user message)
   |-- prompt-submit.ts         Injects: knowledge graph (semantic search), MEMORY/,
-  |                            routing hints, thread continuity, checkpoint reminder
-  |                            at 70%, sentiment analysis
+  |                            routing hints, thread continuity, checkpoint reminder,
+  |                            sentiment analysis, skill auto-suggest, context budget,
+  |                            cross-project awareness, steering rules (rotating batch)
   |-- hora-session-name.ts     Names the session on first prompt
 
 PreToolUse (fires before every tool call)
@@ -856,96 +804,113 @@ Re-extraction: every 20 minutes during long sessions
 
 ```
 hora/
-|-- README.md
-|-- install.sh                    # Installer (macOS/Linux/Windows via Git Bash)
-|-- install.ps1                   # Windows PowerShell entry point
-|-- .gitattributes                # Forces LF line endings
-|-- .gitignore                    # Ignores **/.hora/ runtime files
+|-- README.md                        # This file
+|-- MEMORY.md                        # Deep technical documentation of the memory system
+|-- install.sh                       # Installer (macOS/Linux/Windows via Git Bash)
+|-- install.ps1                      # Windows PowerShell entry point
+|-- .gitattributes                   # Forces LF line endings
+|-- .gitignore                       # Ignores **/.hora/ runtime files
 |-- scripts/
-|   |-- seed-graph.mjs            # One-shot graph seeding from existing memory
+|   |-- seed-graph.mjs               # One-shot graph seeding from existing memory
 |
-|-- claude/                       # SOURCE — everything deployed to ~/.claude/
+|-- claude/                          # SOURCE — everything deployed to ~/.claude/
     |
-    |-- CLAUDE.md                 # The Algorithm + Stack + Design + Security
-    |-- settings.json             # Hooks + statusLine + spinnerVerbs
-    |-- statusline.sh             # Rich status bar (3 responsive modes)
+    |-- CLAUDE.md                    # The Algorithm + Stack + Design + Security
+    |-- settings.json                # Hooks + statusLine + spinnerVerbs
+    |-- statusline.sh                # Rich status bar (3 responsive modes)
     |
     |-- .hora/
-    |   |-- patterns.yaml         # Security rules (17 blocked, 18 confirm, 6 alert)
+    |   |-- patterns.yaml            # Security rules (17 blocked, 18 confirm, 6 alert)
     |
-    |-- hooks/                    # 10 TypeScript lifecycle hooks
-    |   |-- prompt-submit.ts      #   UserPromptSubmit: knowledge graph injection + context
-    |   |-- hora-session-name.ts  #   UserPromptSubmit: auto session naming
-    |   |-- snapshot.ts           #   PreToolUse: pre-edit file backup
-    |   |-- hora-security.ts      #   PreToolUse: security validation (custom YAML parser)
-    |   |-- tool-use.ts           #   PreToolUse: silent usage logging
-    |   |-- context-checkpoint.ts #   PreToolUse: compact detection + recovery
-    |   |-- librarian-check.ts    #   PreToolUse: library-first verification
-    |   |-- backup-monitor.ts     #   PostToolUse: auto-backup trigger
-    |   |-- doc-sync.ts           #   PostToolUse: project-knowledge staleness tracking
-    |   |-- session-end.ts        #   Stop: full extraction + graph enrichment
-    |   |-- package.json          #   Dependencies: @huggingface/transformers, minisearch, zod
-    |   |-- lib/                  #   Shared modules
-    |       |-- knowledge-graph.ts  # HoraGraph: CRUD, semantic search, bi-temporal facts,
-    |       |                       #   reconsolidation, dedup, memory_type classification
-    |       |-- embeddings.ts       # Local ONNX embeddings (all-MiniLM-L6-v2, 384-dim)
-    |       |-- graph-builder.ts    # LLM extraction via claude -p + embedding computation
-    |       |-- graph-migration.ts  # Lazy migration of existing sessions to graph
-    |       |-- memory-tiers.ts     # T1/T2/T3 lifecycle, promotion, GC, insights
-    |       |-- session-paths.ts    # Session-scoped file paths (isolation)
-    |       |-- agentic-retrieval.ts # Task classification → query gen → hybrid search → chunking
-    |       |-- activation-model.ts # ACT-R cognitive activation (decay, retrieval boost)
-    |       |-- hybrid-search.ts    # BM25 (minisearch) + semantic + RRF fusion
-    |       |-- dream-cycle.ts      # Hippocampal replay: episode consolidation + distillation
-    |       |-- graph-communities.ts # Community detection (BFS + label propagation)
-    |       |-- schemas.ts          # Zod runtime validation for all JSONL structures
-    |       |-- memory-metrics.ts   # Quality metrics (coverage, dedup ratio, activation avg)
-    |       |-- signal-tracker.ts   # Cross-session preference crystallization
+    |-- hooks/                       # 10 TypeScript lifecycle hooks
+    |   |-- prompt-submit.ts         #   UserPromptSubmit: knowledge graph injection, context budget,
+    |   |                            #   skill auto-suggest, cross-project, routing, sentiment, steering
+    |   |-- hora-session-name.ts     #   UserPromptSubmit: auto session naming
+    |   |-- snapshot.ts              #   PreToolUse: pre-edit file backup
+    |   |-- hora-security.ts         #   PreToolUse: security validation (custom YAML parser)
+    |   |-- tool-use.ts              #   PreToolUse: silent usage logging + agent/task tracking
+    |   |-- context-checkpoint.ts    #   PreToolUse: compact detection + recovery (≥40% drop)
+    |   |-- librarian-check.ts       #   PreToolUse: library-first verification
+    |   |-- backup-monitor.ts        #   PostToolUse: auto-backup trigger
+    |   |-- doc-sync.ts              #   PostToolUse: project-knowledge staleness tracking
+    |   |-- session-end.ts           #   Stop: full 6-phase extraction + graph enrichment
+    |   |-- package.json             #   Dependencies: @huggingface/transformers, minisearch, zod
+    |   |-- lib/                     #   Shared modules (~9,500 LOC)
+    |       |-- knowledge-graph.ts     # HoraGraph: CRUD, semantic search, bi-temporal facts,
+    |       |                          #   reconsolidation, dedup, memory_type classification (1017 LOC)
+    |       |-- agentic-retrieval.ts   # 9-step pipeline: classify → query → hybrid search → chunk (703 LOC)
+    |       |-- memory-tiers.ts        # T1/T2/T3 lifecycle, promotion, GC, insights (801 LOC)
+    |       |-- graph-builder.ts       # LLM extraction via claude -p + embedding computation (525 LOC)
+    |       |-- signal-tracker.ts      # Cross-session preference crystallization (468 LOC)
+    |       |-- relation-ontology.ts   # 34 relations in 6 categories + legacy mapping (255 LOC)
+    |       |-- dream-cycle.ts         # Hippocampal replay: episode consolidation + distillation (239 LOC)
+    |       |-- graph-communities.ts   # Community detection: BFS + label propagation (226 LOC)
+    |       |-- algorithm-tracker.ts   # HORA phase detection + complexity classification (221 LOC)
+    |       |-- graph-migration.ts     # Lazy migration of existing sessions to graph (203 LOC)
+    |       |-- session-paths.ts       # Session-scoped file paths (isolation) (199 LOC)
+    |       |-- skill-suggest.ts       # Deterministic skill auto-suggestion (168 LOC)
+    |       |-- hybrid-search.ts       # BM25 (minisearch) + semantic + RRF fusion (152 LOC)
+    |       |-- activation-model.ts    # ACT-R cognitive activation (decay, retrieval boost) (150 LOC)
+    |       |-- memory-metrics.ts      # Quality metrics (coverage, dedup ratio, activation avg) (140 LOC)
+    |       |-- schemas.ts             # Zod runtime validation for all JSONL structures (136 LOC)
+    |       |-- cross-project.ts       # Cross-project dependency + entity detection (250 LOC)
+    |       |-- context-budget.ts      # Dynamic injection sizing by context % (103 LOC)
+    |       |-- embeddings.ts          # Local ONNX embeddings (all-MiniLM-L6-v2, 384-dim) (99 LOC)
+    |       |-- identity.ts            # Central identity loader (settings.json) (204 LOC)
+    |       |-- paths.ts               # Path resolution with env expansion (76 LOC)
+    |       |-- time.ts                # Timezone-aware timestamps (138 LOC)
     |
-    |-- agents/                   # 7 specialized agents
-    |   |-- architect.md          #   Opus: architecture, system design
-    |   |-- executor.md           #   Sonnet: implementation, debug
-    |   |-- researcher.md         #   Sonnet: research, analysis
-    |   |-- reviewer.md           #   Haiku: review, validation
-    |   |-- synthesizer.md        #   Haiku: multi-source aggregation
-    |   |-- backup.md             #   Haiku: git backup
-    |   |-- librarian.md          #   Haiku: library-first verification
+    |-- agents/                      # 7 specialized agents
+    |   |-- architect.md             #   Opus: architecture, system design
+    |   |-- executor.md              #   Sonnet: implementation, debug
+    |   |-- researcher.md            #   Sonnet: research, analysis
+    |   |-- reviewer.md              #   Haiku: review, validation
+    |   |-- synthesizer.md           #   Haiku: multi-source aggregation
+    |   |-- backup.md                #   Haiku: git backup
+    |   |-- librarian.md             #   Haiku: library-first verification
     |
-    |-- skills/                   # 12 skills (directory/SKILL.md format)
-    |   |-- hora-design/          #   Anti-AI web design (Dieter Rams, OKLCH)
-    |   |-- hora-forge/           #   Zero Untested Delivery (NASA, TDD, 7 gates)
-    |   |-- hora-refactor/        #   Systematic refactoring (Fowler, Feathers)
-    |   |-- hora-security/        #   OWASP 2025 audit (CWE, SANS)
-    |   |-- hora-perf/            #   Performance (Core Web Vitals, RAIL)
-    |   |-- hora-vision/          #   Visual UI audit (23-point checklist)
-    |   |-- hora-dashboard/       #   Analytics dashboard
-    |   |-- hora-plan/            #   Planning with ISC
-    |   |-- hora-autopilot/       #   Autonomous execution
-    |   |-- hora-parallel-code/   #   Multi-agent codebase
-    |   |-- hora-parallel-research/ # Multi-angle research
-    |   |-- hora-backup/          #   Immediate backup
+    |-- skills/                      # 13 skills (directory/SKILL.md format)
+    |   |-- hora-design/             #   Anti-AI web design (Dieter Rams, OKLCH)
+    |   |-- hora-forge/              #   Zero Untested Delivery (NASA, TDD, 7 gates)
+    |   |-- hora-refactor/           #   Systematic refactoring (Fowler, Feathers)
+    |   |-- hora-security/           #   OWASP 2025 audit (CWE, SANS)
+    |   |-- hora-perf/               #   Performance (Core Web Vitals, RAIL)
+    |   |-- hora-vision/             #   Visual UI audit (23-point checklist)
+    |   |-- hora-health/             #   Memory health diagnostics (8 checks)
+    |   |-- hora-dashboard/          #   Analytics dashboard
+    |   |-- hora-plan/               #   Planning with ISC
+    |   |-- hora-autopilot/          #   Autonomous execution
+    |   |-- hora-parallel-code/      #   Multi-agent codebase
+    |   |-- hora-parallel-research/  #   Multi-angle research
+    |   |-- hora-backup/             #   Immediate backup
     |
-    |-- dashboard/                # Standalone analytics + neural visualization app
-    |   |-- package.json          #   React 19, Vite 6, Recharts, react-force-graph-2d
-    |   |-- vite.config.ts        #   Custom HMR plugin with chokidar file watching
+    |-- dashboard/                   # Standalone analytics + neural visualization app
+    |   |-- package.json             #   React 19, Vite 6, Recharts, react-force-graph-2d
+    |   |-- vite.config.ts           #   Custom HMR plugin with chokidar file watching
     |   |-- src/
-    |   |   |-- App.tsx           #   Main app with 7-section routing
-    |   |   |-- NeuralPage.tsx    #   Full-page interactive knowledge graph
-    |   |   |-- ChatView.tsx      #   Complete CLI transcript viewer
-    |   |   |-- MemoryHealth.tsx  #   T1/T2/T3 memory tier visualization
-    |   |   |-- ProfileSidebar.tsx #  Navigation + profile info
-    |   |   |-- ThreadHistory.tsx #   Cross-session thread browser
-    |   |   |-- SessionsTable.tsx #   Session archives table
-    |   |   |-- SentimentChart.tsx #  Sentiment over time
-    |   |   |-- ToolTimeline.tsx  #   7-day tool usage chart
-    |   |   |-- SecurityEvents.tsx #  Security event viewer
-    |   |   |-- ProjectPanel.tsx  #   Right panel (checkpoint, knowledge)
-    |   |   |-- StatCard.tsx      #   Reusable stat card component
-    |   |   |-- types.ts          #   Shared TypeScript interfaces
+    |   |   |-- App.tsx              #   Main app with 9-section routing
+    |   |   |-- NeuralPage.tsx       #   Full-page interactive knowledge graph (9 entity types)
+    |   |   |-- NeuralMemoryMap.tsx   #   Neuroscience-inspired 3-tier visualization
+    |   |   |-- ChatView.tsx         #   Complete CLI transcript viewer
+    |   |   |-- MemoryChat.tsx       #   LLM-powered memory chat (Ask HORA)
+    |   |   |-- MemoryHealth.tsx     #   T1/T2/T3 memory tier visualization
+    |   |   |-- MemoryDiff.tsx       #   Graph diff between sessions (change score 0-100)
+    |   |   |-- HookTelemetry.tsx    #   Hook stats, top tools chart, hourly heatmap
+    |   |   |-- SessionReplay.tsx    #   Session archive browser with sentiment badges
+    |   |   |-- ProfileSidebar.tsx   #   Navigation (9 sections) + profile info
+    |   |   |-- ThreadHistory.tsx    #   Cross-session thread browser
+    |   |   |-- SessionsTable.tsx    #   Session archives table
+    |   |   |-- SentimentChart.tsx   #   Sentiment over time
+    |   |   |-- ToolTimeline.tsx     #   7-day tool usage chart
+    |   |   |-- SecurityEvents.tsx   #   Security event viewer
+    |   |   |-- ProjectPanel.tsx     #   Right panel (checkpoint, knowledge)
+    |   |   |-- StatCard.tsx         #   Reusable stat card component
+    |   |   |-- types.ts             #   Shared TypeScript interfaces
+    |   |   |-- d3-force-3d.d.ts     #   Type declarations for d3-force-3d
     |   |-- lib/
-    |   |   |-- collectors.ts     #   MEMORY/ reader (graph, transcripts, threads)
+    |   |   |-- collectors.ts        #   MEMORY/ reader (graph, transcripts, threads)
     |   |-- scripts/
-    |       |-- collect-data.ts   #   CLI data collection
+    |       |-- collect-data.ts      #   CLI data collection
     |
     |-- MEMORY/                   # Persistent memory (empty at start)
         |-- PROFILE/              #   identity.md, projects.md, preferences.md, vocabulary.md
@@ -967,26 +932,33 @@ hora/
 
 | Capability | Details |
 |:---|:---|
-| **Knowledge graph** | Bi-temporal, Tulving-classified (semantic/episodic/procedural), reconsolidation, dream cycle |
-| **Vector embeddings** | Local ONNX (all-MiniLM-L6-v2, 384-dim), zero API cost |
-| **Hybrid search** | Semantic + BM25 (minisearch) + RRF fusion + BFS + Baddeley chunking |
-| **ACT-R activation** | Adaptive decay replaces fixed expiry — frequent facts survive, unused decay |
-| **Memory tiers** | T1 (24h) → T2 (ACT-R adaptive) → T3 (permanent), auto-promotion, GC + dream cycle |
+| **Knowledge graph** | Bi-temporal, 34 relations in 6 categories, Tulving-classified (semantic/episodic/procedural), reconsolidation, dream cycle, community detection |
+| **Vector embeddings** | Local ONNX (all-MiniLM-L6-v2, 384-dim), binary storage (embeddings.bin), zero API cost |
+| **Hybrid search** | Semantic + BM25 (minisearch) + RRF fusion (k=60, w=0.7/0.3) + BFS depth 2 + Baddeley chunking (max 5 groups) |
+| **ACT-R activation** | `ln(Σ(t_i^{-0.5})) × emotionalWeight`, threshold -2.0, emotional boost 1.5× for corrections |
+| **Memory tiers** | T1 (24h) → T2 (ACT-R adaptive) → T3 (permanent), GC every 6h + dream cycle |
+| **Signal tracker** | 34 regex patterns, preference crystallization (3+ sessions → T3), graph mining |
+| **Context budget** | 4-level adaptive injection (full/reduced/minimal/emergency) based on context % |
+| **Skill auto-suggest** | 8 skill patterns, deterministic scoring (keywords + tool history), threshold ≥ 0.3 |
+| **Cross-project** | Shared dependency detection (60%) + entity matching (40%), 1h cache |
 | **Periodic re-extraction** | Every 20 minutes during long sessions |
 | **Layered security** | 3 layers + audit trail (17 blocked, 18 confirm, 6 alert patterns) |
-| **Self-learning memory** | Hybrid env + linguistic extraction, silent |
-| **Cross-session continuity** | Full thread history, project-scoped |
-| **Neural dashboard** | Interactive graph, chat viewer, memory health, 7 sections |
+| **Self-learning memory** | 6-phase extraction: thread, env profile, linguistic, sentiment, failures, graph |
+| **Cross-session continuity** | Full thread history, project-scoped, 20 recent + 100 archive |
+| **Neural dashboard** | 9 sections: tier map, knowledge graph, memory chat, telemetry, session replay, diff |
 | **Auto project audit** | Full codebase analysis on first session |
 | **Web/SaaS conventions** | TypeScript/React stack, library-first, anti "AI look" design |
 | **Pre-edit snapshots** | Every edit, project-scoped, with or without git |
-| **Auto backup** | Mirror branch or local bundle |
-| **Compact recovery** | Auto-detection + project-scoped checkpoint injection |
-| **Session isolation** | Concurrent sessions, project-scoped checkpoints |
-| **12 skills** | Design, Forge, Refactor, Security, Perf, Vision, Dashboard, Plan, Autopilot, Parallel-Code, Parallel-Research, Backup |
+| **Auto backup** | Mirror branch or local bundle, 15min/3-file triggers |
+| **Compact recovery** | ≥40% drop detection + project-scoped checkpoint injection |
+| **Session isolation** | Concurrent sessions, project-scoped checkpoints, path traversal protection |
+| **13 skills** | Design, Forge, Refactor, Security, Perf, Vision, Health, Dashboard, Plan, Autopilot, Parallel-Code, Parallel-Research, Backup |
 | **7 agents** | Across 3 models (Opus, Sonnet, Haiku) |
+| **~9,500 LOC** | 22 lib modules + 10 hooks + 18 dashboard components |
 | **Ghost failure detection** | Built into the Algorithm (AUDIT step) |
 | **Cross-platform** | macOS / Linux / Windows |
+
+> **Full memory system documentation:** **[MEMORY.md](MEMORY.md)**
 
 ---
 
