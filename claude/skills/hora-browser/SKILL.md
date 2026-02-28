@@ -1,276 +1,340 @@
 ---
 name: hora-browser
-description: Browser automation tool — screenshots, visual diffs, link checking, a11y audit, form testing. Use when user says browser, screenshot, capture, visual test, check links, test page, verify deploy, a11y audit, responsive test. Do NOT use for design methodology — use hora-design. Do NOT use for screenshot analysis — use hora-vision.
+description: Debug-first browser automation — persistent session with always-on console/network capture, screenshots, visual diffs, a11y audit, link checking. Use when user says browser, debug, screenshot, capture, visual test, check links, test page, verify deploy, a11y audit, responsive test, console errors, network errors. Do NOT use for design methodology — use hora-design. Do NOT use for screenshot analysis — use hora-vision.
 metadata:
   author: HORA
-  version: 1.0.0
-compatibility: Claude Code. Requires Playwright (auto-installed if missing). Cross-platform macOS/Linux/Windows.
+  version: 2.0.0
+compatibility: Claude Code. Requires Playwright (auto-installed if missing). Cross-platform macOS/Linux/Windows. Node.js 18+.
 ---
 
-# Skill: hora-browser
+# Skill: hora-browser v2
 
-> Browser automation pour HORA — captures, diffs visuels, liens, accessibilite.
+> Debug-first browser automation with persistent session and always-on event capture.
 
-Ce skill fournit 5 modes d'automatisation navigateur, tous executables via `npx tsx`.
-Playwright est la dependance principale (auto-installee si absente).
+Architecture: a persistent Playwright server (`browser-server.ts`) runs in background. A unified CLI (`browse.ts`) sends commands via HTTP. Console logs, network requests, and page errors are captured automatically from the moment the session starts.
 
-## Invocation
+## Single entry point
 
+```bash
+npx tsx browse.ts <command> [args...]
 ```
-/hora-browser capture <url>
-/hora-browser diff <image1> <image2>
-/hora-browser links <url> [--depth 2]
-/hora-browser a11y <url>
-/hora-browser fill <url> <selector> <value>
-```
+
+The server starts automatically on first use. No manual setup required.
 
 ---
 
-## Prerequis
+## WHAT it does
 
-Le skill detecte automatiquement si Playwright est installe. Si absent :
+1. **Navigate + auto-diagnose** — go to a URL and immediately get screenshot, console errors, failed requests, network stats
+2. **Live event capture** — console logs, network activity, and page errors are captured continuously (always-on)
+3. **Multi-viewport capture** — screenshots at 4 breakpoints (mobile 375, tablet 768, desktop 1280, wide 1536)
+4. **Visual diff** — pixel-level comparison between two screenshots (pixelmatch)
+5. **Accessibility audit** — axe-core injection for WCAG violations
+6. **Link checker** — crawl and verify all links on a page (native fetch, no browser needed)
+7. **Page interaction** — click, fill, type, eval JavaScript, resize viewport
+
+## WHEN to use it
+
+- Debug a page that shows blank / errors / broken layout
+- Verify a deploy before/after
+- Check responsive behavior across breakpoints
+- Find broken links on a site
+- Run accessibility audit (WCAG 2.2)
+- Test form submissions
+- Compare visual state before/after a CSS change
+
+## WHEN NOT to use it
+
+- Designing UI from scratch → use `/hora-design`
+- Analyzing a screenshot visually → use `/hora-vision`
+- Full end-to-end test suites → use Playwright Test directly
+
+---
+
+## Prerequisites
+
+Playwright must be installed:
 
 ```bash
 npm install -D playwright
 npx playwright install chromium
 ```
 
-Pour le mode `diff`, pixelmatch et pngjs sont necessaires :
+For visual diff mode, also install:
 
 ```bash
 npm install -D pixelmatch pngjs
 ```
 
-Tous les scripts utilisent `npx tsx` — aucune compilation prealable requise.
+---
+
+## Commands reference
+
+### Navigation & Diagnostics
+
+| Command | Description |
+|---------|-------------|
+| `browse.ts <url>` | Navigate + full diagnostics (screenshot + errors + network) |
+| `browse.ts errors` | Console errors only |
+| `browse.ts warnings` | Console warnings only |
+| `browse.ts console` | All console output |
+| `browse.ts network` | Network activity (all responses) |
+| `browse.ts failed` | Failed requests only (4xx, 5xx) |
+
+### Interaction
+
+| Command | Description |
+|---------|-------------|
+| `browse.ts screenshot [path]` | Take screenshot |
+| `browse.ts click <selector>` | Click element |
+| `browse.ts fill <selector> <value>` | Fill input field |
+| `browse.ts eval "<javascript>"` | Execute JS in page context |
+
+### Testing
+
+| Command | Description |
+|---------|-------------|
+| `browse.ts capture <url>` | Multi-viewport screenshots (4 viewports) |
+| `browse.ts diff <img1> <img2>` | Visual diff with pixelmatch |
+| `browse.ts a11y <url>` | Accessibility audit with axe-core |
+| `browse.ts links <url>` | Link checker (native fetch) |
+
+### Session management
+
+| Command | Description |
+|---------|-------------|
+| `browse.ts status` | Session info (pid, port, uptime, current url) |
+| `browse.ts restart` | Stop + start fresh session |
+| `browse.ts stop` | Stop server |
 
 ---
 
-## Mode 1 — CAPTURE (multi-viewport screenshots)
+## Protocol
 
-**Script** : `scripts/capture.ts`
+### Phase 1 — NAVIGATE + DIAGNOSE
 
 ```bash
-npx tsx scripts/capture.ts <url> [output-dir]
+npx tsx browse.ts http://localhost:3000
 ```
 
-Capture la page a 4 viewports :
-| Viewport | Resolution |
-|----------|-----------|
-| mobile | 375x812 |
-| tablet | 768x1024 |
-| desktop | 1280x800 |
-| wide | 1536x864 |
+This single command:
+1. Starts the server if not running
+2. Navigates to the URL
+3. Waits for page load + JS rendering
+4. Takes a screenshot
+5. Reports console errors, failed requests, and network stats
 
-**Sortie** : `.hora/screenshots/{YYYY-MM-DD}/{timestamp}_{viewport}.png`
-**stdout** : JSON avec chemins et metadonnees de chaque capture.
+Output:
+```
+Screenshot: /tmp/hora-browse-1709164800000.png
 
-### Quand utiliser
-- Verifier un deploy avant/apres
-- Capturer l'etat visuel d'une page pour regression
-- Tester le responsive d'un composant
-- Fournir des screenshots a `/hora-vision` pour audit
+Console Errors (2):
+   * TypeError: Cannot read property 'map' of undefined
+   * ReferenceError: foo is not defined
 
----
+Failed Requests (1):
+   * GET /api/users -> 500 Internal Server Error
 
-## Mode 2 — VISUAL DIFF (comparaison pixel-par-pixel)
+Network: 34 requests | 1.2MB | avg 120ms
+Page: "Dashboard" loaded successfully
+```
 
-**Script** : `scripts/visual-diff.ts`
+### Phase 2 — INVESTIGATE
+
+Based on diagnostics, drill into specific areas:
 
 ```bash
-npx tsx scripts/visual-diff.ts <image1> <image2> [output-path] [threshold]
+# See all console output
+npx tsx browse.ts console
+
+# See detailed network responses
+npx tsx browse.ts network
+
+# Execute JS to inspect state
+npx tsx browse.ts eval "document.querySelectorAll('.error').length"
 ```
 
-Compare deux images pixel par pixel via pixelmatch.
-Genere une image diff avec les differences surlignees en rouge.
+### Phase 3 — INTERACT
 
-**Parametres** :
-- `image1`, `image2` : chemins des PNG a comparer
-- `output-path` : chemin de l'image diff (defaut : `diff-output.png`)
-- `threshold` : sensibilite 0.0-1.0 (defaut : 0.1)
-
-**stdout** : JSON avec total pixels, pixels differents, pourcentage.
-
-### Quand utiliser
-- Regression visuelle apres un changement CSS
-- Comparer avant/apres un refactor de composant
-- Valider qu'un fix n'a pas d'effets de bord visuels
-
----
-
-## Mode 3 — CHECK LINKS (detection de liens casses)
-
-**Script** : `scripts/check-links.ts`
+Test user interactions:
 
 ```bash
-npx tsx scripts/check-links.ts <url> [--depth 2] [--timeout 5000]
+npx tsx browse.ts fill '#email' 'test@example.com'
+npx tsx browse.ts fill '#password' 'SecurePass123'
+npx tsx browse.ts click 'button[type="submit"]'
+
+# Check for new errors after interaction
+npx tsx browse.ts errors
 ```
 
-Crawle les liens de la page et verifie leur status HTTP.
-Suit les liens internes jusqu'a la profondeur specifiee.
-Utilise `fetch` natif Node 18+ — zero dependance externe.
+### Phase 4 — VALIDATE
 
-**Sortie JSON** :
-- Liens valides (2xx)
-- Liens rediriges (3xx) avec la chaine de redirection
-- Liens casses (4xx, 5xx)
-- Liens en timeout
-
-### Quand utiliser
-- Audit SEO : trouver les liens morts
-- Verification post-deploy
-- Validation de documentation
-
----
-
-## Mode 4 — A11Y AUDIT (accessibilite axe-core)
-
-**Script** : `scripts/a11y-audit.ts`
+Run comprehensive checks:
 
 ```bash
-npx tsx scripts/a11y-audit.ts <url> [--json]
-```
+# Visual regression
+npx tsx browse.ts capture http://localhost:3000
+npx tsx browse.ts diff before.png after.png
 
-Charge la page avec Playwright, injecte axe-core depuis CDN,
-execute `axe.run()` et produit un rapport structure.
+# Accessibility
+npx tsx browse.ts a11y http://localhost:3000
 
-**Sortie** : violations groupees par impact (critical, serious, moderate, minor).
-Avec `--json` : sortie JSON brute.
-
-### Quand utiliser
-- Audit WCAG 2.2 automatise
-- Verification avant mise en production
-- Complement a `/hora-vision` (axe detecte ce que l'oeil ne voit pas)
-
----
-
-## Mode 5 — FILL FORM (test de formulaires)
-
-Ce mode est gere directement par Claude via Playwright dans le terminal.
-Pas de script dedie — utiliser les commandes Playwright dans un script ad-hoc :
-
-```typescript
-import { chromium } from 'playwright';
-const browser = await chromium.launch();
-const page = await browser.newPage();
-await page.goto('https://example.com/form');
-await page.fill('#email', 'test@example.com');
-await page.fill('#password', 'SecurePass123');
-await page.click('button[type="submit"]');
-// Verifier le resultat
-await browser.close();
-```
-
-### Quand utiliser
-- Tester un formulaire d'inscription/connexion
-- Valider les messages d'erreur de validation
-- Verifier le comportement post-soumission
-
----
-
-## Sortie et stockage
-
-Tous les fichiers generes sont sauvegardes dans :
-```
-.hora/screenshots/{YYYY-MM-DD}/
-```
-
-Convention de nommage :
-```
-{HHMMSSmmm}_{viewport}.png     # captures
-{HHMMSSmmm}_diff.png            # diffs visuels
-{HHMMSSmmm}_a11y.json           # rapports a11y
-{HHMMSSmmm}_links.json          # rapports liens
+# Broken links
+npx tsx browse.ts links http://localhost:3000
 ```
 
 ---
 
-## Exemples
+## Debugging workflow
 
-### Exemple 1 : Capturer une page en responsive
+When a user reports "the page is broken" or "something doesn't work":
+
+1. **Navigate** — `browse.ts <url>` — get the full picture immediately
+2. **Read errors** — check console errors and failed network requests
+3. **Inspect state** — use `eval` to check DOM, global variables, component state
+4. **Test interactions** — reproduce the user's steps with click/fill/type
+5. **Check after fix** — navigate again to verify the fix worked
+6. **Compare** — use capture + diff to verify visual regression
+
+The persistent session means all events accumulate. After navigating, you can check `errors` or `network` at any time to see everything that happened since last navigation.
+
+---
+
+## Examples
+
+### Example 1 — Debug a broken page
+
 ```
-User: "capture mon site en responsive"
-→ npx tsx scripts/capture.ts https://localhost:3000
-→ 4 screenshots generes dans .hora/screenshots/2026-02-28/
-→ JSON summary affiche
+User: "My dashboard shows a blank page"
+
+# Step 1: navigate and diagnose
+npx tsx browse.ts http://localhost:3000/dashboard
+
+# Output reveals:
+# Console Errors (1): TypeError: Cannot read property 'data' of null
+# Failed Requests (1): GET /api/dashboard -> 500
+
+# Step 2: check the API response
+npx tsx browse.ts eval "fetch('/api/dashboard').then(r => r.text()).then(t => t)"
+
+# Step 3: after fixing the API, verify
+npx tsx browse.ts http://localhost:3000/dashboard
+# No errors, page loads correctly
 ```
 
-### Exemple 2 : Comparer avant/apres un changement CSS
+### Example 2 — Visual regression after CSS change
+
 ```
-User: "compare ces deux screenshots"
-→ npx tsx scripts/visual-diff.ts before.png after.png
-→ diff-output.png genere, 2.3% de pixels differents
-→ Zones de changement surlignees en rouge
+User: "Check if my CSS change broke anything"
+
+# Capture before (on main branch)
+npx tsx browse.ts capture http://localhost:3000
+
+# Switch branch, capture after
+npx tsx browse.ts capture http://localhost:3000
+
+# Compare desktop screenshots
+npx tsx browse.ts diff .hora/screenshots/2026-02-28/143022_desktop.png .hora/screenshots/2026-02-28/143055_desktop.png
+# Output: 0.3% different — minimal change, looks safe
 ```
 
-### Exemple 3 : Trouver les liens casses
+### Example 3 — Accessibility audit before deploy
+
 ```
-User: "check links sur mon site"
-→ npx tsx scripts/check-links.ts https://mysite.com --depth 2
-→ 47 liens verifies, 3 casses (404), 2 redirections
-→ Rapport JSON avec details
+User: "Run a11y check on my landing page"
+
+npx tsx browse.ts a11y https://staging.mysite.com
+
+# Output:
+# [CRITICAL] — 1 violation
+#   image-alt: Images must have alternate text
+# [SERIOUS] — 3 violations
+#   color-contrast: Elements must have sufficient color contrast
+#   link-name: Links must have discernible text
 ```
 
-### Exemple 4 : Audit accessibilite
+### Example 4 — Form testing
+
 ```
-User: "audit a11y de ma landing page"
-→ npx tsx scripts/a11y-audit.ts https://localhost:3000
-→ 2 critical, 5 serious, 3 moderate violations
-→ Chaque violation avec description, elements concernes, fix suggere
+User: "Test the signup form"
+
+npx tsx browse.ts http://localhost:3000/signup
+npx tsx browse.ts fill '#name' 'Jane Doe'
+npx tsx browse.ts fill '#email' 'jane@example.com'
+npx tsx browse.ts fill '#password' 'SecurePass123!'
+npx tsx browse.ts click 'button[type="submit"]'
+
+# Check for errors after submission
+npx tsx browse.ts errors
+npx tsx browse.ts network
 ```
 
-### Exemple 5 : Workflow complet capture + vision
+---
+
+## Architecture
+
 ```
-User: "capture et analyse visuellement ma page"
-→ /hora-browser capture https://localhost:3000
-→ /hora-vision .hora/screenshots/2026-02-28/143022_desktop.png
-→ Score: 18/23 — Niveau B
+browse.ts (CLI)  ──HTTP──>  browser-server.ts (persistent Playwright)
+                              │
+                              ├── Chromium (headless)
+                              ├── Console capture (always-on)
+                              ├── Network capture (always-on)
+                              └── Page error capture (always-on)
 ```
+
+- **Server** runs on `127.0.0.1:9222` (configurable via `HORA_BROWSER_PORT`)
+- **Auto-start**: CLI spawns server as detached process if not running
+- **Auto-shutdown**: 30min idle timeout
+- **State file**: `/tmp/hora-browser-session.json` (PID, port, start time)
+- **Headless by default**: set `HORA_BROWSER_HEADLESS=false` to see the browser
 
 ---
 
 ## Troubleshooting
 
-### Playwright ne se lance pas
-```
-Error: browserType.launch: Executable doesn't exist
-```
-Fix : `npx playwright install chromium`
+### Server won't start
 
-### Timeout sur la page
 ```
-Error: page.goto: Timeout 30000ms exceeded
+ERROR: Server failed to start within timeout.
 ```
-La page met trop longtemps a charger. Verifier que le serveur est demarre.
-Les scripts utilisent un timeout de 30s par defaut.
 
-### pixelmatch non trouve (mode diff)
-```
-Error: Cannot find module 'pixelmatch'
-```
-Fix : `npm install -D pixelmatch pngjs`
+Check if port 9222 is already in use: `lsof -i :9222`. Use `HORA_BROWSER_PORT=9333 npx tsx browse.ts <url>` to use a different port.
 
-### Node < 18 (mode links)
-```
-Error: fetch is not defined
-```
-Le mode check-links necessite Node 18+ pour le fetch natif.
-Verifier : `node --version`
+### Playwright not installed
 
-### Page blanche dans les captures
-La page utilise peut-etre du JavaScript cote client qui n'a pas fini de s'executer.
-Les scripts attendent `networkidle` par defaut. Si le probleme persiste,
-le site a peut-etre un spinner infini ou un blocage CORS.
+```
+Playwright is not installed. Install it with:
+  npm install -D playwright
+  npx playwright install chromium
+```
 
-### Permissions fichier
-Les screenshots sont ecrits dans `.hora/screenshots/`. Si le dossier est en lecture seule
-ou le disque plein, les scripts affichent une erreur explicite.
+Run the install commands. Playwright requires Chromium binaries to be downloaded separately.
+
+### Page loads blank
+
+The server waits for `load` event + 1.5s delay. If the page relies on heavy JS:
+- Use `browse.ts eval "document.readyState"` to check load state
+- Use `browse.ts eval "document.body.innerHTML.length"` to check if content rendered
+- The page might have a runtime error — check `browse.ts errors`
+
+### pixelmatch not found (diff mode)
+
+```
+pixelmatch is not installed. Install it with:
+  npm install -D pixelmatch
+```
+
+Visual diff requires `pixelmatch` and `pngjs` as optional dependencies.
+
+### axe-core won't load (a11y mode)
+
+The page might be offline or blocking external scripts (CSP). axe-core is loaded from CDN (`cdnjs.cloudflare.com`). If the page has a strict Content-Security-Policy, the injection will fail.
 
 ---
 
-## Ce que le skill ne fait PAS
+## What this skill does NOT do
 
-- Ne modifie aucun fichier du projet (lecture seule + generation de captures/rapports)
-- Ne remplace pas `/hora-vision` — il capture, hora-vision analyse
-- Ne remplace pas `/hora-design` — il detecte des problemes, hora-design les resout
-- Ne gere pas les tests end-to-end complets — utiliser Playwright Test pour ca
-- Ne fonctionne pas sans navigateur (pas de mode headless-only sur CI sans Xvfb)
+- Does not modify project files (read-only + generates screenshots/reports)
+- Does not replace `/hora-vision` — it captures, hora-vision analyzes
+- Does not replace `/hora-design` — it detects problems, hora-design solves them
+- Does not manage full E2E test suites — use Playwright Test for that
