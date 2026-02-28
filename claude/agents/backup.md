@@ -1,7 +1,7 @@
 ---
 name: backup
 description: Gestion autonome des sauvegardes git. Crée des commits structurés sur branche miroir hora/backup/[branche] si remote disponible, sinon bundle local dans .hora/backups/. Ne jamais toucher à main ni à la branche de travail courante.
-model: claude-haiku-4-5
+model: haiku
 tools: Bash
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: Recherche multi-sources, analyse comparative, documentation, veille technologique. Utilisé en parallèle dans parallel-research mode. Chaque instance couvre un angle différent puis synthesizer agrège.
-model: claude-sonnet-4-6
+model: sonnet
 tools: Read, Bash, Glob, Grep, WebSearch, WebFetch
 ---
 

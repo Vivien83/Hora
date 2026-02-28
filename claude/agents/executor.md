@@ -1,7 +1,7 @@
 ---
 name: executor
 description: Implémentation de code, debug, refactoring, modifications de fichiers. Agent d'exécution principal. Reçoit un plan (de architect ou de l'utilisateur) et l'exécute proprement. Privilégie le code partiel ciblé sauf si complet demandé.
-model: claude-sonnet-4-6
+model: sonnet
 tools: Read, Write, Edit, Bash, Glob, Grep, Task
 ---
 

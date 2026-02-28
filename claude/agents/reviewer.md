@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Review de code, validation rapide, résumé, détection de bugs évidents, vérification de conformité. Agent léger et rapide. Utilise Haiku pour minimiser les coûts sur les tâches de validation.
-model: claude-haiku-4-5
+model: haiku
 tools: Read, Glob, Grep
 ---
 

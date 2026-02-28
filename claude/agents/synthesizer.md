@@ -1,7 +1,7 @@
 ---
 name: synthesizer
 description: Agrégation et synthèse des outputs de plusieurs agents researcher. Produit une vue unifiée cohérente depuis des sources multiples. Utilisé comme étape finale de parallel-research.
-model: claude-haiku-4-5
+model: haiku
 tools: Read
 ---
 

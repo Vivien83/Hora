@@ -1,7 +1,7 @@
 ---
 name: librarian
 description: Vérifie qu'aucune librairie npm ne couvre le besoin avant de créer du code custom. Applique le principe library-first de HORA.
-model: claude-haiku-4-5
+model: haiku
 tools: WebSearch, Read, Glob, Grep
 ---
 

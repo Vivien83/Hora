@@ -1,7 +1,7 @@
 ---
 name: architect
 description: Décisions d'architecture, design système, choix structurels, revue de conception. À activer pour tout ce qui impacte la structure globale d'un projet. Raisonne avant de décider, challenge les hypothèses, identifie les risques long terme.
-model: claude-opus-4-6
+model: opus
 tools: Read, Write, Edit, Bash, Glob, Grep, Task
 ---
 
