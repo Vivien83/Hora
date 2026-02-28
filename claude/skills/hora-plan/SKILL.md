@@ -1,6 +1,10 @@
 ---
 name: hora-plan
-description: Planification HORA avec ISC verifiables. USE WHEN plan, planifie, hora plan, roadmap, etapes, comment faire, how to build, strategie.
+description: HORA planning with verifiable ISC — structured approach before any implementation. Use when user says plan, planifie, hora plan, roadmap, etapes, comment faire, how to build, strategie, architecture decision. Do NOT use when user wants immediate implementation — use hora-autopilot or hora-forge instead.
+metadata:
+  author: HORA
+  version: 2.0.0
+compatibility: Claude Code. Planning only — delegates to other skills for execution.
 ---
 
 # Skill: hora-plan
@@ -57,7 +61,7 @@ Succes = tous ces criteres sont verifiables et coches :
 ```
 
 ### 4. AUDIT (ghost failures)
-Avant validation, identifier les **ghost failures** — les cas ou le systeme echoue silencieusement :
+Avant validation, identifier les **ghost failures** :
 - Chaque point d'integration : que se passe-t-il s'il echoue, timeout, ou valeur inattendue ?
 - Chaque hypothese technique : **verifiee** ou **supposee** ?
 - Chaque flux de donnees : race conditions, fichiers stale, faux positifs ?
@@ -75,3 +79,39 @@ Si aucun → documenter pourquoi (preuve negative).
 ### 5. Validation
 Attendre confirmation avant de passer a BUILD.
 Si "go" → active autopilot ou parallel-code selon le plan.
+
+## Examples
+
+Example 1: Planning a new feature
+```
+User: "/hora-plan systeme de facturation"
+→ Produit un plan avec :
+  - Contexte : stack detectee, modeles de donnees existants
+  - Approche : Stripe + webhooks + Drizzle schemas
+  - ISC : 5 criteres (checkout fonctionne, webhooks gerees, factures PDF, etc.)
+  - Etapes : 6 etapes ordonnees avec dependances
+  - Ghost failures : webhook replay, idempotency, devises
+→ Attend "go" pour lancer
+```
+
+Example 2: Architecture decision
+```
+User: "/hora-plan comment structurer le monorepo"
+→ Compare Turborepo vs Nx vs pnpm workspaces
+→ Propose une approche avec justification
+→ ISC = build time, DX, CI/CD, shared packages
+```
+
+## Troubleshooting
+
+Problem: Plan too vague
+Cause: Not enough OBSERVE — insufficient codebase exploration
+Solution: Read more files, check existing patterns, understand the real constraints
+
+Problem: ISC not measurable
+Cause: Criteria like "it works well" instead of "response time < 200ms"
+Solution: Every ISC must have a test or metric that proves it
+
+Problem: User skips validation on critical plan
+Cause: Impatience
+Solution: For critical tasks (auth, data, payments), never skip validation — explain why

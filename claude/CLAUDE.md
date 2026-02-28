@@ -526,4 +526,9 @@ Quand un skill est invoque, lire son fichier dans `~/.claude/skills/` pour le pr
 | `/hora-backup` | `~/.claude/skills/backup.md` | Sauvegarde immediate |
 | `/hora-vision` | `~/.claude/skills/hora-vision/SKILL.md` | Audit visuel UI — detection anti-patterns design |
 | `/hora-dashboard` | `~/.claude/skills/hora-dashboard/SKILL.md` | Dashboard visuel HORA — sessions, sentiment, usage |
+| `/hora-browser` | `~/.claude/skills/hora-browser/SKILL.md` | Browser automation — screenshots, visual diffs, link checking, a11y audit |
+| `/hora-api-test` | `~/.claude/skills/hora-api-test/SKILL.md` | API endpoint testing — scan routes, test responses, validate Zod schemas |
+| `/hora-seed` | `~/.claude/skills/hora-seed/SKILL.md` | Test data generation — seed DB from Drizzle/Prisma schemas with faker |
+| `/hora-component` | `~/.claude/skills/hora-component/SKILL.md` | Component scaffolding — React components with types, tests, forms |
+| `/hora-changelog` | `~/.claude/skills/hora-changelog/SKILL.md` | Changelog generation — parse conventional commits, categorize, format |
 <!-- HORA:END -->

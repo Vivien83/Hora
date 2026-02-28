@@ -1,6 +1,10 @@
 ---
 name: hora-parallel-research
-description: Recherche multi-angles simultanee HORA. USE WHEN parallel research, hora research, compare, benchmark, evalue, quelles sont les, what are the best.
+description: Multi-angle simultaneous research — each researcher covers a different angle, synthesizer aggregates. Use when user says parallel research, hora research, compare, benchmark, evaluate, what are the best, quelles sont les, due diligence. Do NOT use for single-source lookup — use WebSearch directly. Do NOT use for code exploration — use hora-parallel-code instead.
+metadata:
+  author: HORA
+  version: 2.0.0
+compatibility: Claude Code. Spawns researcher and synthesizer agents.
 ---
 
 # Skill: hora-parallel-research
@@ -60,9 +64,48 @@ Sources consultees : ~X
 [liste des sources les plus importantes]
 ```
 
+## Examples
+
+Example 1: Technology comparison
+```
+User: "/hora-parallel-research Next.js vs Remix vs Nuxt pour un SaaS B2B"
+→ 4 angles : performance, DX, ecosystem, production readiness
+→ 4 researchers en parallele
+→ Synthesizer: tableau comparatif + recommendation argumentee
+```
+
+Example 2: Library evaluation
+```
+User: "/hora-parallel-research meilleure lib de charts pour React"
+→ 3 angles : features/API, performance/bundle size, community/maintenance
+→ 3 researchers
+→ Synthesizer: shortlist avec pros/cons + recommendation
+```
+
+Example 3: Due diligence technique
+```
+User: "/hora-parallel-research est-ce que Drizzle est pret pour la prod"
+→ 3 angles : stabilite/bugs connus, adoption/temoignages, alternatives
+→ Synthesizer: verdict argumente avec sources
+```
+
 ## Quand l'utiliser
 
 - Comparaison technologique (framework A vs B vs C)
 - Due diligence avant decision technique
 - Veille sur un domaine nouveau
 - Analyse de marche ou de concurrents
+
+## Troubleshooting
+
+Problem: Researchers return redundant information
+Cause: Angles too similar or poorly defined
+Solution: Ensure each angle has a unique focus — overlap < 20%
+
+Problem: Synthesizer produces shallow summary
+Cause: Too many angles (> 5) dilute depth
+Solution: Limit to 3-4 angles for deeper coverage
+
+Problem: Research takes too long
+Cause: Researchers doing excessive web searches
+Solution: Set clear scope boundaries in the dispatch prompt

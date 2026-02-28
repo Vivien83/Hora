@@ -1,6 +1,10 @@
 ---
 name: hora-vision
-description: Audit visuel d'interface — detection automatique des anti-patterns design issus de HORA. USE WHEN vision, screenshot, audit UI, review design, anti-patterns, interface, analyse visuelle.
+description: Visual UI audit — automatic detection of AI design anti-patterns from HORA checklist (23 checks). Use when user says vision, screenshot, audit UI, review design, anti-patterns, interface, visual analysis. Do NOT use for implementing design fixes — use hora-design for that. Do NOT use for code-level CSS review — this analyzes screenshots only.
+metadata:
+  author: HORA
+  version: 2.0.0
+compatibility: Claude Code. Requires image file or URL. Uses Claude multimodal vision.
 ---
 
 # Skill: hora-vision
@@ -44,147 +48,117 @@ Ne pas sauter de point. Chaque point produit soit un `PASS` soit un `FAIL` avec 
 
 | # | Check |
 |---|-------|
-| 1 | Gradient bleu-violet / indigo (couleurs par defaut Tailwind : `from-indigo-*`, `from-purple-*`, etc.) |
-| 2 | Inter comme seule police sur l'ensemble de l'interface |
-| 3 | Layout "3 colonnes d'icones symetriques" (features section classique) |
-| 4 | Glassmorphism / cards transparentes floues sans justification fonctionnelle |
-| 5 | Blobs SVG decoratifs flottants (cercles flous, formes amorphes de fond) |
-| 6 | Hero > 100vh avec H1 centre + sous-titre + CTA sans montrer le produit |
-| 7 | Fond noir pur `#000000` (devrait etre `#0A0A0B` ou une valeur OKLCH) |
-| 8 | `rounded-2xl` applique partout sans variation de border-radius |
-| 9 | CTA gradient avec effet glow (couleur en bordure/ombre du bouton) |
-| 10 | Ombres identiques sur chaque card sans hierarchie d'elevation |
+| 1 | Gradient bleu-violet / indigo |
+| 2 | Inter comme seule police |
+| 3 | Layout "3 colonnes d'icones symetriques" |
+| 4 | Glassmorphism sans justification fonctionnelle |
+| 5 | Blobs SVG decoratifs flottants |
+| 6 | Hero > 100vh avec H1 centre + sous-titre + CTA sans produit |
+| 7 | Fond noir pur #000000 |
+| 8 | rounded-2xl applique partout sans variation |
+| 9 | CTA gradient avec effet glow |
+| 10 | Ombres identiques sur chaque card |
 
 ### Checklist typographie (3 points)
 
 | # | Check |
 |----|-------|
-| 11 | Plus de 2 familles de polices utilisees simultanement |
-| 12 | Body weight < 400 (texte trop fin, contraste insuffisant) |
-| 13 | Headings sans tracking serre ou line-height > 1.3 (aspect relache) |
+| 11 | Plus de 2 familles de polices |
+| 12 | Body weight < 400 |
+| 13 | Headings sans tracking serre ou line-height > 1.3 |
 
 ### Checklist accessibilite (4 points)
 
 | # | Check |
 |----|-------|
-| 14 | Contraste texte estimé < 4.5:1 (texte normal) ou < 3:1 (texte large ≥ 18px bold) |
-| 15 | Touch targets visiblement < 44x44px (boutons/liens trop petits pour mobile) |
-| 16 | Information communiquee par la couleur seule (sans icone ni texte complementaire) |
-| 17 | Focus visible absent ou supprime (impossible de verifier visuellement sur screenshot) |
+| 14 | Contraste texte < 4.5:1 (normal) ou < 3:1 (large) |
+| 15 | Touch targets < 44x44px |
+| 16 | Information par couleur seule |
+| 17 | Focus visible absent (noter UNKNOWN sur screenshot) |
 
 ### Checklist spacing & layout (3 points)
 
 | # | Check |
 |----|-------|
-| 18 | Spacing irregulier — pas de grille 8px coherente (valeurs arbitraires visibles) |
+| 18 | Spacing irregulier (pas de grille 8px) |
 | 19 | Padding inconsistant entre sections similaires |
-| 20 | Absence de hierarchie visuelle — elements au meme niveau perceptuel |
+| 20 | Absence de hierarchie visuelle |
 
 ### Checklist couleurs (3 points)
 
 | # | Check |
 |----|-------|
-| 21 | Plus d'une teinte de marque utilisee (deux couleurs d'accent en competition) |
-| 22 | Couleurs de statut (success, warning, error) = couleur de marque (confusion semantique) |
-| 23 | Dark mode : inversion simple du light mode (memes valeurs inversees, pas de tokens dedies) |
+| 21 | Plus d'une teinte de marque |
+| 22 | Couleurs de statut = couleur de marque |
+| 23 | Dark mode = simple inversion du light mode |
 
 ---
 
 ## Phase 3 — REPORT
 
-Produire le rapport complet en tableau :
-
 ```
 | # | Check | Verdict | Severite | Detail |
 |---|-------|---------|----------|--------|
-| 1 | Gradient bleu-violet | PASS | — | Aucun gradient indigo detecte |
-| 2 | Police unique Inter | FAIL | haute | Inter utilise seul sur tout le texte |
+| 1 | Gradient bleu-violet | PASS | — | Aucun gradient indigo |
+| 2 | Police unique Inter | FAIL | haute | Inter seul partout |
 | ... | ... | ... | ... | ... |
-```
 
-Puis afficher le score :
-```
 Score : X/23 checks passes
 Anti-patterns : X/10 | Typographie : X/3 | A11y : X/4 | Spacing : X/3 | Couleurs : X/3
 
 Niveau : [A: premium | B: correct | C: generique | D: template AI]
 ```
 
-### Niveaux de severite
-
-| Niveau | Definition |
-|--------|-----------|
-| **critique** | Viole l'accessibilite WCAG 2.2 ou rend l'UI inutilisable |
-| **haute** | Anti-pattern AI flagrant — donne un aspect generique/template immediatement reconnaissable |
-| **moyenne** | Inconsistance design, manque de polish, dette visuelle |
-| **basse** | Suggestion d'amelioration, pas un vrai probleme bloquant |
-
 ### Grille de notation
 
 | Score | Niveau | Signification |
 |-------|--------|---------------|
-| 20-23 | A — premium | Design intentionnel, aucun signal AI visible |
+| 20-23 | A — premium | Design intentionnel, aucun signal AI |
 | 15-19 | B — correct | Quelques points a regler, base solide |
-| 10-14 | C — generique | Anti-patterns visibles, ressemble a un template |
+| 10-14 | C — generique | Anti-patterns visibles, template feel |
 | 0-9 | D — template AI | Output AI non travaille, refonte necessaire |
 
 ---
 
 ## Phase 4 — RECOMMEND (si findings haute+)
 
-Pour chaque finding de severite haute ou critique :
-
-1. **Probleme** : description precise de ce qui est detecte.
-2. **Fix Tailwind/CSS** : snippet concret de correction.
-3. **Token HORA** : reference au token semantique appropriate (`--background`, `--primary`, `--muted`, etc.).
-4. **Delegation** : si le fix implique plusieurs composants → signaler que `/hora-design` est adapte pour une refonte complete.
-
-Exemple de recommendation :
-```
-Finding #2 — Police unique Inter (haute)
-Probleme : Inter utilise seul sur tout le texte, heading = body, aucune differentiation.
-Fix :
-  /* Ajouter une police display pour les headings */
-  --font-display: "Plus Jakarta Sans", sans-serif;
-  --font-body: "Inter", sans-serif;
-
-  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.025em; }
-  body { font-family: var(--font-body); font-weight: 400; }
-
-Token HORA : --font-display, --font-body
-```
+Pour chaque finding haute ou critique :
+1. **Probleme** : description precise
+2. **Fix Tailwind/CSS** : snippet concret de correction
+3. **Token HORA** : reference au token semantique
+4. **Delegation** : si multi-composants → recommander `/hora-design`
 
 ---
 
 ## Mode --compare
 
-Quand deux chemins sont fournis (`--compare <avant> <apres>`) :
-
-1. Charger les deux images separement.
-2. Executer la Phase 2 sur chacune independamment.
-3. Produire un diff des findings :
-
-```
-COMPARE : avant vs apres
-
-Resolus (presents dans avant, absents dans apres) :
-- #2 Police unique Inter — RESOLU
-- #9 CTA gradient glow — RESOLU
-
-Nouveaux (absents dans avant, presents dans apres) :
-- #18 Spacing irregulier — NOUVEAU (regression)
-
-Persistants (presents dans les deux) :
-- #7 Fond noir pur — PERSISTANT (haute)
-
-Score avant : X/23 | Score apres : Y/23 | Delta : +/-Z
-```
+Quand deux images fournies (`--compare <avant> <apres>`) :
+1. Executer Phase 2 sur chacune
+2. Produire un diff : Resolus / Nouveaux / Persistants
+3. Score avant vs apres + delta
 
 ---
 
+## Examples
+
+Example 1: Quick screenshot audit
+```
+User: "/hora-vision ~/Desktop/screenshot.png"
+→ Charge l'image, lance les 23 checks
+→ Score: 16/23 — Niveau B
+→ 3 findings haute : fond #000, rounded-2xl uniforme, pas de hierarchie
+```
+
+Example 2: Before/after comparison
+```
+User: "/hora-vision --compare avant.png apres.png"
+→ Avant: 12/23 (C) | Apres: 19/23 (B)
+→ 5 resolus, 1 nouveau, 2 persistants
+```
+
 ## Ce que le skill ne fait PAS
 
-- Ne modifie aucun fichier (lecture seule + rapport uniquement).
-- Ne lance pas de build, de serveur, ou de processus.
-- Ne remplace pas `/hora-design` — il detecte les problemes, `/hora-design` les resout.
-- Ne peut pas verifier le focus visible (etat interactif) sur un screenshot statique — noter UNKNOWN pour le check 17.
+- Ne modifie aucun fichier (lecture seule + rapport)
+- Ne lance pas de build ou de serveur
+- Ne remplace pas `/hora-design` — il detecte, hora-design resout
+- Ne peut pas verifier le focus visible sur un screenshot statique

@@ -1,6 +1,10 @@
 ---
 name: hora-backup
-description: Sauvegarde immediate HORA. USE WHEN backup, hora backup, sauvegarde, save.
+description: Immediate HORA backup — git mirror branch or local bundle. Use when user says backup, hora backup, sauvegarde, save, save my work. Do NOT use for git commit — use standard git workflow. Do NOT use for snapshots — those are automatic via hooks.
+metadata:
+  author: HORA
+  version: 2.0.0
+compatibility: Claude Code. Requires git. Optional GitHub remote for mirror strategy.
 ---
 
 # Skill: hora-backup
@@ -39,6 +43,24 @@ Message custom: [message si fourni]
 Affiche le resultat clairement : strategie utilisee, fichiers sauvegardes, destination.
 ```
 
+## Examples
+
+Example 1: Quick backup before risky change
+```
+User: "/hora-backup avant de refactorer l'auth"
+→ Detecte remote GitHub
+→ Push sur hora/backup/main avec message "avant de refactorer l'auth"
+→ Affiche : "Backup OK — 15 fichiers sur hora/backup/main"
+```
+
+Example 2: Offline backup
+```
+User: "/hora-backup"
+→ Pas de remote accessible (timeout)
+→ Cree .hora/backups/2026-02-28-1430.bundle
+→ Affiche : "Bundle local cree — 2.3 MB"
+```
+
 ## Comment restaurer depuis un bundle local
 
 ```bash
@@ -66,3 +88,17 @@ git checkout hora/backup/ta-branche -- chemin/vers/fichier.py
 # Restaurer tout le contenu d'un backup
 git merge hora/backup/ta-branche
 ```
+
+## Troubleshooting
+
+Error: "Remote not found"
+Cause: No GitHub remote configured or network unavailable
+Solution: Automatic fallback to local bundle — no action needed
+
+Error: "Bundle too large"
+Cause: Repository has large binary files
+Solution: Add binaries to .gitignore, or use git-lfs
+
+Error: "Permission denied on push"
+Cause: GitHub credentials expired or insufficient permissions
+Solution: Re-authenticate with `gh auth login`

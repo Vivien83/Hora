@@ -1,6 +1,10 @@
 ---
 name: hora-parallel-code
-description: Execution parallele multi-agents sur codebase. USE WHEN parallel code, hora parallel, refactor, migration, multi-fichiers, plusieurs fichiers, codebase.
+description: Parallel multi-agent codebase execution — architect plans, executors implement in parallel, reviewer validates. Use when user says parallel code, hora parallel, refactor multiple files, migration, multi-fichiers, codebase-wide change. Do NOT use for single-file changes — standard HORA workflow is faster. Do NOT use for research — use hora-parallel-research instead.
+metadata:
+  author: HORA
+  version: 2.0.0
+compatibility: Claude Code. Spawns architect, executor, and reviewer agents.
 ---
 
 # Skill: hora-parallel-code
@@ -57,7 +61,6 @@ Une fois tous les executors termines :
 
 Taches executees : N
 Fichiers modifies : [liste]
-Duree estimee : X min
 
 Statut :
 - [tache 1] — OK
@@ -66,3 +69,36 @@ Statut :
 
 Prochaines etapes : [si applicable]
 ```
+
+## Examples
+
+Example 1: Rename a concept across the codebase
+```
+User: "/hora-parallel-code renomme 'workspace' en 'project' partout"
+→ Architect: identifie 15 fichiers concernes, 3 groupes independants
+→ Dispatch: 3 executors en parallele (types, services, UI)
+→ Review: coherence des imports, pas de reference orpheline
+```
+
+Example 2: Add Zod validation to all API routes
+```
+User: "/hora-parallel-code ajoute la validation Zod sur toutes les API routes"
+→ Architect: liste 8 routes, detecte les schemas existants
+→ AUDIT: routes partagent-elles des schemas ? (oui → schemas d'abord, routes ensuite)
+→ Dispatch: 1 executor schemas, puis 4 executors routes en parallele
+→ Review: tous les endpoints valident, tests passent
+```
+
+## Troubleshooting
+
+Problem: Two executors modify the same file
+Cause: Architect decomposition missed a shared dependency
+Solution: Never assign the same file to two executors — merge those tasks
+
+Problem: Executor fails on a file
+Cause: Unexpected code state or missing context
+Solution: Retry with more context, or escalate to architect for re-decomposition
+
+Problem: Tests fail after parallel modifications
+Cause: Cross-file dependencies not accounted for
+Solution: Run full test suite after all executors complete, not per-executor
