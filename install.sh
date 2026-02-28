@@ -511,6 +511,29 @@ if ! node -e "require('tsx')" &>/dev/null 2>&1 && ! command -v tsx &>/dev/null; 
   fi
 fi
 
+# Playwright (for hora-browser skill)
+if ! node -e "require('playwright')" &>/dev/null 2>&1; then
+  if $DRY_RUN; then
+    ui_detail "[DRY-RUN] npm install -g playwright"
+  else
+    ui_info "Installation de Playwright..."
+    npm install -g playwright
+  fi
+fi
+# Install Chromium browser if not already present
+if ! npx playwright install --dry-run chromium &>/dev/null 2>&1; then
+  if $DRY_RUN; then
+    ui_detail "[DRY-RUN] npx playwright install chromium"
+  else
+    ui_info "Telechargement de Chromium pour hora-browser..."
+    npx playwright install chromium 2>/dev/null || ui_warn "playwright install chromium echoue ${DIM}(non-bloquant)${RESET}"
+    # Linux: install system dependencies if needed
+    if [ "$(uname -s)" = "Linux" ]; then
+      npx playwright install-deps chromium 2>/dev/null || true
+    fi
+  fi
+fi
+
 HAS_JQ=false
 if command -v jq &>/dev/null; then
   HAS_JQ=true

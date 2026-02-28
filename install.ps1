@@ -113,6 +113,24 @@ if (-not $hasTsx -and -not (Get-Command tsx -ErrorAction SilentlyContinue)) {
     npm install -g tsx
 }
 
+# 4b. Playwright (for hora-browser skill)
+$hasPlaywright = $false
+try {
+    node -e "require('playwright')" 2>$null
+    $hasPlaywright = $true
+} catch {}
+if (-not $hasPlaywright) {
+    Write-Info "Installation de Playwright..."
+    npm install -g playwright
+}
+# Install Chromium browser if not already present
+try {
+    Write-Info "Telechargement de Chromium pour hora-browser..."
+    npx playwright install chromium 2>$null
+} catch {
+    Write-Warning "playwright install chromium echoue (non-bloquant)"
+}
+
 # 5. jq (optionnel mais recommande pour la performance statusline)
 if (-not (Get-Command jq -ErrorAction SilentlyContinue)) {
     if (Get-Command winget -ErrorAction SilentlyContinue) {
