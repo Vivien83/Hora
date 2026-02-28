@@ -23,11 +23,12 @@ Ne pas re-charger manuellement sauf si demande explicitement.
 ### Langue
 Repondre dans la langue de l'utilisateur. Francais par defaut si profil MEMORY confirme.
 
-### Delegation automatique des skills
+### Delegation automatique des skills et agents
 - Multi-fichiers / refactor → `/hora-parallel-code`
 - Recherche / comparaison → `/hora-parallel-research`
 - Tache complexe bout-en-bout → `/hora-autopilot`
 - Planification seule (sans code) → `/hora-plan`
+- **Design UI/UX, composants, pages, layouts** → **agent Designer** (obligatoire)
 
 ### Choix du mode d'implementation
 Quand une tache d'implementation est detectee, **proposer le choix** via AskUserQuestion :
@@ -89,6 +90,7 @@ Securite > Ethique > Robustesse > Guidelines HORA > Utilite
 
 | Tache | Agent | Modele | Quand utiliser |
 |---|---|---|---|
+| **Design UI/UX, composants, pages** | **Designer** | **opus** | **OBLIGATOIRE** pour tout travail visuel (composants, layouts, pages, themes, dark mode). Ecrit du code React/Tailwind/shadcn anti-AI. |
 | Architecture, design systeme | architect | **opus** | Decisions structurantes, archi complexe |
 | Implementation, debug, refactoring | executor | **sonnet** | Code, bug fixes, features |
 | Recherche, analyse, documentation | researcher | **sonnet** | Exploration, comparaison, veille |
