@@ -367,7 +367,7 @@ export function App() {
                 >
                   {data.failures.map((f, i) => (
                     <div
-                      key={f.filename}
+                      key={`${f.session}-${f.date}-${i}`}
                       style={{
                         padding: "10px 16px",
                         borderBottom:
