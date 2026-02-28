@@ -6,7 +6,8 @@ import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,7 +93,7 @@ interface CrawlReport {
 const PORT = parseInt(process.env.HORA_BROWSER_PORT || "9222", 10);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const STATE_FILE = path.join(os.tmpdir(), "hora-browser-session.json");
-const SERVER_SCRIPT = path.join(path.dirname(new URL(import.meta.url).pathname), "browser-server.ts");
+const SERVER_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "browser-server.ts");
 
 const VIEWPORTS: Viewport[] = [
   { name: "mobile", width: 375, height: 812 },
@@ -174,8 +175,13 @@ async function isServerRunning(): Promise<boolean> {
   }
 }
 
-async function ensureServer(): Promise<void> {
-  if (await isServerRunning()) return;
+async function ensureServer(): Promise<boolean> {
+  if (await isServerRunning()) {
+    progress.info("Server already running");
+    return false; // was already running, no startup needed
+  }
+
+  progress.info("Launching Playwright server...");
 
   // Check for stale state file
   if (fs.existsSync(STATE_FILE)) {
@@ -186,11 +192,23 @@ async function ensureServer(): Promise<void> {
     }
   }
 
-  console.error("[hora-browser] Starting server...");
+  // Use tsx directly if available, fallback to npx tsx
+  const tsxPath = (() => {
+    try {
+      return execSync("which tsx", { encoding: "utf-8" }).trim();
+    } catch {
+      return "npx";
+    }
+  })();
+  const tsxArgs = tsxPath.endsWith("tsx") ? [SERVER_SCRIPT] : ["tsx", SERVER_SCRIPT];
 
-  const child = spawn("npx", ["tsx", SERVER_SCRIPT], {
+  // Spawn with stderr piped for debugging, stdout ignored
+  const logFile = path.join(os.tmpdir(), "hora-browser-server.log");
+  const logFd = fs.openSync(logFile, "w");
+
+  const child = spawn(tsxPath, tsxArgs, {
     detached: true,
-    stdio: "ignore",
+    stdio: ["ignore", logFd, logFd],
     env: {
       ...process.env,
       HORA_BROWSER_PORT: String(PORT),
@@ -198,18 +216,19 @@ async function ensureServer(): Promise<void> {
   });
 
   child.unref();
+  fs.closeSync(logFd);
 
   // Wait for server to be ready (retry with backoff)
-  const maxAttempts = 30;
+  const maxAttempts = 40;
   for (let i = 0; i < maxAttempts; i++) {
-    await sleep(300 + i * 100);
+    await sleep(500);
     if (await isServerRunning()) {
-      console.error(`[hora-browser] Server ready on port ${PORT}`);
-      return;
+      progress.info(`Server ready on port ${PORT}`);
+      return true; // started fresh
     }
   }
 
-  console.error("[hora-browser] ERROR: Server failed to start within timeout.");
+  progress.fail("Server failed to start within timeout");
   console.error("Try starting manually: npx tsx browser-server.ts");
   process.exit(1);
 }
@@ -217,6 +236,48 @@ async function ensureServer(): Promise<void> {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+// ---------------------------------------------------------------------------
+// Progress tracking — step-by-step visibility in Claude Code terminal
+// ---------------------------------------------------------------------------
+
+class Progress {
+  private step = 0;
+  private total = 0;
+
+  start(command: string, totalSteps: number): void {
+    this.total = totalSteps;
+    this.step = 0;
+    console.error(`\n[hora-browser] -- ${command} --`);
+  }
+
+  next(label: string): void {
+    this.step++;
+    console.error(`  [${this.step}/${this.total}] ${label}...`);
+  }
+
+  done(label: string): void {
+    console.error(`  [${this.step}/${this.total}] ${label} OK`);
+  }
+
+  info(message: string): void {
+    console.error(`  > ${message}`);
+  }
+
+  warn(message: string): void {
+    console.error(`  > WARN: ${message}`);
+  }
+
+  fail(message: string): void {
+    console.error(`  > FAIL: ${message}`);
+  }
+
+  finish(summary: string): void {
+    console.error(`[hora-browser] -- ${summary} --\n`);
+  }
+}
+
+const progress = new Progress();
 
 // ---------------------------------------------------------------------------
 // URL helpers
@@ -262,32 +323,65 @@ function getDateDir(): string {
 // ---------------------------------------------------------------------------
 
 async function cmdNavigate(url: string): Promise<void> {
-  await ensureServer();
+  progress.start("navigate", 5);
   const validUrl = validateUrl(url);
 
+  progress.next("Ensure server");
+  await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Navigate to URL");
   const navResult = await serverPost("/navigate", { url: validUrl });
   if (!navResult.success) {
-    console.error(`ERROR: ${navResult.error}`);
+    progress.fail(navResult.error || "Navigation failed");
     process.exit(1);
   }
+  progress.done(`Navigate to ${validUrl}`);
 
-  // Wait for events to accumulate
+  progress.next("Wait for page render");
   await sleep(2000);
+  progress.done("Page render complete");
 
-  // Get diagnostics
+  progress.next("Collect diagnostics");
   const diag = await serverGet("/diagnostics");
   if (!diag.success) {
-    console.error(`ERROR: ${diag.error}`);
+    progress.fail(diag.error || "Diagnostics failed");
     process.exit(1);
   }
-
   const d = diag.data as DiagnosticsData;
+  progress.done("Diagnostics collected");
 
-  // Format output
+  progress.next("Analyze results");
+
+  // Report findings via progress (stderr) for Claude Code visibility
   if (d.screenshot) {
-    console.log(`\nScreenshot: ${d.screenshot}`);
+    progress.info(`Screenshot: ${d.screenshot}`);
+  }
+  if (d.pageErrors.length > 0) {
+    progress.warn(`${d.pageErrors.length} page error(s)`);
+  }
+  if (d.console.errors.length > 0) {
+    progress.warn(`${d.console.errors.length} console error(s)`);
+  }
+  if (d.console.warnings.length > 0) {
+    progress.info(`${d.console.warnings.length} console warning(s)`);
+  }
+  if (d.network.failed.length > 0) {
+    progress.warn(`${d.network.failed.length} failed request(s)`);
+  }
+  progress.info(`Network: ${d.network.totalRequests} requests | ${formatBytes(d.network.totalSize)} | avg ${d.network.avgTiming}ms`);
+  if (d.title) {
+    progress.info(`Page: "${d.title}"`);
   }
 
+  const errorCount = d.pageErrors.length + d.console.errors.length + d.network.failed.length;
+  progress.done(`Analysis complete (${errorCount} issue(s))`);
+
+  progress.finish(errorCount === 0
+    ? `OK -- ${validUrl}`
+    : `${errorCount} issue(s) found -- ${validUrl}`);
+
+  // Structured output on stdout
   if (d.pageErrors.length > 0) {
     console.log(`\nPage Errors (${d.pageErrors.length}):`);
     for (const e of d.pageErrors) {
@@ -324,7 +418,6 @@ async function cmdNavigate(url: string): Promise<void> {
     console.log(`Page: "${d.title}" loaded successfully`);
   }
 
-  // JSON to stdout for programmatic use
   console.log(JSON.stringify(d, null, 2));
 }
 
@@ -333,13 +426,21 @@ async function cmdNavigate(url: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdErrors(): Promise<void> {
+  progress.start("errors", 2);
+  progress.next("Ensure server");
   await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Fetch console errors");
   const result = await serverGet("/console?type=error");
   if (!result.success) {
-    console.error(`ERROR: ${result.error}`);
+    progress.fail(result.error || "Failed to fetch errors");
     process.exit(1);
   }
   const entries = result.data as Array<{ type: string; text: string; timestamp: string }>;
+  progress.done(`Found ${entries.length} error(s)`);
+  progress.finish(`${entries.length} console error(s)`);
+
   if (entries.length === 0) {
     console.log("No console errors.");
     return;
@@ -355,13 +456,21 @@ async function cmdErrors(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdWarnings(): Promise<void> {
+  progress.start("warnings", 2);
+  progress.next("Ensure server");
   await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Fetch console warnings");
   const result = await serverGet("/console?type=warning");
   if (!result.success) {
-    console.error(`ERROR: ${result.error}`);
+    progress.fail(result.error || "Failed to fetch warnings");
     process.exit(1);
   }
   const entries = result.data as Array<{ type: string; text: string; timestamp: string }>;
+  progress.done(`Found ${entries.length} warning(s)`);
+  progress.finish(`${entries.length} console warning(s)`);
+
   if (entries.length === 0) {
     console.log("No console warnings.");
     return;
@@ -377,13 +486,21 @@ async function cmdWarnings(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdConsole(): Promise<void> {
+  progress.start("console", 2);
+  progress.next("Ensure server");
   await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Fetch console output");
   const result = await serverGet("/console");
   if (!result.success) {
-    console.error(`ERROR: ${result.error}`);
+    progress.fail(result.error || "Failed to fetch console");
     process.exit(1);
   }
   const entries = result.data as Array<{ type: string; text: string; timestamp: string }>;
+  progress.done(`Found ${entries.length} entry(ies)`);
+  progress.finish(`${entries.length} console entry(ies)`);
+
   if (entries.length === 0) {
     console.log("No console output.");
     return;
@@ -400,15 +517,24 @@ async function cmdConsole(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdNetwork(): Promise<void> {
+  progress.start("network", 2);
+  progress.next("Ensure server");
   await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Fetch network activity");
   const result = await serverGet("/network?type=response");
   if (!result.success) {
-    console.error(`ERROR: ${result.error}`);
+    progress.fail(result.error || "Failed to fetch network data");
     process.exit(1);
   }
   const entries = result.data as Array<{
     url: string; method: string; status: number; statusText: string; timing: number; size: number;
   }>;
+  const failed = entries.filter((e) => e.status >= 400).length;
+  progress.done(`${entries.length} response(s), ${failed} failed`);
+  progress.finish(`${entries.length} network response(s)`);
+
   if (entries.length === 0) {
     console.log("No network activity.");
     return;
@@ -425,16 +551,24 @@ async function cmdNetwork(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdFailed(): Promise<void> {
+  progress.start("failed", 2);
+  progress.next("Ensure server");
   await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Fetch failed requests");
   const result = await serverGet("/network?type=response");
   if (!result.success) {
-    console.error(`ERROR: ${result.error}`);
+    progress.fail(result.error || "Failed to fetch network data");
     process.exit(1);
   }
   const all = result.data as Array<{
     url: string; method: string; status: number; statusText: string; timing: number;
   }>;
   const failed = all.filter((r) => r.status >= 400);
+  progress.done(`${failed.length} failed request(s) out of ${all.length}`);
+  progress.finish(`${failed.length} failed request(s)`);
+
   if (failed.length === 0) {
     console.log("No failed requests.");
     return;
@@ -450,14 +584,22 @@ async function cmdFailed(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdScreenshot(outputPath?: string): Promise<void> {
+  progress.start("screenshot", 2);
+  progress.next("Ensure server");
   await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Capture screenshot");
   const screenshotPath = outputPath || path.join(os.tmpdir(), `hora-browse-${Date.now()}.png`);
   const result = await serverPost("/screenshot", { path: screenshotPath });
   if (!result.success) {
-    console.error(`ERROR: ${result.error}`);
+    progress.fail(result.error || "Screenshot failed");
     process.exit(1);
   }
   const data = result.data as { path: string; size: number };
+  progress.done(`Saved ${formatBytes(data.size)}`);
+  progress.finish(`Screenshot: ${data.path}`);
+
   console.log(`Screenshot saved: ${data.path} (${formatBytes(data.size)})`);
 }
 
@@ -466,12 +608,20 @@ async function cmdScreenshot(outputPath?: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdClick(selector: string): Promise<void> {
+  progress.start("click", 2);
+  progress.next("Ensure server");
   await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next(`Click "${selector}"`);
   const result = await serverPost("/click", { selector });
   if (!result.success) {
-    console.error(`ERROR: ${result.error}`);
+    progress.fail(result.error || "Click failed");
     process.exit(1);
   }
+  progress.done(`Clicked "${selector}"`);
+  progress.finish("Click complete");
+
   console.log(`Clicked: ${selector}`);
 }
 
@@ -480,12 +630,20 @@ async function cmdClick(selector: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdFill(selector: string, value: string): Promise<void> {
+  progress.start("fill", 2);
+  progress.next("Ensure server");
   await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next(`Fill "${selector}"`);
   const result = await serverPost("/fill", { selector, value });
   if (!result.success) {
-    console.error(`ERROR: ${result.error}`);
+    progress.fail(result.error || "Fill failed");
     process.exit(1);
   }
+  progress.done(`Filled "${selector}"`);
+  progress.finish("Fill complete");
+
   console.log(`Filled: ${selector} = "${value}"`);
 }
 
@@ -494,12 +652,20 @@ async function cmdFill(selector: string, value: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdEval(script: string): Promise<void> {
+  progress.start("eval", 2);
+  progress.next("Ensure server");
   await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Execute JavaScript");
   const result = await serverPost("/eval", { script });
   if (!result.success) {
-    console.error(`ERROR: ${result.error}`);
+    progress.fail(result.error || "Eval failed");
     process.exit(1);
   }
+  progress.done("JavaScript executed");
+  progress.finish("Eval complete");
+
   const data = result.data as { result: unknown };
   console.log(JSON.stringify(data.result, null, 2));
 }
@@ -509,16 +675,22 @@ async function cmdEval(script: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdCapture(url: string): Promise<void> {
-  await ensureServer();
+  const totalSteps = 3 + VIEWPORTS.length; // server + navigate + viewports + restore
+  progress.start("capture", totalSteps);
   const validUrl = validateUrl(url);
 
-  // Navigate first
+  progress.next("Ensure server");
+  await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Navigate to URL");
   const navResult = await serverPost("/navigate", { url: validUrl });
   if (!navResult.success) {
-    console.error(`ERROR: ${navResult.error}`);
+    progress.fail(navResult.error || "Navigation failed");
     process.exit(1);
   }
   await sleep(1500);
+  progress.done(`Navigated to ${validUrl}`);
 
   const baseDir = path.join(process.cwd(), ".hora", "screenshots", getDateDir());
   fs.mkdirSync(baseDir, { recursive: true });
@@ -527,19 +699,19 @@ async function cmdCapture(url: string): Promise<void> {
   const results: Array<{ viewport: string; width: number; height: number; path: string; size: number }> = [];
 
   for (const vp of VIEWPORTS) {
-    // Resize
+    progress.next(`Capture ${vp.name} (${vp.width}x${vp.height})`);
+
     const resizeResult = await serverPost("/resize", { width: vp.width, height: vp.height });
     if (!resizeResult.success) {
-      console.error(`  WARNING: Failed to resize to ${vp.name}: ${resizeResult.error}`);
+      progress.warn(`Failed to resize to ${vp.name}: ${resizeResult.error}`);
       continue;
     }
     await sleep(500);
 
-    // Screenshot
     const filePath = path.join(baseDir, `${timestamp}_${vp.name}.png`);
     const ssResult = await serverPost("/screenshot", { path: filePath, fullPage: true });
     if (!ssResult.success) {
-      console.error(`  WARNING: Failed to capture ${vp.name}: ${ssResult.error}`);
+      progress.warn(`Failed to capture ${vp.name}: ${ssResult.error}`);
       continue;
     }
     const data = ssResult.data as { path: string; size: number };
@@ -550,16 +722,19 @@ async function cmdCapture(url: string): Promise<void> {
       path: data.path,
       size: data.size,
     });
-    console.error(`  Captured ${vp.name} (${vp.width}x${vp.height}): ${data.path}`);
+    progress.done(`${vp.name} captured (${formatBytes(data.size)})`);
   }
 
-  // Restore to desktop viewport
+  progress.next("Restore desktop viewport");
   await serverPost("/resize", { width: 1280, height: 800 });
+  progress.done("Viewport restored to 1280x800");
 
   if (results.length === 0) {
-    console.error("ERROR: No screenshots were captured successfully.");
+    progress.fail("No screenshots were captured successfully");
     process.exit(1);
   }
+
+  progress.finish(`${results.length}/${VIEWPORTS.length} viewports captured`);
 
   const output = {
     url: validUrl,
@@ -576,6 +751,9 @@ async function cmdCapture(url: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdDiff(image1Path: string, image2Path: string): Promise<void> {
+  progress.start("visual diff", 4);
+
+  progress.next("Load dependencies");
   let pixelmatch: (
     img1: Buffer | Uint8Array,
     img2: Buffer | Uint8Array,
@@ -636,6 +814,9 @@ async function cmdDiff(image1Path: string, image2Path: string): Promise<void> {
     });
   }
 
+  progress.done("Dependencies loaded");
+
+  progress.next("Read images");
   const [img1, img2] = await Promise.all([
     readPng(image1Path),
     readPng(image2Path),
@@ -651,6 +832,9 @@ async function cmdDiff(image1Path: string, image2Path: string): Promise<void> {
     process.exit(1);
   }
 
+  progress.done(`Images loaded (${img1.width}x${img1.height})`);
+
+  progress.next("Compare pixels");
   const { width, height } = img1;
   const diff = new PNG({ width, height });
   const threshold = 0.1;
@@ -669,8 +853,15 @@ async function cmdDiff(image1Path: string, image2Path: string): Promise<void> {
     ? Math.round((differentPixels / totalPixels) * 10000) / 100
     : 0;
 
+  progress.done(`${percentDifferent}% different (${differentPixels} pixels)`);
+
+  progress.next("Save diff image");
   const outputPath = path.join(os.tmpdir(), `hora-diff-${Date.now()}.png`);
   await writePng(outputPath, diff);
+  progress.done(`Diff saved: ${outputPath}`);
+  progress.finish(percentDifferent === 0
+    ? "Images are identical"
+    : `${percentDifferent}% different`);
 
   const result = {
     image1: path.resolve(image1Path),
@@ -694,17 +885,23 @@ async function cmdDiff(image1Path: string, image2Path: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdA11y(url: string): Promise<void> {
-  await ensureServer();
+  progress.start("a11y audit", 5);
   const validUrl = validateUrl(url);
 
-  // Navigate
+  progress.next("Ensure server");
+  await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Navigate to URL");
   const navResult = await serverPost("/navigate", { url: validUrl });
   if (!navResult.success) {
-    console.error(`ERROR: ${navResult.error}`);
+    progress.fail(navResult.error || "Navigation failed");
     process.exit(1);
   }
   await sleep(2000);
+  progress.done(`Navigated to ${validUrl}`);
 
+  progress.next("Inject axe-core");
   // Inject axe-core via CDN
   const AXE_CDN = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.9.1/axe.min.js";
   const injectScript = `
@@ -724,17 +921,19 @@ async function cmdA11y(url: string): Promise<void> {
 
   const injectResult = await serverPost("/eval", { script: injectScript });
   if (!injectResult.success) {
-    console.error(`ERROR: Failed to inject axe-core: ${injectResult.error}`);
+    progress.fail(`Failed to inject axe-core: ${injectResult.error}`);
     console.error("The page might be offline or blocking external scripts.");
     process.exit(1);
   }
 
   const injectData = injectResult.data as { result: boolean };
   if (!injectData.result) {
-    console.error("ERROR: axe-core failed to load.");
+    progress.fail("axe-core failed to load");
     process.exit(1);
   }
+  progress.done("axe-core injected");
 
+  progress.next("Run accessibility audit");
   // Run axe
   const runScript = `
     (async () => {
@@ -751,9 +950,10 @@ async function cmdA11y(url: string): Promise<void> {
 
   const axeResult = await serverPost("/eval", { script: runScript });
   if (!axeResult.success) {
-    console.error(`ERROR: axe.run() failed: ${axeResult.error}`);
+    progress.fail(`axe.run() failed: ${axeResult.error}`);
     process.exit(1);
   }
+  progress.done("Audit complete");
 
   const axeData = (axeResult.data as { result: {
     violations: Array<{
@@ -772,6 +972,17 @@ async function cmdA11y(url: string): Promise<void> {
 
   const countByImpact = (impact: string) =>
     axeData.violations.filter((v) => v.impact === impact).length;
+
+  progress.next("Analyze results");
+  const totalViolations = axeData.violations.length;
+  const criticalCount = countByImpact("critical");
+  const seriousCount = countByImpact("serious");
+  if (criticalCount > 0) progress.warn(`${criticalCount} CRITICAL violation(s)`);
+  if (seriousCount > 0) progress.warn(`${seriousCount} SERIOUS violation(s)`);
+  progress.done(`${totalViolations} violation(s), ${axeData.passes} passes`);
+  progress.finish(totalViolations === 0
+    ? `A11y OK -- ${validUrl}`
+    : `${totalViolations} violation(s) -- ${validUrl}`);
 
   // Format output
   console.log(`\nA11Y AUDIT -- ${validUrl}`);
@@ -850,6 +1061,7 @@ async function cmdA11y(url: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdLinks(url: string): Promise<void> {
+  progress.start("links", 3);
   const baseUrl = new URL(validateUrl(url));
   const timeout = 5000;
   const maxDepth = 1;
@@ -943,7 +1155,8 @@ async function cmdLinks(url: string): Promise<void> {
     }
   }
 
-  console.error(`Crawling ${baseUrl.href} (depth: ${maxDepth}, timeout: ${timeout}ms)...`);
+  progress.next("Extract links from page");
+  progress.info(`Crawling ${baseUrl.href} (depth: ${maxDepth}, timeout: ${timeout}ms)`);
 
   const queue: Array<{ url: string; depth: number }> = [{ url: baseUrl.href, depth: 0 }];
 
@@ -974,11 +1187,20 @@ async function cmdLinks(url: string): Promise<void> {
     }));
   }
 
+  progress.done(`Extracted ${results.length} link(s)`);
+
+  progress.next("Check link status");
   const valid = results.filter((l) => l.status !== null && l.status >= 200 && l.status < 300).length;
   const redirected = results.filter((l) => l.status !== null && l.status >= 300 && l.status < 400).length;
   const broken = results.filter((l) => l.status !== null && l.status >= 400).length;
   const timedOut = results.filter((l) => l.error !== null && l.error.includes("Timeout")).length;
   const errored = results.filter((l) => l.error !== null && !l.error.includes("Timeout")).length;
+  if (broken > 0) progress.warn(`${broken} broken link(s)`);
+  if (timedOut > 0) progress.warn(`${timedOut} timed out`);
+  progress.done(`${valid} valid, ${broken} broken, ${redirected} redirected`);
+
+  progress.next("Generate report");
+  progress.done("Report generated");
 
   const report: CrawlReport = {
     baseUrl: baseUrl.href,
@@ -1010,6 +1232,10 @@ async function cmdLinks(url: string): Promise<void> {
   console.log(`  Timed out:  ${timedOut}`);
   console.log(`  Errored:    ${errored}`);
 
+  progress.finish(broken === 0
+    ? `All ${results.length} links OK -- ${baseUrl.href}`
+    : `${broken} broken link(s) -- ${baseUrl.href}`);
+
   if (broken > 0) {
     console.log(`\nBroken links:`);
     results.filter((l) => l.status !== null && l.status >= 400).forEach((l) => {
@@ -1025,16 +1251,25 @@ async function cmdLinks(url: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdStatus(): Promise<void> {
+  progress.start("status", 1);
+  progress.next("Check server health");
+
   if (!(await isServerRunning())) {
+    progress.done("Server is not running");
+    progress.finish("No active session");
     console.log("Server is not running.");
     return;
   }
   const result = await serverGet("/health");
   if (!result.success) {
+    progress.fail("Health check failed");
     console.log("Server health check failed.");
     return;
   }
   const h = result.data as HealthData;
+  progress.done(`Server running (PID ${h.pid}, uptime ${Math.round(h.uptime)}s)`);
+  progress.finish("Status retrieved");
+
   console.log(`hora-browser session:`);
   console.log(`  Status:     ${h.status}`);
   console.log(`  PID:        ${h.pid}`);
@@ -1052,21 +1287,31 @@ async function cmdStatus(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdRestart(): Promise<void> {
+  progress.start("restart", 2);
+
+  progress.next("Stop current session");
   if (await isServerRunning()) {
-    console.error("[hora-browser] Stopping current session...");
     try {
       await serverPost("/stop");
     } catch {
       // ignore
     }
     await sleep(1000);
+    progress.done("Session stopped");
+  } else {
+    progress.done("No session to stop");
   }
+
   // Remove stale state
   if (fs.existsSync(STATE_FILE)) {
     try { fs.unlinkSync(STATE_FILE); } catch { /* ignore */ }
   }
-  console.error("[hora-browser] Starting fresh session...");
+
+  progress.next("Start fresh session");
   await ensureServer();
+  progress.done("Fresh session started");
+  progress.finish("Restart complete");
+
   console.log("Server restarted successfully.");
 }
 
@@ -1075,7 +1320,12 @@ async function cmdRestart(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdStop(): Promise<void> {
+  progress.start("stop", 1);
+  progress.next("Stop server");
+
   if (!(await isServerRunning())) {
+    progress.done("Server was not running");
+    progress.finish("Nothing to stop");
     console.log("Server is not running.");
     return;
   }
@@ -1084,6 +1334,9 @@ async function cmdStop(): Promise<void> {
   } catch {
     // expected — server shuts down
   }
+  progress.done("Server stopped");
+  progress.finish("Session ended");
+
   console.log("Server stopped.");
 }
 
@@ -1094,7 +1347,7 @@ async function cmdStop(): Promise<void> {
 function printUsage(): void {
   console.log(`hora-browser — debug-first browser automation
 
-Usage: npx tsx browse.ts <command> [args...]
+Usage: node hora-browser.mjs <command> [args...]
 
 Navigation & Diagnostics:
   <url>                      Navigate + full diagnostics
