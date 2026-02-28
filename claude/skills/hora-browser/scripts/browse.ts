@@ -6,6 +6,7 @@ import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import * as readline from "node:readline";
 import { spawn, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -1341,6 +1342,218 @@ async function cmdStop(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Command: login
+// ---------------------------------------------------------------------------
+
+async function cmdLogin(args: string[]): Promise<void> {
+  // Parse: login <url> <username> <password> [--username-selector=...] [--password-selector=...] [--submit-selector=...]
+  const positional: string[] = [];
+  const flags: Record<string, string> = {};
+
+  for (const arg of args) {
+    if (arg.startsWith("--")) {
+      const eqIdx = arg.indexOf("=");
+      if (eqIdx !== -1) {
+        const key = arg.slice(2, eqIdx);
+        flags[key] = arg.slice(eqIdx + 1);
+      }
+    } else {
+      positional.push(arg);
+    }
+  }
+
+  const url = positional[0];
+  const username = positional[1];
+  const password = positional[2];
+
+  if (!url || !username || !password) {
+    console.error("Usage: browse.ts login <url> <username> <password> [--username-selector=...] [--password-selector=...] [--submit-selector=...]");
+    process.exit(1);
+  }
+
+  progress.start("login", 4);
+
+  progress.next("Ensure server");
+  await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Navigate to login URL");
+  const body: Record<string, string> = { url, username, password };
+  if (flags["username-selector"]) body.usernameSelector = flags["username-selector"];
+  if (flags["password-selector"]) body.passwordSelector = flags["password-selector"];
+  if (flags["submit-selector"]) body.submitSelector = flags["submit-selector"];
+
+  progress.info(`Navigating to ${url}`);
+  progress.done("Navigate to login URL");
+
+  progress.next("Fill credentials");
+  progress.info("Auto-detecting form fields...");
+  progress.done("Credentials ready");
+
+  progress.next("Submit + verify");
+  const result = await serverPost("/login", body);
+  if (!result.success) {
+    progress.fail(result.error || "Login failed");
+    process.exit(1);
+  }
+
+  const data = result.data as {
+    loggedIn: boolean;
+    currentUrl: string;
+    title: string;
+    screenshot: string | null;
+  };
+
+  progress.info(`Current URL: ${data.currentUrl}`);
+  if (data.screenshot) progress.info(`Screenshot: ${data.screenshot}`);
+  progress.done("Submit + verify");
+  progress.finish(`Login complete -- ${data.currentUrl}`);
+
+  console.log(`Login result:`);
+  console.log(`  Status:      ${data.loggedIn ? "OK" : "FAIL"}`);
+  console.log(`  Current URL: ${data.currentUrl}`);
+  console.log(`  Page title:  ${data.title}`);
+  if (data.screenshot) console.log(`  Screenshot:  ${data.screenshot}`);
+  console.log(JSON.stringify(data, null, 2));
+}
+
+// ---------------------------------------------------------------------------
+// Command: wait
+// ---------------------------------------------------------------------------
+
+async function cmdWait(message?: string): Promise<void> {
+  progress.start("wait", 3);
+
+  progress.next("Ensure server");
+  await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Screenshot + open wait");
+  const waitResult = await serverPost("/wait-for-user");
+  if (!waitResult.success) {
+    progress.fail(waitResult.error || "Wait failed");
+    process.exit(1);
+  }
+
+  const waitData = waitResult.data as {
+    waiting: boolean;
+    message: string;
+    screenshot: string | null;
+    currentUrl: string;
+  };
+
+  if (waitData.screenshot) progress.info(`Screenshot: ${waitData.screenshot}`);
+  progress.done("Screenshot + open wait");
+
+  progress.next("Wait for user signal");
+  if (waitData.screenshot) {
+    console.log(`Screenshot: ${waitData.screenshot}`);
+  }
+  if (message) {
+    console.log(`\nMessage: ${message}`);
+  }
+  console.log(`\nWAITING FOR USER ACTION -- When done, press Enter or type 'continue' to resume`);
+
+  // Read from stdin — wait for Enter
+  await new Promise<void>((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      terminal: false,
+    });
+    rl.once("line", () => {
+      rl.close();
+      resolve();
+    });
+    rl.once("close", () => {
+      resolve();
+    });
+  });
+
+  const continueResult = await serverPost("/continue");
+  if (!continueResult.success) {
+    progress.fail(continueResult.error || "Continue failed");
+    process.exit(1);
+  }
+
+  const contData = continueResult.data as {
+    resumed: boolean;
+    currentUrl: string;
+    title: string;
+    screenshot: string | null;
+    console: { errors: unknown[]; total: number };
+    network: { failed: unknown[]; totalRequests: number };
+  };
+
+  progress.info(`Current URL: ${contData.currentUrl}`);
+  if (contData.screenshot) progress.info(`Screenshot: ${contData.screenshot}`);
+  progress.done("Wait for user signal");
+  progress.finish(`Resumed -- ${contData.currentUrl}`);
+
+  console.log(`\nResumed:`);
+  console.log(`  Current URL: ${contData.currentUrl}`);
+  console.log(`  Page title:  ${contData.title}`);
+  if (contData.screenshot) console.log(`  Screenshot:  ${contData.screenshot}`);
+  console.log(JSON.stringify(contData, null, 2));
+}
+
+// ---------------------------------------------------------------------------
+// Command: save-auth
+// ---------------------------------------------------------------------------
+
+async function cmdSaveAuth(name: string): Promise<void> {
+  progress.start("save-auth", 2);
+
+  progress.next("Ensure server");
+  await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Save auth state");
+  const result = await serverPost("/save-auth", { name });
+  if (!result.success) {
+    progress.fail(result.error || "Save auth failed");
+    process.exit(1);
+  }
+
+  const data = result.data as { saved: boolean; path: string; name: string };
+  progress.done(`Auth state saved`);
+  progress.finish(`Saved: ${data.path}`);
+
+  console.log(`Auth state saved:`);
+  console.log(`  Name: ${data.name}`);
+  console.log(`  Path: ${data.path}`);
+  console.log(JSON.stringify(data, null, 2));
+}
+
+// ---------------------------------------------------------------------------
+// Command: load-auth
+// ---------------------------------------------------------------------------
+
+async function cmdLoadAuth(name: string): Promise<void> {
+  progress.start("load-auth", 2);
+
+  progress.next("Ensure server");
+  await ensureServer();
+  progress.done("Ensure server");
+
+  progress.next("Load auth state");
+  const result = await serverPost("/load-auth", { name });
+  if (!result.success) {
+    progress.fail(result.error || "Load auth failed");
+    process.exit(1);
+  }
+
+  const data = result.data as { loaded: boolean; name: string; path: string };
+  progress.done(`Auth state loaded`);
+  progress.finish(`Loaded: ${data.name}`);
+
+  console.log(`Auth state loaded:`);
+  console.log(`  Name: ${data.name}`);
+  console.log(`  Path: ${data.path}`);
+  console.log(JSON.stringify(data, null, 2));
+}
+
+// ---------------------------------------------------------------------------
 // Usage
 // ---------------------------------------------------------------------------
 
@@ -1373,6 +1586,12 @@ Session:
   status                     Session info
   restart                    Fresh session
   stop                       Stop session
+
+Authentication & Interaction:
+  login <url> <user> <pass>  Auto-detect login form, fill and submit
+  wait [message]             Pause for human interaction, resume on Enter
+  save-auth <name>           Save cookies/session for reuse
+  load-auth <name>           Restore previously saved session
 `);
 }
 
@@ -1452,6 +1671,20 @@ async function main(): Promise<void> {
           break;
         case "stop":
           await cmdStop();
+          break;
+        case "login":
+          await cmdLogin(args.slice(1));
+          break;
+        case "wait":
+          await cmdWait(args[1]);
+          break;
+        case "save-auth":
+          if (!args[1]) { console.error("Usage: browse.ts save-auth <name>"); process.exit(1); }
+          await cmdSaveAuth(args[1]);
+          break;
+        case "load-auth":
+          if (!args[1]) { console.error("Usage: browse.ts load-auth <name>"); process.exit(1); }
+          await cmdLoadAuth(args[1]);
           break;
         case "help":
         case "--help":

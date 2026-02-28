@@ -82,6 +82,10 @@ let pageErrors: PageErrorEntry[] = [];
 let requestTimings = new Map<string, number>();
 let currentUrl: string | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
+let waitingForUser = false;
+
+// Auth storage directory
+const AUTH_DIR = path.join(os.tmpdir(), "hora-browser-auth");
 
 // Playwright instances — initialized in start()
 let browser: Awaited<ReturnType<Awaited<ReturnType<typeof import("playwright")>>["chromium"]["launch"]>> | null = null;
@@ -231,6 +235,7 @@ async function handleHealth(res: http.ServerResponse): Promise<void> {
       networkResponses: networkResponses.length,
       pageErrors: pageErrors.length,
       uptime: process.uptime(),
+      waitingForUser,
     },
   });
 }
@@ -484,6 +489,203 @@ async function handleStop(res: http.ServerResponse): Promise<void> {
   setTimeout(() => shutdown(), 100);
 }
 
+async function handleLogin(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  if (!page) {
+    jsonResponse(res, 503, { success: false, error: "No page available" });
+    return;
+  }
+  const body = await parseJsonBody(req);
+  const url = body.url as string | undefined;
+  const username = body.username as string | undefined;
+  const password = body.password as string | undefined;
+
+  if (!username || !password) {
+    jsonResponse(res, 400, { success: false, error: "Missing 'username' or 'password' in body" });
+    return;
+  }
+
+  const usernameSelector = (body.usernameSelector as string | undefined)
+    || 'input[name="email"], input[type="email"], input[name="username"], input[id="email"], input[id="username"], input[name="login"], input[autocomplete="username"], input[autocomplete="email"]';
+  const passwordSelector = (body.passwordSelector as string | undefined)
+    || 'input[name="password"], input[type="password"], input[id="password"], input[autocomplete="current-password"]';
+  const submitSelector = (body.submitSelector as string | undefined)
+    || 'button[type="submit"], input[type="submit"]';
+
+  try {
+    if (url) {
+      clearLogs();
+      await page.goto(url, { waitUntil: "load", timeout: 30_000 });
+      await page.waitForTimeout(1500);
+      currentUrl = url;
+      writeStateFile();
+    }
+
+    await page.fill(usernameSelector, username, { timeout: 10_000 });
+    await page.fill(passwordSelector, password, { timeout: 10_000 });
+    await page.click(submitSelector, { timeout: 10_000 });
+
+    // Wait for navigation with soft timeout (SPA may not navigate)
+    try {
+      await Promise.race([
+        page.waitForNavigation({ waitUntil: "networkidle", timeout: 10_000 }),
+        page.waitForTimeout(10_000),
+      ]);
+    } catch {
+      // soft timeout — page may be an SPA that doesn't hard-navigate
+    }
+
+    currentUrl = page.url();
+    writeStateFile();
+
+    const screenshotPath = path.join(os.tmpdir(), `hora-login-${Date.now()}.png`);
+    try {
+      await page.screenshot({ path: screenshotPath, fullPage: false });
+    } catch {
+      // non-critical
+    }
+
+    const title = await page.title().catch(() => "");
+    jsonResponse(res, 200, {
+      success: true,
+      data: {
+        loggedIn: true,
+        currentUrl: currentUrl,
+        title,
+        screenshot: fs.existsSync(screenshotPath) ? screenshotPath : null,
+      },
+    });
+  } catch (err) {
+    jsonResponse(res, 500, {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function handleSaveAuth(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  if (!page) {
+    jsonResponse(res, 503, { success: false, error: "No page available" });
+    return;
+  }
+  const body = await parseJsonBody(req);
+  const name = body.name as string | undefined;
+  if (!name) {
+    jsonResponse(res, 400, { success: false, error: "Missing 'name' in body" });
+    return;
+  }
+
+  try {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+    const authPath = path.join(AUTH_DIR, `${name}.json`);
+    await page.context().storageState({ path: authPath });
+    jsonResponse(res, 200, { success: true, data: { saved: true, path: authPath, name } });
+  } catch (err) {
+    jsonResponse(res, 500, {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function handleLoadAuth(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  if (!browser) {
+    jsonResponse(res, 503, { success: false, error: "No browser available" });
+    return;
+  }
+  const body = await parseJsonBody(req);
+  const name = body.name as string | undefined;
+  if (!name) {
+    jsonResponse(res, 400, { success: false, error: "Missing 'name' in body" });
+    return;
+  }
+
+  const authPath = path.join(AUTH_DIR, `${name}.json`);
+  if (!fs.existsSync(authPath)) {
+    jsonResponse(res, 404, { success: false, error: `Auth state not found: ${authPath}` });
+    return;
+  }
+
+  try {
+    // Close existing context and create new one with stored state
+    if (page) {
+      await page.context().close().catch(() => {});
+    }
+
+    // storageState shape is { cookies, origins } — matches Playwright's BrowserContextOptions.storageState
+    const storageState = JSON.parse(fs.readFileSync(authPath, "utf-8")) as { cookies: unknown[]; origins: unknown[] };
+    const context = await browser.newContext({ storageState: storageState as Parameters<typeof browser.newContext>[0]["storageState"] });
+    page = await context.newPage();
+    attachPageListeners(page);
+
+    jsonResponse(res, 200, { success: true, data: { loaded: true, name, path: authPath } });
+  } catch (err) {
+    jsonResponse(res, 500, {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function handleWaitForUser(res: http.ServerResponse): Promise<void> {
+  if (!page) {
+    jsonResponse(res, 503, { success: false, error: "No page available" });
+    return;
+  }
+
+  waitingForUser = true;
+
+  const screenshotPath = path.join(os.tmpdir(), `hora-wait-${Date.now()}.png`);
+  try {
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+  } catch {
+    // non-critical
+  }
+
+  jsonResponse(res, 200, {
+    success: true,
+    data: {
+      waiting: true,
+      message: "Browser is waiting for your action. Call POST /continue when ready.",
+      screenshot: fs.existsSync(screenshotPath) ? screenshotPath : null,
+      currentUrl: page.url(),
+    },
+  });
+}
+
+async function handleContinue(res: http.ServerResponse): Promise<void> {
+  if (!page) {
+    jsonResponse(res, 503, { success: false, error: "No page available" });
+    return;
+  }
+
+  waitingForUser = false;
+  currentUrl = page.url();
+  writeStateFile();
+
+  const screenshotPath = path.join(os.tmpdir(), `hora-continue-${Date.now()}.png`);
+  try {
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+  } catch {
+    // non-critical
+  }
+
+  const errors = consoleLogs.filter((l) => l.type === "error");
+  const failed = networkResponses.filter((r) => r.status >= 400);
+  const title = await page.title().catch(() => "");
+
+  jsonResponse(res, 200, {
+    success: true,
+    data: {
+      resumed: true,
+      currentUrl: currentUrl,
+      title,
+      screenshot: fs.existsSync(screenshotPath) ? screenshotPath : null,
+      console: { errors, total: consoleLogs.length },
+      network: { failed, totalRequests: networkResponses.length },
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -507,6 +709,11 @@ async function router(req: http.IncomingMessage, res: http.ServerResponse): Prom
     if (pathname === "/resize" && method === "POST") return handleResize(req, res);
     if (pathname === "/reload" && method === "POST") return handleReload(res);
     if (pathname === "/stop" && method === "POST") return handleStop(res);
+    if (pathname === "/login" && method === "POST") return handleLogin(req, res);
+    if (pathname === "/save-auth" && method === "POST") return handleSaveAuth(req, res);
+    if (pathname === "/load-auth" && method === "POST") return handleLoadAuth(req, res);
+    if (pathname === "/wait-for-user" && method === "POST") return handleWaitForUser(res);
+    if (pathname === "/continue" && method === "POST") return handleContinue(res);
 
     jsonResponse(res, 404, { success: false, error: `Unknown endpoint: ${method} ${pathname}` });
   } catch (err) {

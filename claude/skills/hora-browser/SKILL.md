@@ -109,6 +109,26 @@ npm install -D pixelmatch pngjs
 | `hora-browser.mjs restart` | Stop + start fresh session |
 | `hora-browser.mjs stop` | Stop server |
 
+## Authentication & Human Interaction
+
+| Command | Description |
+|---------|-------------|
+| `hora-browser.mjs login <url> <user> <pass>` | Auto-detect login form, fill and submit |
+| `hora-browser.mjs wait [message]` | Pause for human interaction, resume on Enter |
+| `hora-browser.mjs save-auth <name>` | Save cookies/session for reuse |
+| `hora-browser.mjs load-auth <name>` | Restore previously saved session |
+
+Optional selector overrides for `login`:
+
+```bash
+node hora-browser.mjs login https://app.example.com user@example.com mypassword \
+  --username-selector='#email' \
+  --password-selector='#password' \
+  --submit-selector='button[type="submit"]'
+```
+
+Auth files are stored in `<tmpdir>/hora-browser-auth/<name>.json` (cookies + localStorage).
+
 ---
 
 ## Protocol
@@ -289,6 +309,51 @@ node hora-browser.mjs click 'button[type="submit"]'
 # Check for errors after submission
 node hora-browser.mjs errors
 node hora-browser.mjs network
+```
+
+### Example 5 — Login flow with session persistence
+
+```
+User: "Log into the admin and check the dashboard — save the session for later"
+
+# Step 1: auto-detect login form and authenticate
+node hora-browser.mjs login https://app.example.com/login admin@example.com MySecurePass123
+
+# Output:
+#   Login result:
+#     Status:      OK
+#     Current URL: https://app.example.com/dashboard
+#     Page title:  Dashboard — Example App
+#     Screenshot:  /tmp/hora-login-1709164800000.png
+
+# Step 2: navigate to a protected page and take a screenshot
+node hora-browser.mjs https://app.example.com/admin/users
+node hora-browser.mjs screenshot
+
+# Step 3: save the session for reuse
+node hora-browser.mjs save-auth myapp-admin
+
+# Output:
+#   Auth state saved:
+#     Name: myapp-admin
+#     Path: /tmp/hora-browser-auth/myapp-admin.json
+
+# --- Later, in a new session ---
+
+# Step 4: restore the saved session (no re-login needed)
+node hora-browser.mjs load-auth myapp-admin
+node hora-browser.mjs https://app.example.com/admin/reports
+
+# Step 5: if a 2FA or CAPTCHA screen appears, pause for manual action
+node hora-browser.mjs wait "2FA required — complete verification in the browser"
+
+# Output:
+#   Screenshot:  /tmp/hora-wait-1709164900000.png
+#   WAITING FOR USER ACTION -- When done, press Enter or type 'continue' to resume
+#   [user presses Enter after completing 2FA]
+#   Resumed:
+#     Current URL: https://app.example.com/dashboard
+#     Page title:  Dashboard — Example App
 ```
 
 ---

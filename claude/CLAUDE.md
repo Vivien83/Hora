@@ -526,9 +526,15 @@ Quand un skill est invoque, lire son fichier dans `~/.claude/skills/` pour le pr
 | `/hora-backup` | `~/.claude/skills/backup.md` | Sauvegarde immediate |
 | `/hora-vision` | `~/.claude/skills/hora-vision/SKILL.md` | Audit visuel UI — detection anti-patterns design |
 | `/hora-dashboard` | `~/.claude/skills/hora-dashboard/SKILL.md` | Dashboard visuel HORA — sessions, sentiment, usage |
-| `/hora-browser` | `~/.claude/skills/hora-browser/SKILL.md` | Browser automation — screenshots, visual diffs, link checking, a11y audit |
+| `/hora-browser` | `~/.claude/skills/hora-browser/SKILL.md` | Browser automation — debug, login, auth, screenshots, a11y, visual diffs |
 | `/hora-api-test` | `~/.claude/skills/hora-api-test/SKILL.md` | API endpoint testing — scan routes, test responses, validate Zod schemas |
 | `/hora-seed` | `~/.claude/skills/hora-seed/SKILL.md` | Test data generation — seed DB from Drizzle/Prisma schemas with faker |
 | `/hora-component` | `~/.claude/skills/hora-component/SKILL.md` | Component scaffolding — React components with types, tests, forms |
 | `/hora-changelog` | `~/.claude/skills/hora-changelog/SKILL.md` | Changelog generation — parse conventional commits, categorize, format |
+| `/hora-migrate` | `~/.claude/skills/hora-migrate/SKILL.md` | DB migration — Drizzle/Prisma detect, generate, preview SQL, execute |
+| `/hora-deps` | `~/.claude/skills/hora-deps/SKILL.md` | Dependency audit — scan outdated, CVE audit, smart update + tests |
+| `/hora-deploy` | `~/.claude/skills/hora-deploy/SKILL.md` | Pre-deploy checklist — build, tests, types, env, bundle, go/no-go |
+| `/hora-debug` | `~/.claude/skills/hora-debug/SKILL.md` | Error analysis — parse stack traces, find root cause, suggest fix |
+| `/hora-mock` | `~/.claude/skills/hora-mock/SKILL.md` | Mock API server — scan routes, fake data, delays, error simulation |
+| `/hora-doc` | `~/.claude/skills/hora-doc/SKILL.md` | API documentation — scan routes + Zod schemas, generate Markdown/JSON |
 <!-- HORA:END -->
