@@ -1,29 +1,24 @@
 ---
 session: a909827f
-timestamp: 2026-02-28T19:15:00.000Z
-context_pct: 30
+timestamp: 2026-02-28T21:19:46.762Z
+context_pct: 75
 ---
 # Objectif en cours
-Skills HORA : conformité guide Anthropic + nouveaux skills outils — TERMINÉ
+Optimisation CLAUDE.md (split modulaire) + statusline heure de reprise + commit/push
 
 # Etat actuel
-- 17 skills total (12 originaux améliorés + 5 nouveaux)
-- Tous conformes au guide officiel Anthropic (frontmatter, examples, troubleshooting)
-- 14 scripts TypeScript cross-platform (macOS + Linux + Windows)
-- 8 fichiers references/ (progressive disclosure pour 5 heavy skills)
-- CLAUDE.md mis à jour avec les 17 skills
-- Pas encore commité
+- CLAUDE.md splitté : 123 lignes core + 7 fichiers rules/ (286 lignes total)
+- Agents standardisés : alias courts (opus/sonnet/haiku) forward-compatible
+- Statusline : parse_countdown → parse_reset_time (heure locale au lieu de countdown)
+- Labels : ↻2h15 → →14h30 / "reprise 14h30" en mode full
+- Tests cross-platform OK (macOS BSD date vérifié)
 
-# Ce qui a été fait
-1. Lecture du guide officiel Anthropic pour créer des skills
-2. Comparaison des 12 skills HORA vs guide → identification des gaps
-3. Réécriture des 12 skills : frontmatter, metadata, negative triggers, examples, troubleshooting
-4. Progressive disclosure : 5 heavy skills (forge, design, security, refactor, perf) → references/
-5. 5 nouveaux skills outils créés : hora-browser, hora-api-test, hora-seed, hora-component, hora-changelog
-6. 6 scripts d'automatisation pour skills existants (security-scan, detect-smells, perf-check, anti-ai-scan, detect-test-infra, capture-viewports)
-7. 4 scripts pour browser (capture, visual-diff, check-links, a11y-audit)
-8. Scripts pour nouveaux skills (scan-routes, test-endpoint, detect-schema, detect-structure, parse-commits)
+# Decisions prises
+- CLAUDE.md < 200 lignes (doc Anthropic recommande)
+- Path-scoped rules pour stack.md et design.md (chargement conditionnel)
+- Agents : opus=critique, sonnet=dev, haiku=validation (aligné doc Anthropic)
+- Heure reprise : fuseau système via date epoch → format local %Hh%M
 
 # Prochaines etapes
-- Commit de tout le travail
-- Test des scripts
+- Commit tout + push
+- Mettre à jour claude/CLAUDE.md (projet)

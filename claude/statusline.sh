@@ -241,11 +241,11 @@ usage_7d_int=${usage_7d%%.*}
 [ -z "$usage_5h_int" ] && usage_5h_int=0
 [ -z "$usage_7d_int" ] && usage_7d_int=0
 
-# Calculer le temps restant avant reset (bash pur — cross-platform)
-parse_countdown() {
+# Convertir timestamp reset en heure locale (cross-platform)
+parse_reset_time() {
     local ts="$1"
     [ -z "$ts" ] || [ "$ts" = "null" ] || [ "$ts" = "''" ] && return
-    local ts_epoch now_epoch diff h m
+    local ts_epoch now_epoch
     # GNU date (Linux, Git Bash on Windows)
     ts_epoch=$(date -d "$ts" +%s 2>/dev/null)
     # BSD date (macOS) fallback — force UTC since API returns +00:00 timestamps
@@ -257,23 +257,25 @@ parse_countdown() {
     fi
     [ -z "$ts_epoch" ] && return
     now_epoch=$(date +%s)
-    diff=$((ts_epoch - now_epoch))
-    if [ "$diff" -le 0 ]; then
-        echo "now"
+    if [ "$ts_epoch" -le "$now_epoch" ]; then
+        echo "dispo"
     else
-        h=$((diff / 3600))
-        m=$(( (diff % 3600) / 60 ))
-        if [ "$h" -gt 0 ]; then
-            printf '%dh%02d' "$h" "$m"
+        # Format as local time HHhMM — cross-platform
+        # GNU date (Linux, Git Bash)
+        local formatted
+        formatted=$(date -d "@$ts_epoch" +"%Hh%M" 2>/dev/null)
+        if [ -n "$formatted" ]; then
+            echo "$formatted"
         else
-            printf '%dm' "$m"
+            # BSD date (macOS)
+            date -j -f "%s" "$ts_epoch" +"%Hh%M" 2>/dev/null
         fi
     fi
 }
 
 reset_5h_str=""
 if [ -n "$usage_5h_reset" ] && [ "$usage_5h_reset" != "null" ] && [ "$usage_5h_reset" != "''" ]; then
-    reset_5h_str=$(parse_countdown "$usage_5h_reset")
+    reset_5h_str=$(parse_reset_time "$usage_5h_reset")
 fi
 reset_5h_str="${reset_5h_str:-—}"
 
@@ -672,7 +674,7 @@ usage_7d_int=${usage_7d%%.*}
 
 # Recalculer le reset time si pas deja fait
 if [ -n "$usage_5h_reset" ] && [ "$usage_5h_reset" != "null" ] && [ "$usage_5h_reset" != "''" ] && [ "$reset_5h_str" = "—" ]; then
-    reset_5h_str=$(parse_countdown "$usage_5h_reset")
+    reset_5h_str=$(parse_reset_time "$usage_5h_reset")
     reset_5h_str="${reset_5h_str:-—}"
 fi
 
@@ -714,7 +716,7 @@ case "$MODE" in
             # Usage compact
             if [ "$usage_5h_int" -gt 0 ]; then
                 u5_c=$(get_usage_color "$usage_5h_int")
-                printf " ${u5_c}${usage_5h_int}%%${RST}${USAGE_RESET_CLR}↻${reset_5h_str}${RST}"
+                printf " ${u5_c}${usage_5h_int}%%${RST}${USAGE_RESET_CLR}→${reset_5h_str}${RST}"
             fi
             printf "\n"
         elif [ "$snap_count" -gt 0 ] || [ "$all_skills" -gt 0 ]; then
@@ -787,7 +789,7 @@ case "$MODE" in
         if [ "$usage_5h_int" -gt 0 ] || [ "$usage_7d_int" -gt 0 ]; then
             u5_c=$(get_usage_color "$usage_5h_int")
             u7_c=$(get_usage_color "$usage_7d_int")
-            printf "${AMBER}▰${RST} ${USAGE_RESET_CLR}5H:${RST} ${u5_c}${usage_5h_int}%%${RST} ${USAGE_RESET_CLR}↻${reset_5h_str}${RST} ${SLATE_600}|${RST} ${USAGE_RESET_CLR}WK:${RST} ${u7_c}${usage_7d_int}%%${RST}\n"
+            printf "${AMBER}▰${RST} ${USAGE_RESET_CLR}5H:${RST} ${u5_c}${usage_5h_int}%%${RST} ${USAGE_RESET_CLR}→${reset_5h_str}${RST} ${SLATE_600}|${RST} ${USAGE_RESET_CLR}WK:${RST} ${u7_c}${usage_7d_int}%%${RST}\n"
         fi
         ;;
 
@@ -813,7 +815,7 @@ case "$MODE" in
         if [ "$usage_5h_int" -gt 0 ] || [ "$usage_7d_int" -gt 0 ]; then
             u5_c=$(get_usage_color "$usage_5h_int")
             u7_c=$(get_usage_color "$usage_7d_int")
-            printf "${HORA_PRIMARY}◆${RST} ${USAGE_LABEL}USAGE :${RST} ${USAGE_RESET_CLR}5H:${RST} ${u5_c}${usage_5h_int}%%${RST} ${SLATE_400}(reset ${reset_5h_str})${RST} ${SLATE_600}|${RST} ${USAGE_RESET_CLR}WK:${RST} ${u7_c}${usage_7d_int}%%${RST}\n"
+            printf "${HORA_PRIMARY}◆${RST} ${USAGE_LABEL}USAGE :${RST} ${USAGE_RESET_CLR}5H:${RST} ${u5_c}${usage_5h_int}%%${RST} ${SLATE_400}(reprise ${reset_5h_str})${RST} ${SLATE_600}|${RST} ${USAGE_RESET_CLR}WK:${RST} ${u7_c}${usage_7d_int}%%${RST}\n"
         fi
 
         # Ligne 3 : Git
