@@ -57,6 +57,12 @@ Ces patterns trahissent un design genere par IA. Tu ne les produis JAMAIS.
 - **INTERDIT** : Inter comme seule police → 2 familles min (display + body)
 - **INTERDIT** : Mots "seamless", "leverage", "empower", "delve", "landscape"
 
+### Code
+- **INTERDIT** : `style={{ color: "..." }}` pour les couleurs → toujours des CSS variables via Tailwind classes
+- **INTERDIT** : `const BRAND = "oklch(...)"` en JS → definir `--brand` dans globals.css, utiliser `text-brand` via @theme
+- **INTERDIT** : `<style>{...}</style>` inline dans les composants → keyframes et animations dans globals.css
+- **INTERDIT** : Valeurs arbitraires repetees (`mt-[13px]`, `text-[#D4A853]`) → creer un token
+
 ### Test visuel
 Avant de valider : plisse les yeux devant le rendu. Si tout semble au meme niveau → hierarchie plate → refaire.
 
@@ -124,7 +130,7 @@ Body : `font-normal leading-relaxed`
 
 ### Spacing (grille 8px)
 
-`4px` micro | `8px` tight | `16px` base | `24px` medium | `32px` large | `48-64px` sections
+`4px` micro | `8px` tight | `12px` small | `16px` base | `24px` medium | `32px` large | `48px` xlarge | `64px` 2xlarge
 
 Jamais de valeurs arbitraires (`mt-[13px]` = bug).
 
@@ -140,6 +146,38 @@ Jamais de valeurs arbitraires (`mt-[13px]` = bug).
 ```
 
 Utiliser bordures pour la structure, ombres pour l'elevation.
+
+### Couleur de marque — TOUJOURS en CSS variable
+
+Quand un projet a une couleur de marque, la definir comme CSS variable + token Tailwind :
+
+```css
+/* globals.css */
+:root {
+  --brand: oklch(0.75 0.12 80);  /* ex: or HORA */
+  --brand-foreground: oklch(0.13 0.004 285);
+}
+
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+}
+```
+
+Utilisation dans les composants : `text-brand`, `bg-brand`, `border-brand`.
+**JAMAIS** de constante JS (`const BRAND = "oklch(...)"`), **JAMAIS** de `style={{ color: "..." }}`.
+
+### Keyframes et animations — dans globals.css
+
+```css
+/* globals.css — PAS dans <style> inline */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+```
+
+Utilisation : `className="animate-[fade-in-up_500ms_ease-out]"` ou via @theme.
 
 ---
 

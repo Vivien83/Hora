@@ -10,26 +10,26 @@
 
 **Methode de generation** :
 
-```css
-/* 1. Definir la teinte de marque (1 seule) */
-:root {
-  --brand-hue: [0-360];        /* La teinte signature */
-  --brand-chroma: [0.05-0.20]; /* Saturation — rester sobre */
-}
+Generer les valeurs OKLCH statiques pour chaque shade. Ne PAS utiliser `calc()` dans `oklch()` — le support navigateur est incomplet.
 
-/* 2. Generer la palette depuis ces 2 variables */
---color-brand-50:  oklch(0.97 calc(var(--brand-chroma) * 0.1) var(--brand-hue));
---color-brand-100: oklch(0.93 calc(var(--brand-chroma) * 0.2) var(--brand-hue));
---color-brand-200: oklch(0.87 calc(var(--brand-chroma) * 0.4) var(--brand-hue));
---color-brand-300: oklch(0.78 calc(var(--brand-chroma) * 0.6) var(--brand-hue));
---color-brand-400: oklch(0.70 calc(var(--brand-chroma) * 0.8) var(--brand-hue));
---color-brand-500: oklch(0.62 var(--brand-chroma) var(--brand-hue));
---color-brand-600: oklch(0.54 var(--brand-chroma) var(--brand-hue));
---color-brand-700: oklch(0.45 calc(var(--brand-chroma) * 0.9) var(--brand-hue));
---color-brand-800: oklch(0.35 calc(var(--brand-chroma) * 0.8) var(--brand-hue));
---color-brand-900: oklch(0.25 calc(var(--brand-chroma) * 0.7) var(--brand-hue));
---color-brand-950: oklch(0.15 calc(var(--brand-chroma) * 0.5) var(--brand-hue));
+```css
+/* Exemple : palette or (hue ~80, chroma 0.12) */
+:root {
+  --color-brand-50:  oklch(0.97 0.012 80);
+  --color-brand-100: oklch(0.93 0.024 80);
+  --color-brand-200: oklch(0.87 0.048 80);
+  --color-brand-300: oklch(0.78 0.072 80);
+  --color-brand-400: oklch(0.70 0.096 80);
+  --color-brand-500: oklch(0.62 0.12 80);   /* teinte principale */
+  --color-brand-600: oklch(0.54 0.12 80);
+  --color-brand-700: oklch(0.45 0.108 80);
+  --color-brand-800: oklch(0.35 0.096 80);
+  --color-brand-900: oklch(0.25 0.084 80);
+  --color-brand-950: oklch(0.15 0.060 80);
+}
 ```
+
+Pour adapter : changer le hue (0-360) et la chroma max (0.05-0.20) de la shade 500, puis deriver les autres proportionnellement.
 
 **3 couches obligatoires** :
 
@@ -46,7 +46,7 @@
 
 **Dark mode — tokens dedies** :
 ```css
-[data-theme="dark"] {
+.dark {
   --color-bg-canvas: oklch(0.13 0.004 285);     /* PAS #000000 */
   --color-bg-surface: oklch(0.18 0.005 285);
   --color-bg-raised: oklch(0.22 0.006 285);
@@ -130,7 +130,7 @@
 --shadow-md: 0 4px 12px oklch(0 0 0 / 0.08), 0 1px 3px oklch(0 0 0 / 0.04); /* Floating */
 
 /* Dark mode : ombres plus douces, bordures plus visibles */
-[data-theme="dark"] {
+.dark {
   --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.2);
   --shadow-md: 0 4px 12px oklch(0 0 0 / 0.3), 0 1px 3px oklch(0 0 0 / 0.15);
 }

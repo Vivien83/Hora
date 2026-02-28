@@ -3,7 +3,7 @@ name: hora-design
 description: Anti-AI web design workflow — intentional, premium design. Detects and eliminates generic AI patterns. Use when user says design, UI, UX, landing page, component, layout, redesign, style, theme, dark mode, branding. Do NOT use for design system audit only — use hora-vision for screenshot analysis.
 metadata:
   author: HORA
-  version: 2.0.0
+  version: 2.1.0
 compatibility: Claude Code. Works with Tailwind CSS + shadcn/ui projects.
 ---
 
@@ -14,6 +14,12 @@ compatibility: Claude Code. Works with Tailwind CSS + shadcn/ui projects.
 Workflow de design web ou **chaque choix visuel est intentionnel**. Le but n'est pas de produire du "joli" — c'est de produire du design qu'un humain reconnait comme craft, pas comme output.
 
 Inspire de : Dieter Rams (10 principes), Bauhaus (form follows function), Swiss/International Typographic Style (Linear, Vercel), Ma japonais (espace actif), wabi-sabi (imperfection intentionnelle), Apple HIG, Stripe (animation narrative).
+
+## Agent Designer (obligatoire)
+
+**Tout le code UI est ecrit par l'agent Designer** (`~/.claude/agents/Designer.md`).
+Ce skill definit le workflow (phases, gates, checklists). L'agent Designer execute le code.
+Quand `/hora-design` est invoque, lancer l'agent Designer avec le contexte du brief + la phase courante.
 
 ## Invocation
 
