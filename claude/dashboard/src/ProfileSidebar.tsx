@@ -10,7 +10,7 @@ const C = {
   accent: "#14b8a6",
 };
 
-type NavSection = "overview" | "project" | "memory" | "neural" | "chat" | "security" | "tools" | "telemetry" | "replay";
+type NavSection = "overview" | "project" | "memory" | "neural" | "chat" | "security" | "tools" | "telemetry" | "replay" | "design";
 
 interface ProfileSidebarProps {
   profile: ProfileData;
@@ -43,6 +43,7 @@ const NAV_ITEMS: Array<{ key: NavSection; label: string }> = [
   { key: "tools", label: "Outils" },
   { key: "telemetry", label: "Telemetrie" },
   { key: "replay", label: "Replay" },
+  { key: "design", label: "Design Test" },
 ];
 
 function timeAgo(date: Date): string {

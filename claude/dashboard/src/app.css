@@ -1,0 +1,253 @@
+@import "tailwindcss";
+
+/* ─── HORA Design Tokens (OKLCH) ─────────────────────────────────── */
+
+:root {
+  --radius: 0.5rem;
+
+  /* Semantic tokens — light mode */
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+  /* HORA brand */
+  --brand: oklch(0.75 0.12 80);
+  --brand-foreground: oklch(0.13 0.004 285);
+}
+
+.dark {
+  --background: oklch(0.13 0.004 285);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.18 0.005 285);
+  --card-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.22 0.006 285);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.22 0.006 285);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+
+  --brand: oklch(0.75 0.12 80);
+  --brand-foreground: oklch(0.13 0.004 285);
+}
+
+@theme inline {
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ─── Font: Space Grotesk (display) + DM Sans (body) ────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ─── Keyframes ──────────────────────────────────────────────────── */
+
+@keyframes enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-gold {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
+/* ─── Stagger classes ────────────────────────────────────────────── */
+
+.stagger-1 { animation: enter 500ms cubic-bezier(0.22, 1, 0.36, 1) 0ms both; }
+.stagger-2 { animation: enter 500ms cubic-bezier(0.22, 1, 0.36, 1) 75ms both; }
+.stagger-3 { animation: enter 500ms cubic-bezier(0.22, 1, 0.36, 1) 150ms both; }
+.stagger-4 { animation: enter 500ms cubic-bezier(0.22, 1, 0.36, 1) 225ms both; }
+.stagger-5 { animation: enter 500ms cubic-bezier(0.22, 1, 0.36, 1) 300ms both; }
+.stagger-6 { animation: enter 500ms cubic-bezier(0.22, 1, 0.36, 1) 375ms both; }
+
+/* ─── Neural Spectre (signature detail) ─────────────────────────── */
+
+@keyframes spectre-pulse {
+  0%, 100% { transform: scaleY(0.3); opacity: 0.3; }
+  50%      { transform: scaleY(1);   opacity: 0.9; }
+}
+
+@keyframes drift-right {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.04; }
+  50%      { opacity: 0.08; }
+}
+
+@keyframes line-scan {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+/* Spectre bar: each child gets a unique animation delay via stagger */
+.spectre-bar {
+  animation: spectre-pulse 2.4s ease-in-out infinite;
+  transform-origin: bottom;
+  will-change: transform;
+}
+.spectre-bar:nth-child(1)  { animation-delay: 0ms; }
+.spectre-bar:nth-child(2)  { animation-delay: 130ms; }
+.spectre-bar:nth-child(3)  { animation-delay: 260ms; }
+.spectre-bar:nth-child(4)  { animation-delay: 50ms; }
+.spectre-bar:nth-child(5)  { animation-delay: 180ms; }
+.spectre-bar:nth-child(6)  { animation-delay: 310ms; }
+.spectre-bar:nth-child(7)  { animation-delay: 80ms; }
+.spectre-bar:nth-child(8)  { animation-delay: 210ms; }
+.spectre-bar:nth-child(9)  { animation-delay: 340ms; }
+.spectre-bar:nth-child(10) { animation-delay: 120ms; }
+.spectre-bar:nth-child(11) { animation-delay: 250ms; }
+.spectre-bar:nth-child(12) { animation-delay: 380ms; }
+.spectre-bar:nth-child(13) { animation-delay: 150ms; }
+.spectre-bar:nth-child(14) { animation-delay: 280ms; }
+.spectre-bar:nth-child(15) { animation-delay: 410ms; }
+.spectre-bar:nth-child(16) { animation-delay: 100ms; }
+.spectre-bar:nth-child(17) { animation-delay: 230ms; }
+.spectre-bar:nth-child(18) { animation-delay: 360ms; }
+.spectre-bar:nth-child(19) { animation-delay: 170ms; }
+.spectre-bar:nth-child(20) { animation-delay: 300ms; }
+.spectre-bar:nth-child(21) { animation-delay: 430ms; }
+.spectre-bar:nth-child(22) { animation-delay: 90ms; }
+.spectre-bar:nth-child(23) { animation-delay: 220ms; }
+.spectre-bar:nth-child(24) { animation-delay: 350ms; }
+
+/* Card hover lift effect */
+.hover-lift {
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 200ms ease;
+}
+.hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 24px oklch(0 0 0 / 40%);
+}
+
+/* Tabular numeric utility */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* ─── Editorial Design System (v7) ───────────────────────────────── */
+
+/* Dot grid background — architect's paper feel */
+.editorial-dotgrid {
+  background-image: radial-gradient(circle, oklch(0.7 0 0 / 20%) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Ruled line — horizontal rule that feels like a print baseline */
+.editorial-rule {
+  height: 1px;
+  background: oklch(0.2 0 0 / 12%);
+}
+
+/* Oversized numeral styling — for KPI hero numbers */
+.editorial-numeral {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  line-height: 0.85;
+}
+
+/* Subtle card shadow for light mode */
+.editorial-card {
+  transition: box-shadow 250ms cubic-bezier(0.22, 1, 0.36, 1),
+              transform 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.editorial-card:hover {
+  box-shadow: 0 2px 20px oklch(0 0 0 / 6%), 0 1px 3px oklch(0 0 0 / 4%);
+  transform: translateY(-1px);
+}
+
+/* Gold underline accent — editorial pull-quote style */
+.editorial-accent-line {
+  background: linear-gradient(90deg, oklch(0.75 0.12 80), oklch(0.75 0.12 80 / 0%));
+  height: 2px;
+}
+
+/* Pulse dot for live indicators */
+@keyframes editorial-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+.editorial-pulse-dot {
+  animation: editorial-pulse 2s ease-in-out infinite;
+}
+
+/* Smooth color swatch reveal */
+@keyframes swatch-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.swatch-reveal {
+  animation: swatch-fill 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: left;
+}
+
+/* ─── Reduced motion ─────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -16,6 +16,7 @@ import { MemoryChat } from "./MemoryChat";
 import { HookTelemetry } from "./HookTelemetry";
 import { MemoryDiff } from "./MemoryDiff";
 import { SessionReplay } from "./SessionReplay";
+import { DesignTest } from "./DesignTest";
 
 const C = {
   bg: "#0A0A0B",
@@ -497,6 +498,11 @@ export function App() {
         {/* Replay section */}
         {section === "replay" && (
           <SessionReplay />
+        )}
+
+        {/* Design test section */}
+        {section === "design" && (
+          <DesignTest />
         )}
       </main>
 
