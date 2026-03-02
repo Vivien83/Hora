@@ -581,6 +581,8 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   }, [graphData]);
 
   const [temporalCutoff, setTemporalCutoff] = useState(allDates.max);
+  const [spacing, setSpacing] = useState(-400);
+  const [linkDist, setLinkDist] = useState(120);
 
   const forceData = useMemo(() => {
     const data = buildForceData(graphData, search, filterRecent, temporalCutoff);
@@ -597,9 +599,10 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg) return;
-    fg.d3Force("charge")?.strength(-400);
-    fg.d3Force("link")?.distance(120);
-  }, [forceData]);
+    fg.d3Force("charge")?.strength(spacing);
+    fg.d3Force("link")?.distance(linkDist);
+    fg.d3ReheatSimulation();
+  }, [forceData, spacing, linkDist]);
 
   // Node canvas renderer — fond du label adapte au canvas sombre
   const nodeCanvasObject = useCallback(
@@ -1001,6 +1004,56 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           <span style={{ fontSize: "10px", color: C.textSecondary, flexShrink: 0, fontFamily: C.mono }}>
             {new Date(temporalCutoff).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
           </span>
+        </div>
+
+        {/* Spacing controls */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: "48px",
+            left: "16px",
+            zIndex: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: "16px",
+            padding: "6px 12px",
+            background: "rgba(255,255,255,0.70)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            borderRadius: "10px",
+            border: `1px solid rgba(255,255,255,0.8)`,
+            boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "10px", color: C.textMuted, fontFamily: C.mono, whiteSpace: "nowrap" }}>Repulsion</span>
+            <input
+              type="range"
+              min={-2000}
+              max={-50}
+              value={spacing}
+              onChange={(e) => setSpacing(Number(e.target.value))}
+              style={{ width: "80px", accentColor: C.accent, height: "4px", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: "10px", color: C.textSecondary, fontFamily: C.mono, minWidth: "32px" }}>
+              {Math.abs(spacing)}
+            </span>
+          </div>
+          <div style={{ width: "1px", height: "16px", background: "rgba(0,0,0,0.08)" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "10px", color: C.textMuted, fontFamily: C.mono, whiteSpace: "nowrap" }}>Liens</span>
+            <input
+              type="range"
+              min={30}
+              max={500}
+              value={linkDist}
+              onChange={(e) => setLinkDist(Number(e.target.value))}
+              style={{ width: "80px", accentColor: C.gold, height: "4px", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: "10px", color: C.textSecondary, fontFamily: C.mono, minWidth: "32px" }}>
+              {linkDist}
+            </span>
+          </div>
         </div>
 
         {/* Force graph — canvas reste sombre pour lisibilite des noeuds */}
