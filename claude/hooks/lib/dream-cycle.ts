@@ -99,7 +99,7 @@ function clusterByEntity(episodes: Episode[], graph: HoraGraph): EpisodeCluster[
   const entityEpisodes = new Map<string, Episode[]>();
 
   for (const ep of episodes) {
-    for (const entityId of ep.entities_extracted) {
+    for (const entityId of ep.entities_extracted || []) {
       if (!entityEpisodes.has(entityId)) entityEpisodes.set(entityId, []);
       entityEpisodes.get(entityId)!.push(ep);
     }
@@ -151,7 +151,7 @@ function distillCluster(
   // Count how many episodes reference each fact
   const factOccurrences = new Map<string, number>();
   for (const ep of cluster.episodes) {
-    for (const factId of ep.facts_extracted) {
+    for (const factId of ep.facts_extracted || []) {
       factOccurrences.set(factId, (factOccurrences.get(factId) || 0) + 1);
     }
   }
@@ -179,7 +179,7 @@ function distillCluster(
   // Check for common relations across episodes that aren't yet captured
   const relationCounts = new Map<string, { count: number; descriptions: string[] }>();
   for (const ep of cluster.episodes) {
-    for (const factId of ep.facts_extracted) {
+    for (const factId of ep.facts_extracted || []) {
       // Find the fact in the graph (might be expired)
       const allFacts = graph.getAllFacts();
       const fact = allFacts.find((f) => f.id === factId);
