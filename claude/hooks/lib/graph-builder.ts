@@ -42,6 +42,7 @@ export interface SessionData {
   sentiment: number;
   toolUsage: Record<string, number>;
   projectId?: string;
+  projectName?: string;
 }
 
 export interface BuildReport {
@@ -214,6 +215,7 @@ REGLES STRICTES :
 2. Chaque description DOIT faire minimum 20 mots et expliquer le POURQUOI, pas juste le QUOI.
 3. La confidence doit etre calibree : 0.5 (mentionne vaguement), 0.7 (utilise clairement), 0.9 (prouve/confirme).
 4. Ajoute metadata.context pour expliquer d'ou vient ce fait.
+5. Le champ "Projet" ci-dessous indique le nom EXACT du projet de cette session. Si ce nom existe deja dans les entites existantes, reutilise-le. Sinon, cree une NOUVELLE entite de type "project" avec ce nom exact. Ne JAMAIS fusionner un projet avec un autre projet de nom different.
 
 EXEMPLES :
 BAD: {"relation":"involves","description":"HORA implique TypeScript","confidence":1.0}
@@ -233,7 +235,7 @@ ${factList || "(aucun)"}
 
 Session a analyser :
 - Session ID: ${sessionData.sessionId}
-- Projet: ${sessionData.projectId || "inconnu"}
+- Projet: ${sessionData.projectName || sessionData.projectId || "inconnu"}
 - Sentiment: ${sessionData.sentiment}/5
 - Outils: ${toolUsageStr || "aucun"}
 - Erreurs: ${failuresStr}

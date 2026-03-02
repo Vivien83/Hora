@@ -435,6 +435,7 @@ async function runGraphBuild(): Promise<StepResult> {
         sentiment,
         toolUsage: {},
         projectId,
+        projectName,
       });
 
       if (report.error) {
