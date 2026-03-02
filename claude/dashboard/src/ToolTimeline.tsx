@@ -9,12 +9,16 @@ import {
 } from "recharts";
 import type { ToolUsageDay } from "./types";
 
-const C = {
-  card: "#18181b",
-  border: "#27272a",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  accent: "#14b8a6",
+const sans = "'DM Sans', sans-serif";
+const mono = "'JetBrains Mono', monospace";
+
+const glass = {
+  background: "rgba(255,255,255,0.45)",
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid rgba(255,255,255,0.7)",
+  borderRadius: "20px",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
 };
 
 interface ToolTimelineProps {
@@ -34,15 +38,19 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   return (
     <div
       style={{
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: "6px",
-        padding: "8px 12px",
+        background: "rgba(255,255,255,0.85)",
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        border: "1px solid rgba(255,255,255,0.8)",
+        borderRadius: "16px",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
+        padding: "12px 16px",
         fontSize: "12px",
+        fontFamily: sans,
       }}
     >
-      <div style={{ color: C.muted, marginBottom: "4px" }}>{label}</div>
-      <div style={{ color: "#e4e4e7", fontWeight: 600 }}>{total} appels</div>
+      <div style={{ color: "#94a3b8", marginBottom: "4px", fontFamily: mono }}>{label}</div>
+      <div style={{ color: "#0f172a", fontWeight: 600 }}>{total} appels</div>
     </div>
   );
 }
@@ -58,12 +66,11 @@ export function ToolTimeline({ timeline, toolUsage }: ToolTimelineProps) {
     return (
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...glass,
           padding: "24px",
-          color: C.dim,
+          color: "#64748b",
           fontSize: "14px",
+          fontFamily: sans,
         }}
       >
         Aucune donnee de timeline pour les 7 derniers jours.
@@ -76,7 +83,6 @@ export function ToolTimeline({ timeline, toolUsage }: ToolTimelineProps) {
     total: day.total,
   }));
 
-  // Top 5 tools for display
   const topTools = Object.entries(toolUsage)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 5);
@@ -84,35 +90,28 @@ export function ToolTimeline({ timeline, toolUsage }: ToolTimelineProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       {/* Timeline chart */}
-      <div
-        style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
-          padding: "20px 24px",
-        }}
-      >
-        <div style={{ fontSize: "11px", color: C.dim, marginBottom: "12px" }}>
+      <div style={{ ...glass, padding: "20px 24px" }}>
+        <div style={{ fontSize: "11px", color: "#94a3b8", marginBottom: "12px", fontFamily: mono, letterSpacing: "0.06em", textTransform: "uppercase" }}>
           Appels d'outils par jour (7 derniers jours)
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" vertical={false} />
             <XAxis
               dataKey="date"
-              tick={{ fill: C.dim, fontSize: 11 }}
-              axisLine={{ stroke: C.border }}
+              tick={{ fill: "#94a3b8", fontSize: 11, fontFamily: mono }}
+              axisLine={{ stroke: "rgba(0,0,0,0.06)" }}
               tickLine={false}
             />
             <YAxis
-              tick={{ fill: C.dim, fontSize: 11 }}
-              axisLine={{ stroke: C.border }}
+              tick={{ fill: "#94a3b8", fontSize: 11, fontFamily: mono }}
+              axisLine={{ stroke: "rgba(0,0,0,0.06)" }}
               tickLine={false}
             />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: C.border }} />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(99,102,241,0.06)" }} />
             <Bar
               dataKey="total"
-              fill={C.accent}
+              fill="#6366f1"
               radius={[4, 4, 0, 0]}
               opacity={0.8}
             />
@@ -122,24 +121,17 @@ export function ToolTimeline({ timeline, toolUsage }: ToolTimelineProps) {
 
       {/* Top tools mini-list */}
       {topTools.length > 0 && (
-        <div
-          style={{
-            background: C.card,
-            border: `1px solid ${C.border}`,
-            borderRadius: "8px",
-            padding: "14px 16px",
-          }}
-        >
-          <div style={{ fontSize: "11px", color: C.dim, marginBottom: "8px" }}>
+        <div style={{ ...glass, padding: "16px 20px" }}>
+          <div style={{ fontSize: "11px", color: "#94a3b8", marginBottom: "12px", fontFamily: mono, letterSpacing: "0.06em", textTransform: "uppercase" }}>
             Top 5 outils (tous temps)
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {topTools.map(([name, count]) => {
               const maxCount = topTools[0][1];
               const ratio = count / maxCount;
               return (
-                <div key={name} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "12px", color: C.muted, width: "100px", flexShrink: 0 }}>
+                <div key={name} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "12px", color: "#334155", width: "100px", flexShrink: 0, fontFamily: mono }}>
                     {name}
                   </span>
                   <div
@@ -147,15 +139,14 @@ export function ToolTimeline({ timeline, toolUsage }: ToolTimelineProps) {
                       flex: 1,
                       height: "4px",
                       borderRadius: "2px",
-                      background: C.border,
-                      overflow: "hidden",
+                      background: "rgba(0,0,0,0.06)",
                     }}
                   >
                     <div
                       style={{
                         height: "100%",
                         width: `${ratio * 100}%`,
-                        background: C.accent,
+                        background: "#6366f1",
                         borderRadius: "2px",
                         opacity: 0.4 + ratio * 0.6,
                       }}
@@ -164,10 +155,11 @@ export function ToolTimeline({ timeline, toolUsage }: ToolTimelineProps) {
                   <span
                     style={{
                       fontSize: "11px",
-                      color: C.dim,
+                      color: "#64748b",
                       width: "50px",
                       textAlign: "right",
                       flexShrink: 0,
+                      fontFamily: mono,
                     }}
                   >
                     {count.toLocaleString()}

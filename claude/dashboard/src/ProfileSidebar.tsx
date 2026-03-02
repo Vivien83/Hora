@@ -1,26 +1,27 @@
 import { useState, useEffect } from "react";
 import type { ProfileData } from "./types";
 
-/* ── Color constants ── */
+/* ── Light warm palette — aligned with Overview/Insights DA ── */
 const C = {
-  bg: "#0B0B0E",
-  surface: "#111116",
-  surfaceHover: "#16161C",
-  surfaceActive: "#1A1A22",
-  border: "rgba(255, 255, 255, 0.06)",
-  borderSubtle: "rgba(255, 255, 255, 0.03)",
+  bg: "#F2F0E9",
+  surface: "rgba(255, 255, 255, 0.55)",
+  surfaceHover: "rgba(255, 255, 255, 0.7)",
+  surfaceActive: "rgba(255, 255, 255, 0.8)",
+  border: "rgba(0, 0, 0, 0.06)",
+  borderGlass: "rgba(255, 255, 255, 0.7)",
   gold: "#D4A853",
-  goldDim: "rgba(212, 168, 83, 0.15)",
-  goldGlow: "rgba(212, 168, 83, 0.08)",
-  text: "#E8E8EC",
-  textSecondary: "#9B9BA7",
-  textTertiary: "#5C5C6B",
-  live: "#34D399",
-  liveGlow: "rgba(52, 211, 153, 0.4)",
+  goldDim: "rgba(212, 168, 83, 0.12)",
+  goldGlow: "rgba(212, 168, 83, 0.2)",
+  text: "#0f172a",
+  textSecondary: "#64748b",
+  textTertiary: "#94a3b8",
+  live: "#22c55e",
+  liveGlow: "rgba(34, 197, 94, 0.35)",
 };
 
 const sans = "'DM Sans', sans-serif";
 const mono = "'JetBrains Mono', monospace";
+const serif = "'Playfair Display', Georgia, serif";
 
 type NavSection = "overview" | "project" | "memory" | "neural" | "chat" | "security" | "tools" | "telemetry" | "replay" | "insights";
 
@@ -113,7 +114,7 @@ export function ProfileSidebar({
   return (
     <aside
       style={{
-        width: "232px",
+        width: "240px",
         minHeight: "100vh",
         background: C.bg,
         display: "flex",
@@ -127,14 +128,24 @@ export function ProfileSidebar({
       }}
     >
       <style>{`
-        .hora-nav-btn { transition: all 0.2s cubic-bezier(0.23, 1, 0.32, 1); position: relative; }
-        .hora-nav-btn:hover { background: ${C.surfaceHover} !important; }
+        .hora-nav-btn {
+          transition: all 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+          position: relative;
+        }
+        .hora-nav-btn:hover {
+          background: ${C.surfaceHover} !important;
+        }
         .hora-nav-btn:active { transform: scale(0.98); }
-        .hora-avatar:hover { border-color: ${C.gold} !important; box-shadow: 0 0 12px ${C.goldGlow} !important; }
-        .hora-pulse { animation: hora-live-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        .hora-avatar:hover {
+          border-color: ${C.gold} !important;
+          box-shadow: 0 0 16px ${C.goldGlow} !important;
+        }
+        .hora-pulse {
+          animation: hora-live-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
         @keyframes hora-live-pulse {
           0%, 100% { opacity: 1; box-shadow: 0 0 4px ${C.liveGlow}; }
-          50% { opacity: 0.5; box-shadow: 0 0 10px ${C.liveGlow}; }
+          50% { opacity: 0.5; box-shadow: 0 0 12px ${C.liveGlow}; }
         }
         @keyframes hora-sidebar-stagger {
           from { opacity: 0; transform: translateX(-6px); }
@@ -142,17 +153,22 @@ export function ProfileSidebar({
         }
       `}</style>
 
-      {/* Subtle glass depth gradient overlay */}
+      {/* Ambient warm glow at top */}
       <div
         style={{
           position: "absolute",
-          inset: 0,
-          background: "linear-gradient(180deg, rgba(255,255,255,0.015) 0%, transparent 40%, rgba(255,255,255,0.008) 100%)",
+          top: "-40px",
+          left: "20%",
+          width: "60%",
+          height: "120px",
+          background: "rgba(212, 168, 83, 0.06)",
+          filter: "blur(50px)",
+          borderRadius: "50%",
           pointerEvents: "none",
         }}
       />
 
-      {/* Right border with subtle gradient */}
+      {/* Right border — subtle */}
       <div
         style={{
           position: "absolute",
@@ -167,7 +183,7 @@ export function ProfileSidebar({
       {/* ── Brand header ── */}
       <div
         style={{
-          padding: "24px 20px 20px",
+          padding: "28px 24px 20px",
           position: "relative",
           zIndex: 1,
         }}
@@ -186,14 +202,14 @@ export function ProfileSidebar({
               transition: "all 0.3s ease",
             }}
           />
-          {/* Brand name in gold */}
+          {/* Brand */}
           <span
             style={{
               fontWeight: 700,
-              fontSize: "15px",
-              color: C.gold,
-              letterSpacing: "0.08em",
-              fontFamily: sans,
+              fontSize: "18px",
+              fontFamily: serif,
+              color: C.text,
+              letterSpacing: "-0.01em",
             }}
           >
             HORA
@@ -226,7 +242,7 @@ export function ProfileSidebar({
             <span style={{ color: isLive ? C.live : C.textTertiary }}>
               {isLive ? "live" : "poll"}
             </span>
-            <span style={{ margin: "0 6px", opacity: 0.4 }}>|</span>
+            <span style={{ margin: "0 6px", opacity: 0.4 }}>·</span>
             {timeAgo(lastUpdate)}
           </div>
         )}
@@ -236,18 +252,18 @@ export function ProfileSidebar({
       <div
         style={{
           height: "1px",
-          margin: "0 16px",
-          background: `linear-gradient(90deg, transparent 0%, ${C.border} 20%, ${C.border} 80%, transparent 100%)`,
+          margin: "0 20px",
+          background: `linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.08) 20%, rgba(0,0,0,0.08) 80%, transparent 100%)`,
         }}
       />
 
       {/* ── Navigation ── */}
       <nav
         style={{
-          padding: "12px 10px",
+          padding: "14px 12px",
           display: "flex",
           flexDirection: "column",
-          gap: "1px",
+          gap: "2px",
           position: "relative",
           zIndex: 1,
         }}
@@ -268,15 +284,17 @@ export function ProfileSidebar({
                 alignItems: "center",
                 width: "100%",
                 textAlign: "left",
-                padding: "8px 12px",
-                borderRadius: "8px",
+                padding: "9px 14px",
+                borderRadius: "10px",
                 border: "none",
                 cursor: "pointer",
                 fontSize: "13px",
-                fontWeight: isActive ? 500 : 400,
+                fontWeight: isActive ? 600 : 400,
                 fontFamily: sans,
                 color: isActive ? C.text : isHovered ? C.text : C.textSecondary,
                 background: isActive ? C.surfaceActive : "transparent",
+                backdropFilter: isActive ? "blur(12px)" : "none",
+                boxShadow: isActive ? "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)" : "none",
                 gap: "10px",
                 position: "relative",
                 animation: mounted ? `hora-sidebar-stagger 0.4s cubic-bezier(0.23, 1, 0.32, 1) ${80 + i * 30}ms both` : "none",
@@ -290,11 +308,11 @@ export function ProfileSidebar({
                     left: "0px",
                     top: "50%",
                     transform: "translateY(-50%)",
-                    width: "2px",
-                    height: "16px",
-                    borderRadius: "0 2px 2px 0",
-                    background: C.gold,
-                    boxShadow: `0 0 8px ${C.goldGlow}`,
+                    width: "3px",
+                    height: "18px",
+                    borderRadius: "0 3px 3px 0",
+                    background: `linear-gradient(180deg, ${C.gold}, rgba(212, 168, 83, 0.6))`,
+                    boxShadow: `0 0 10px ${C.goldGlow}`,
                   }}
                 />
               )}
@@ -313,15 +331,15 @@ export function ProfileSidebar({
       <div
         style={{
           height: "1px",
-          margin: "0 16px",
-          background: `linear-gradient(90deg, transparent 0%, ${C.border} 20%, ${C.border} 80%, transparent 100%)`,
+          margin: "0 20px",
+          background: `linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.08) 20%, rgba(0,0,0,0.08) 80%, transparent 100%)`,
         }}
       />
 
-      {/* ── Profile section ── */}
+      {/* ── Profile card ── */}
       <div
         style={{
-          padding: "16px 16px 20px",
+          padding: "16px 16px 24px",
           position: "relative",
           zIndex: 1,
         }}
@@ -331,17 +349,23 @@ export function ProfileSidebar({
             display: "flex",
             alignItems: "center",
             gap: "12px",
+            padding: "12px 14px",
+            borderRadius: "12px",
+            background: C.surface,
+            backdropFilter: "blur(16px)",
+            border: `1px solid ${C.borderGlass}`,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
           }}
         >
-          {/* Avatar circle with initials */}
+          {/* Avatar with gold ring */}
           <div
             className="hora-avatar"
             style={{
-              width: "34px",
-              height: "34px",
+              width: "36px",
+              height: "36px",
               borderRadius: "50%",
-              background: `linear-gradient(135deg, ${C.goldDim}, rgba(212, 168, 83, 0.06))`,
-              border: `1px solid rgba(212, 168, 83, 0.25)`,
+              background: `linear-gradient(135deg, rgba(212, 168, 83, 0.15), rgba(212, 168, 83, 0.05))`,
+              border: `1.5px solid ${C.gold}`,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -352,8 +376,8 @@ export function ProfileSidebar({
           >
             <span
               style={{
-                fontSize: "11px",
-                fontWeight: 600,
+                fontSize: "12px",
+                fontWeight: 700,
                 color: C.gold,
                 letterSpacing: "0.04em",
                 fontFamily: sans,
@@ -368,7 +392,7 @@ export function ProfileSidebar({
             <div
               style={{
                 fontSize: "13px",
-                fontWeight: 500,
+                fontWeight: 600,
                 color: C.text,
                 fontFamily: sans,
                 lineHeight: 1.3,
@@ -389,18 +413,18 @@ export function ProfileSidebar({
               }}
             >
               {lang.toUpperCase()}
-              <span style={{ margin: "0 5px", opacity: 0.3 }}>/</span>
+              <span style={{ margin: "0 5px", opacity: 0.3 }}>·</span>
               TypeScript
             </div>
           </div>
         </div>
 
-        {/* Project name */}
+        {/* Project name — below card */}
         {projectName && (
           <div
             style={{
               marginTop: "10px",
-              marginLeft: "46px",
+              paddingLeft: "14px",
               fontSize: "10px",
               fontFamily: mono,
               color: C.gold,

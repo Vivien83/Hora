@@ -79,6 +79,17 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* --- Hide all scrollbars ------------------------------------------------- */
+
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
 /* --- Reduced motion ------------------------------------------------------ */
 
 @media (prefers-reduced-motion: reduce) {

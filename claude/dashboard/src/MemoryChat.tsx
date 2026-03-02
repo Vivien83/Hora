@@ -2,15 +2,26 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import type { ChatMessage, ChatMessageEntity, ChatMessageFact } from "./types";
 
 const C = {
-  bg: "#0A0A0B",
-  card: "#18181b",
-  border: "#27272a",
-  text: "#e4e4e7",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  accent: "#14b8a6",
+  bg: "#F2F0E9",
+  glass: {
+    background: "rgba(255,255,255,0.45)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    border: "1px solid rgba(255,255,255,0.7)",
+    borderRadius: "20px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
+  },
+  text: "#0f172a",
+  textSecondary: "#334155",
+  textMuted: "#64748b",
+  textTertiary: "#94a3b8",
   gold: "#D4A853",
   goldDim: "#A08040",
+  accent: "#6366f1",
+  border: "rgba(0,0,0,0.06)",
+  serif: "'Playfair Display', Georgia, serif",
+  sans: "'DM Sans', sans-serif",
+  mono: "'JetBrains Mono', monospace",
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -92,21 +103,29 @@ function SettingsPanel({
   return (
     <div
       style={{
+        ...C.glass,
         padding: "20px",
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: "8px",
-        margin: "16px",
+        margin: "12px 16px",
         display: "flex",
         flexDirection: "column",
         gap: "14px",
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: "14px", fontWeight: 600, color: C.text }}>Configuration LLM</span>
+        <span style={{ fontSize: "14px", fontWeight: 600, color: C.text, fontFamily: C.sans }}>
+          Configuration LLM
+        </span>
         <button
           onClick={onClose}
-          style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: "16px" }}
+          style={{
+            background: "none",
+            border: "none",
+            color: C.textTertiary,
+            cursor: "pointer",
+            fontSize: "18px",
+            lineHeight: 1,
+            padding: "4px",
+          }}
         >
           ×
         </button>
@@ -121,13 +140,15 @@ function SettingsPanel({
             style={{
               flex: 1,
               padding: "8px",
-              borderRadius: "6px",
-              border: `1px solid ${provider === p ? C.gold : C.border}`,
-              background: provider === p ? `${C.gold}10` : "transparent",
-              color: provider === p ? C.gold : C.muted,
+              borderRadius: "10px",
+              border: `1px solid ${provider === p ? C.gold : "rgba(0,0,0,0.08)"}`,
+              background: provider === p ? `rgba(212,168,83,0.08)` : "rgba(255,255,255,0.5)",
+              color: provider === p ? C.gold : C.textMuted,
               cursor: "pointer",
               fontSize: "12px",
               fontWeight: 600,
+              fontFamily: C.sans,
+              transition: "all 150ms",
             }}
           >
             {p === "anthropic" ? "Anthropic" : "OpenRouter"}
@@ -137,7 +158,7 @@ function SettingsPanel({
 
       {/* API Key */}
       <div>
-        <label style={{ fontSize: "11px", color: C.dim, display: "block", marginBottom: "4px" }}>
+        <label style={{ fontSize: "11px", color: C.textMuted, display: "block", marginBottom: "4px", fontFamily: C.sans }}>
           API Key {config.keySet && <span style={{ color: C.accent }}>({config.keyPreview})</span>}
         </label>
         <input
@@ -148,13 +169,13 @@ function SettingsPanel({
           style={{
             width: "100%",
             boxSizing: "border-box",
-            background: C.bg,
-            border: `1px solid ${C.border}`,
-            borderRadius: "4px",
+            background: "rgba(255,255,255,0.6)",
+            border: "1px solid rgba(0,0,0,0.08)",
+            borderRadius: "8px",
             padding: "8px 10px",
             color: C.text,
             fontSize: "12px",
-            fontFamily: "monospace",
+            fontFamily: C.mono,
             outline: "none",
           }}
         />
@@ -162,7 +183,7 @@ function SettingsPanel({
 
       {/* Model */}
       <div>
-        <label style={{ fontSize: "11px", color: C.dim, display: "block", marginBottom: "4px" }}>
+        <label style={{ fontSize: "11px", color: C.textMuted, display: "block", marginBottom: "4px", fontFamily: C.sans }}>
           Modele
         </label>
         <input
@@ -173,19 +194,19 @@ function SettingsPanel({
           style={{
             width: "100%",
             boxSizing: "border-box",
-            background: C.bg,
-            border: `1px solid ${C.border}`,
-            borderRadius: "4px",
+            background: "rgba(255,255,255,0.6)",
+            border: "1px solid rgba(0,0,0,0.08)",
+            borderRadius: "8px",
             padding: "8px 10px",
             color: C.text,
             fontSize: "12px",
-            fontFamily: "monospace",
+            fontFamily: C.mono,
             outline: "none",
           }}
         />
       </div>
 
-      {error && <div style={{ fontSize: "11px", color: "#ef4444" }}>{error}</div>}
+      {error && <div style={{ fontSize: "11px", color: "#ef4444", fontFamily: C.sans }}>{error}</div>}
 
       <button
         onClick={handleSave}
@@ -193,13 +214,15 @@ function SettingsPanel({
         style={{
           background: C.gold,
           border: "none",
-          borderRadius: "6px",
-          color: "#0A0A0B",
+          borderRadius: "10px",
+          color: "#fff",
           fontSize: "13px",
           fontWeight: 600,
           padding: "10px",
           cursor: saving ? "default" : "pointer",
           opacity: saving ? 0.5 : 1,
+          fontFamily: C.sans,
+          transition: "opacity 150ms",
         }}
       >
         {saving ? "Sauvegarde..." : "Sauvegarder"}
@@ -211,7 +234,7 @@ function SettingsPanel({
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function EntityBadge({ entity }: { entity: ChatMessageEntity }) {
-  const color = TYPE_COLORS[entity.type] ?? C.dim;
+  const color = TYPE_COLORS[entity.type] ?? C.textMuted;
   return (
     <span
       style={{
@@ -219,16 +242,17 @@ function EntityBadge({ entity }: { entity: ChatMessageEntity }) {
         alignItems: "center",
         gap: "4px",
         padding: "2px 8px",
-        borderRadius: "4px",
-        background: `${color}15`,
-        border: `1px solid ${color}30`,
+        borderRadius: "6px",
+        background: `${color}12`,
+        border: `1px solid ${color}25`,
         fontSize: "11px",
         color,
         fontWeight: 500,
+        fontFamily: C.sans,
       }}
     >
       {entity.name}
-      <span style={{ opacity: 0.5, fontSize: "10px" }}>{entity.type}</span>
+      <span style={{ opacity: 0.5, fontSize: "10px", fontFamily: C.mono }}>{entity.type}</span>
     </span>
   );
 }
@@ -237,8 +261,8 @@ function ConfidenceBar({ value }: { value: number }) {
   const pct = Math.round(value * 100);
   const color = pct >= 80 ? "#22c55e" : pct >= 50 ? "#f59e0b" : "#ef4444";
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", color: C.dim }}>
-      <span style={{ display: "inline-block", width: "32px", height: "3px", background: C.border, borderRadius: "2px", overflow: "hidden" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", color: C.textTertiary, fontFamily: C.mono }}>
+      <span style={{ display: "inline-block", width: "32px", height: "3px", background: "rgba(0,0,0,0.08)", borderRadius: "2px" }}>
         <span style={{ display: "block", width: `${pct}%`, height: "100%", background: color, borderRadius: "2px" }} />
       </span>
       {pct}%
@@ -265,7 +289,7 @@ function CollapsibleSection({
         style={{
           background: "none",
           border: "none",
-          color: C.dim,
+          color: C.textMuted,
           cursor: "pointer",
           fontSize: "10px",
           fontWeight: 600,
@@ -275,6 +299,7 @@ function CollapsibleSection({
           display: "flex",
           alignItems: "center",
           gap: "4px",
+          fontFamily: C.sans,
         }}
       >
         <span style={{ fontSize: "8px" }}>{open ? "▼" : "▶"}</span>
@@ -297,13 +322,14 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
       }}
       style={{
         background: "none",
-        border: `1px solid ${C.border}`,
-        borderRadius: "4px",
-        color: copied ? C.accent : C.dim,
+        border: `1px solid rgba(0,0,0,0.10)`,
+        borderRadius: "6px",
+        color: copied ? C.accent : C.textMuted,
         fontSize: "10px",
         cursor: "pointer",
         padding: "2px 8px",
         transition: "all 100ms",
+        fontFamily: C.sans,
       }}
     >
       {copied ? "Copie !" : label ?? "Copier"}
@@ -318,7 +344,6 @@ function HoraMessage({ msg }: { msg: ChatMessage & { answer?: string; llmUsed?: 
   const hasEntities = msg.entities && msg.entities.length > 0;
   const hasFacts = msg.facts && msg.facts.length > 0;
 
-  // Build copyable context for injection into Claude Code
   const copyContext = [
     msg.answer ? `=== Reponse HORA ===\n${msg.answer}` : "",
     msg.entities?.length ? `\n=== Entites (${msg.entities.length}) ===\n${msg.entities.map((e) => `- ${e.name} [${e.type}]`).join("\n")}` : "",
@@ -337,6 +362,7 @@ function HoraMessage({ msg }: { msg: ChatMessage & { answer?: string; llmUsed?: 
             color: C.text,
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
+            fontFamily: C.sans,
           }}
         >
           {msg.answer}
@@ -345,7 +371,7 @@ function HoraMessage({ msg }: { msg: ChatMessage & { answer?: string; llmUsed?: 
 
       {/* No LLM, no results */}
       {!hasAnswer && !hasEntities && !hasFacts && msg.content === "Aucun resultat pertinent trouve." && (
-        <div style={{ color: C.dim, fontSize: "13px" }}>
+        <div style={{ color: C.textTertiary, fontSize: "13px", fontFamily: C.sans }}>
           Aucun resultat pertinent dans la memoire pour cette requete.
         </div>
       )}
@@ -356,9 +382,10 @@ function HoraMessage({ msg }: { msg: ChatMessage & { answer?: string; llmUsed?: 
           style={{
             fontSize: "12px",
             lineHeight: 1.6,
-            color: C.muted,
+            color: C.textSecondary,
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
+            fontFamily: C.sans,
           }}
         >
           {msg.content}
@@ -383,17 +410,17 @@ function HoraMessage({ msg }: { msg: ChatMessage & { answer?: string; llmUsed?: 
             {msg.facts!.slice(0, 10).map((f, i) => (
               <div
                 key={`${f.source}-${f.relation}-${i}`}
-                style={{ padding: "3px 0", borderBottom: `1px solid ${C.border}20`, display: "flex", gap: "6px", alignItems: "baseline" }}
+                style={{ padding: "3px 0", borderBottom: `1px solid rgba(0,0,0,0.05)`, display: "flex", gap: "6px", alignItems: "baseline" }}
               >
-                <span style={{ color: C.gold, fontWeight: 600, minWidth: "70px", flexShrink: 0 }}>{f.relation}</span>
-                <span style={{ color: C.dim, flex: 1 }}>
-                  <span style={{ color: C.muted }}>{f.source}</span> → <span style={{ color: C.muted }}>{f.target}</span>
+                <span style={{ color: C.gold, fontWeight: 600, minWidth: "70px", flexShrink: 0, fontFamily: C.mono }}>{f.relation}</span>
+                <span style={{ color: C.textMuted, flex: 1, fontFamily: C.sans }}>
+                  <span style={{ color: C.textSecondary }}>{f.source}</span> → <span style={{ color: C.textSecondary }}>{f.target}</span>
                 </span>
                 <ConfidenceBar value={f.confidence} />
               </div>
             ))}
             {msg.facts!.length > 10 && (
-              <div style={{ color: C.dim, fontSize: "10px", paddingTop: "4px" }}>
+              <div style={{ color: C.textTertiary, fontSize: "10px", paddingTop: "4px", fontFamily: C.sans }}>
                 +{msg.facts!.length - 10} facts supplementaires
               </div>
             )}
@@ -405,18 +432,18 @@ function HoraMessage({ msg }: { msg: ChatMessage & { answer?: string; llmUsed?: 
       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
         <CopyButton text={copyContext} label="Copier le contexte" />
         {msg.stats && (
-          <span style={{ fontSize: "10px", color: C.dim }}>
+          <span style={{ fontSize: "10px", color: C.textTertiary, fontFamily: C.mono }}>
             {msg.stats.durationMs}ms · {msg.stats.returned} resultats
             {msg.llmUsed && msg.stats.inputTokens ? ` · ${msg.stats.inputTokens}↑ ${msg.stats.outputTokens}↓` : ""}
           </span>
         )}
         {msg.llmUsed && msg.stats?.costUsd != null && msg.stats.costUsd > 0 && (
-          <span style={{ fontSize: "10px", color: C.gold, fontWeight: 600 }}>
+          <span style={{ fontSize: "10px", color: C.gold, fontWeight: 600, fontFamily: C.mono }}>
             ${msg.stats.costUsd.toFixed(4)}
           </span>
         )}
         {!msg.llmUsed && msg.stats && (
-          <span style={{ fontSize: "10px", color: C.goldDim }}>sans LLM</span>
+          <span style={{ fontSize: "10px", color: C.goldDim, fontFamily: C.sans }}>sans LLM</span>
         )}
       </div>
     </div>
@@ -445,7 +472,6 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
       .then((r) => r.json())
       .then((data) => {
         setTotalCost(data.totalCostUsd ?? 0);
-        // Restore recent messages from history
         const entries = data.entries ?? [];
         if (entries.length > 0) {
           const restored: Array<ChatMessage & { answer?: string; llmUsed?: boolean }> = [];
@@ -492,7 +518,6 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
     setLoading(true);
 
     try {
-      // Send conversation history for multi-turn
       const history = messages.slice(-6).map((m) => ({
         role: m.role,
         content: m.role === "hora" ? (m.answer ?? m.content) : m.content,
@@ -545,38 +570,44 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
   const factCount = graphStats?.totalFacts ?? 0;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: C.bg }}>
       {/* Header */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "10px 16px",
+          padding: "12px 20px",
           borderBottom: `1px solid ${C.border}`,
+          background: "rgba(255,255,255,0.3)",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "15px", fontWeight: 700, color: C.gold }}>Ask HORA</span>
+          <span style={{ fontSize: "15px", fontWeight: 700, color: C.gold, fontFamily: C.serif }}>
+            Ask HORA
+          </span>
           <span
             style={{
               fontSize: "11px",
               color: C.goldDim,
               padding: "2px 8px",
-              background: `${C.gold}10`,
-              border: `1px solid ${C.gold}20`,
-              borderRadius: "4px",
+              background: `rgba(212,168,83,0.08)`,
+              border: `1px solid rgba(212,168,83,0.2)`,
+              borderRadius: "6px",
+              fontFamily: C.mono,
             }}
           >
             {entityCount} entites | {factCount} facts
           </span>
           {config.keySet && (
-            <span style={{ fontSize: "10px", color: C.accent }}>
+            <span style={{ fontSize: "10px", color: C.accent, fontFamily: C.sans }}>
               {config.provider} · {config.model}
             </span>
           )}
           {!config.keySet && (
-            <span style={{ fontSize: "10px", color: C.goldDim }}>
+            <span style={{ fontSize: "10px", color: C.textTertiary, fontFamily: C.sans }}>
               retrieval only — configurer un LLM pour les reponses
             </span>
           )}
@@ -586,11 +617,11 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
                 fontSize: "10px",
                 color: C.gold,
                 padding: "2px 6px",
-                background: `${C.gold}10`,
-                border: `1px solid ${C.gold}20`,
-                borderRadius: "4px",
+                background: `rgba(212,168,83,0.08)`,
+                border: `1px solid rgba(212,168,83,0.2)`,
+                borderRadius: "6px",
                 fontWeight: 600,
-                fontFamily: "monospace",
+                fontFamily: C.mono,
               }}
             >
               ${totalCost.toFixed(4)}
@@ -601,13 +632,15 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
           <button
             onClick={() => setShowSettings(!showSettings)}
             style={{
-              background: "none",
-              border: `1px solid ${C.border}`,
-              borderRadius: "4px",
-              color: C.dim,
+              background: "rgba(255,255,255,0.6)",
+              border: `1px solid rgba(0,0,0,0.08)`,
+              borderRadius: "8px",
+              color: C.textMuted,
               fontSize: "11px",
               cursor: "pointer",
-              padding: "3px 8px",
+              padding: "4px 10px",
+              fontFamily: C.sans,
+              transition: "all 150ms",
             }}
           >
             {showSettings ? "Fermer" : "Config"}
@@ -616,13 +649,15 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
             <button
               onClick={() => setMessages([])}
               style={{
-                background: "none",
-                border: `1px solid ${C.border}`,
-                borderRadius: "4px",
-                color: C.dim,
+                background: "rgba(255,255,255,0.6)",
+                border: `1px solid rgba(0,0,0,0.08)`,
+                borderRadius: "8px",
+                color: C.textMuted,
                 fontSize: "11px",
                 cursor: "pointer",
-                padding: "3px 8px",
+                padding: "4px 10px",
+                fontFamily: C.sans,
+                transition: "all 150ms",
               }}
             >
               Effacer
@@ -658,15 +693,15 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
               height: "100%",
               minHeight: "200px",
               gap: "12px",
-              color: C.dim,
+              color: C.textTertiary,
               fontSize: "13px",
               padding: "32px",
               textAlign: "center",
             }}
           >
-            <span style={{ fontSize: "28px", opacity: 0.3 }}>◆</span>
-            <span>Interrogez la memoire HORA</span>
-            <span style={{ fontSize: "11px", opacity: 0.6 }}>
+            <span style={{ fontSize: "28px", opacity: 0.25, color: C.gold }}>◆</span>
+            <span style={{ fontFamily: C.sans, color: C.textSecondary }}>Interrogez la memoire HORA</span>
+            <span style={{ fontSize: "11px", opacity: 0.7, fontFamily: C.sans }}>
               {config.keySet
                 ? `Reponses via ${config.provider} · Recherche dans ${entityCount} entites et ${factCount} facts`
                 : `Recherche semantique dans ${entityCount} entites et ${factCount} facts`}
@@ -682,14 +717,17 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
                   key={q}
                   onClick={() => { setInput(q); inputRef.current?.focus(); }}
                   style={{
-                    background: C.card,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: "4px",
-                    color: C.muted,
+                    background: "rgba(255,255,255,0.55)",
+                    border: `1px solid rgba(0,0,0,0.08)`,
+                    borderRadius: "10px",
+                    color: C.textSecondary,
                     fontSize: "11px",
                     cursor: "pointer",
-                    padding: "6px 10px",
+                    padding: "6px 12px",
                     textAlign: "left",
+                    fontFamily: C.sans,
+                    transition: "all 150ms",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
                   }}
                 >
                   {q}
@@ -702,11 +740,12 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
         {messages.map((msg) => (
           <div key={msg.id}>
             {msg.role === "user" ? (
+              /* User message — glass dorée légère */
               <div
                 style={{
                   padding: "10px 16px",
-                  background: `${C.accent}08`,
-                  borderBottom: `1px solid ${C.border}20`,
+                  background: `rgba(212,168,83,0.06)`,
+                  borderBottom: `1px solid rgba(212,168,83,0.08)`,
                   display: "flex",
                   alignItems: "flex-start",
                   gap: "10px",
@@ -716,32 +755,41 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
                   style={{
                     width: "22px",
                     height: "22px",
-                    borderRadius: "4px",
-                    background: `${C.accent}20`,
-                    color: C.accent,
+                    borderRadius: "6px",
+                    background: `rgba(212,168,83,0.15)`,
+                    border: `1px solid rgba(212,168,83,0.25)`,
+                    color: C.gold,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     fontSize: "10px",
                     fontWeight: 700,
                     flexShrink: 0,
+                    fontFamily: C.sans,
                   }}
                 >
                   U
                 </span>
-                <span style={{ fontSize: "13px", color: C.text, lineHeight: 1.5 }}>
+                <span style={{ fontSize: "13px", color: C.text, lineHeight: 1.5, fontFamily: C.sans }}>
                   {msg.content}
                 </span>
               </div>
             ) : (
-              <div style={{ borderBottom: `1px solid ${C.border}20` }}>
+              /* HORA message — glass blanc standard */
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.35)",
+                  borderBottom: `1px solid rgba(0,0,0,0.04)`,
+                }}
+              >
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 16px 0" }}>
                   <span
                     style={{
                       width: "22px",
                       height: "22px",
-                      borderRadius: "4px",
-                      background: `${C.gold}20`,
+                      borderRadius: "6px",
+                      background: `rgba(212,168,83,0.15)`,
+                      border: `1px solid rgba(212,168,83,0.25)`,
                       color: C.gold,
                       display: "flex",
                       alignItems: "center",
@@ -749,11 +797,14 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
                       fontSize: "10px",
                       fontWeight: 700,
                       flexShrink: 0,
+                      fontFamily: C.sans,
                     }}
                   >
                     H
                   </span>
-                  <span style={{ fontSize: "11px", color: C.goldDim, fontWeight: 600 }}>HORA</span>
+                  <span style={{ fontSize: "11px", color: C.goldDim, fontWeight: 600, fontFamily: C.sans }}>
+                    HORA
+                  </span>
                 </div>
                 <HoraMessage msg={msg} />
               </div>
@@ -762,13 +813,13 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
         ))}
 
         {loading && (
-          <div style={{ padding: "16px", display: "flex", alignItems: "center", gap: "8px", color: C.goldDim, fontSize: "12px" }}>
+          <div style={{ padding: "16px", display: "flex", alignItems: "center", gap: "8px", color: C.goldDim, fontSize: "12px", fontFamily: C.sans }}>
             <span
               style={{
                 display: "inline-block",
                 width: "12px",
                 height: "12px",
-                border: `2px solid ${C.gold}30`,
+                border: `2px solid rgba(212,168,83,0.25)`,
                 borderTopColor: C.gold,
                 borderRadius: "50%",
                 animation: "hora-spin 0.8s linear infinite",
@@ -782,28 +833,24 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input bar */}
-      <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}`, display: "flex", gap: "8px" }}>
-        <input
-          ref={inputRef}
-          type="text"
+      {/* Input bar — glass avec border gold on focus */}
+      <div
+        style={{
+          padding: "12px 16px",
+          borderTop: `1px solid ${C.border}`,
+          display: "flex",
+          gap: "8px",
+          background: "rgba(255,255,255,0.3)",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
+        }}
+      >
+        <InputWithFocus
+          inputRef={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={setInput}
           onKeyDown={handleKeyDown}
-          placeholder="Posez une question sur la memoire HORA..."
-          disabled={loading}
-          style={{
-            flex: 1,
-            background: C.card,
-            border: `1px solid ${C.border}`,
-            borderRadius: "6px",
-            padding: "10px 14px",
-            color: C.text,
-            fontSize: "13px",
-            outline: "none",
-            fontFamily: "inherit",
-            opacity: loading ? 0.5 : 1,
-          }}
+          loading={loading}
         />
         <button
           onClick={handleSend}
@@ -811,19 +858,66 @@ export function MemoryChat({ graphStats }: MemoryChatProps) {
           style={{
             background: C.gold,
             border: "none",
-            borderRadius: "6px",
-            color: "#0A0A0B",
+            borderRadius: "10px",
+            color: "#fff",
             fontSize: "13px",
             fontWeight: 600,
             padding: "10px 16px",
             cursor: loading || !input.trim() ? "default" : "pointer",
             opacity: loading || !input.trim() ? 0.3 : 1,
             transition: "opacity 100ms",
+            fontFamily: C.sans,
+            flexShrink: 0,
           }}
         >
           Envoyer
         </button>
       </div>
     </div>
+  );
+}
+
+// ─── Input with gold focus ring ───────────────────────────────────────────────
+
+function InputWithFocus({
+  inputRef,
+  value,
+  onChange,
+  onKeyDown,
+  loading,
+}: {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  value: string;
+  onChange: (v: string) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  loading: boolean;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={onKeyDown}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      placeholder="Posez une question sur la memoire HORA..."
+      disabled={loading}
+      style={{
+        flex: 1,
+        background: "rgba(255,255,255,0.65)",
+        border: `1px solid ${focused ? C.gold : "rgba(0,0,0,0.08)"}`,
+        borderRadius: "10px",
+        padding: "10px 14px",
+        color: C.text,
+        fontSize: "13px",
+        outline: "none",
+        fontFamily: C.sans,
+        opacity: loading ? 0.5 : 1,
+        transition: "border-color 150ms",
+        boxShadow: focused ? `0 0 0 3px rgba(212,168,83,0.12)` : "none",
+      }}
+    />
   );
 }

@@ -62,8 +62,24 @@ const TIER_COLORS = {
   3: { node: "#8b5cf6", glow: "#a78bfa", bg: "rgba(139, 92, 246, 0.12)" },  // Purple
 };
 
-const EDGE_COLOR = "rgba(255, 255, 255, 0.06)";
-const PARTICLE_COLOR = "#22d3ee";
+const EDGE_COLOR = "rgba(0, 0, 0, 0.08)";
+const PARTICLE_COLOR = "#D4A853";
+
+// Design tokens light warm (panneaux React uniquement, pas canvas)
+const L = {
+  bg: "#F2F0E9",
+  glass: "rgba(255,255,255,0.55)",
+  glassBorder: "rgba(255,255,255,0.75)",
+  text: "#0f172a",
+  textSecondary: "#334155",
+  textMuted: "#64748b",
+  textTertiary: "#94a3b8",
+  gold: "#D4A853",
+  sans: "'DM Sans', sans-serif",
+  mono: "'JetBrains Mono', monospace",
+  serif: "'Playfair Display', Georgia, serif",
+  canvasBg: "#EDE9E0",
+};
 
 // ─── Graph Data Builder ─────────────────────────────────────────────────────
 
@@ -73,14 +89,12 @@ function buildGraphData(data: DashboardData, health: MemoryHealth): {
 } {
   const now = Date.now();
 
-  // Freshness helper: how recently was this data accessed/modified?
   const freshness = (lastTs: string | null | undefined, maxAgeHours: number = 24): number => {
     if (!lastTs) return 0.2;
     const age = (now - new Date(lastTs).getTime()) / (1000 * 60 * 60);
     return Math.max(0.15, Math.min(1, 1 - age / maxAgeHours));
   };
 
-  // Latest timestamps from various sources
   const latestSentiment = data.sentimentHistory.length > 0
     ? data.sentimentHistory[data.sentimentHistory.length - 1].ts
     : null;
@@ -108,7 +122,7 @@ function buildGraphData(data: DashboardData, health: MemoryHealth): {
       sizeKb: health.t1.sizeKb,
       color: TIER_COLORS[1].node,
       glowColor: TIER_COLORS[1].glow,
-      freshness: 0.8, // State is always "warm"
+      freshness: 0.8,
     },
 
     // T2 — Episodic Memory
@@ -162,13 +176,13 @@ function buildGraphData(data: DashboardData, health: MemoryHealth): {
       sizeKb: health.t3.sizeKb,
       color: TIER_COLORS[3].node,
       glowColor: TIER_COLORS[3].glow,
-      freshness: 0.6, // Profile is stable, moderate glow
+      freshness: 0.6,
     },
     {
       id: "insights",
       label: "Insights",
       tier: 3,
-      items: Math.max(1, health.t3.items - 4), // Subtract profile files
+      items: Math.max(1, health.t3.items - 4),
       sizeKb: 0,
       color: TIER_COLORS[3].node,
       glowColor: TIER_COLORS[3].glow,
@@ -176,109 +190,24 @@ function buildGraphData(data: DashboardData, health: MemoryHealth): {
     },
   ];
 
-  // Synapses — data flow connections
-  // Strength based on actual data volume, particles for recent activity
   const hasRecentActivity = (ts: string | null | undefined) => {
     if (!ts) return false;
     return (now - new Date(ts).getTime()) < 24 * 60 * 60 * 1000;
   };
 
   const links: Synapse[] = [
-    // T1 → T1 : working memory loop
-    {
-      source: "state",
-      target: "thread",
-      strength: 0.5,
-      particles: hasRecentActivity(latestThread) ? 3 : 1,
-      color: EDGE_COLOR,
-    },
-
-    // T1 → T2 : encoding (perception → episodic)
-    {
-      source: "thread",
-      target: "sessions",
-      strength: 0.6,
-      particles: hasRecentActivity(latestSession) ? 3 : 1,
-      color: EDGE_COLOR,
-    },
-    {
-      source: "thread",
-      target: "sentiment",
-      strength: 0.3,
-      particles: hasRecentActivity(latestSentiment) ? 2 : 0,
-      color: EDGE_COLOR,
-    },
-
-    // T2 → T2 : emotional tagging (amygdala)
-    {
-      source: "sentiment",
-      target: "sessions",
-      strength: 0.4,
-      particles: 1,
-      color: EDGE_COLOR,
-    },
-    {
-      source: "sentiment",
-      target: "failures",
-      strength: 0.3,
-      particles: data.failures.length > 5 ? 2 : 0,
-      color: EDGE_COLOR,
-    },
-
-    // T2 → T3 : consolidation (hippocampus → neocortex)
-    {
-      source: "sessions",
-      target: "profile",
-      strength: 0.7,
-      particles: 2,
-      color: EDGE_COLOR,
-    },
-    {
-      source: "failures",
-      target: "insights",
-      strength: data.failures.length > 3 ? 0.8 : 0.3,
-      particles: data.failures.length > 3 ? 3 : 1,
-      color: EDGE_COLOR,
-    },
-    {
-      source: "sentiment",
-      target: "insights",
-      strength: 0.4,
-      particles: 1,
-      color: EDGE_COLOR,
-    },
-    {
-      source: "tools",
-      target: "insights",
-      strength: 0.3,
-      particles: 1,
-      color: EDGE_COLOR,
-    },
-
-    // T3 → T1 : retrieval (semantic → working memory)
-    {
-      source: "profile",
-      target: "state",
-      strength: 0.5,
-      particles: 2,
-      color: EDGE_COLOR,
-    },
-    {
-      source: "insights",
-      target: "state",
-      strength: 0.4,
-      particles: health.t3.items > 2 ? 2 : 0,
-      color: EDGE_COLOR,
-    },
-
-    // T2 procedural: tool usage → state
-    {
-      source: "tools",
-      target: "state",
-      strength: 0.3,
-      particles: 1,
-      color: EDGE_COLOR,
-    },
+    { source: "state", target: "thread", strength: 0.5, particles: hasRecentActivity(latestThread) ? 3 : 1, color: EDGE_COLOR },
+    { source: "thread", target: "sessions", strength: 0.6, particles: hasRecentActivity(latestSession) ? 3 : 1, color: EDGE_COLOR },
+    { source: "thread", target: "sentiment", strength: 0.3, particles: hasRecentActivity(latestSentiment) ? 2 : 0, color: EDGE_COLOR },
+    { source: "sentiment", target: "sessions", strength: 0.4, particles: 1, color: EDGE_COLOR },
+    { source: "sentiment", target: "failures", strength: 0.3, particles: data.failures.length > 5 ? 2 : 0, color: EDGE_COLOR },
+    { source: "sessions", target: "profile", strength: 0.7, particles: 2, color: EDGE_COLOR },
+    { source: "failures", target: "insights", strength: data.failures.length > 3 ? 0.8 : 0.3, particles: data.failures.length > 3 ? 3 : 1, color: EDGE_COLOR },
+    { source: "sentiment", target: "insights", strength: 0.4, particles: 1, color: EDGE_COLOR },
+    { source: "tools", target: "insights", strength: 0.3, particles: 1, color: EDGE_COLOR },
+    { source: "profile", target: "state", strength: 0.5, particles: 2, color: EDGE_COLOR },
+    { source: "insights", target: "state", strength: 0.4, particles: health.t3.items > 2 ? 2 : 0, color: EDGE_COLOR },
+    { source: "tools", target: "state", strength: 0.3, particles: 1, color: EDGE_COLOR },
   ];
 
   return { nodes, links };
@@ -290,14 +219,11 @@ function drawNeuronNode(node: NeuronNode, ctx: CanvasRenderingContext2D, globalS
   const x = node.x || 0;
   const y = node.y || 0;
 
-  // Base radius: proportional to items, clamped
   const baseRadius = Math.max(6, Math.min(22, 4 + Math.sqrt(node.items) * 2));
 
-  // Breathing animation: subtle size oscillation based on freshness
   const breathe = 1 + Math.sin(Date.now() / (2000 / Math.max(0.3, node.freshness))) * 0.04 * node.freshness;
   const radius = baseRadius * breathe;
 
-  // Outer glow (freshness-dependent)
   const glowRadius = radius * (1.5 + node.freshness * 0.8);
   const gradient = ctx.createRadialGradient(x, y, radius * 0.3, x, y, glowRadius);
   gradient.addColorStop(0, hexToRgba(node.glowColor, 0.25 * node.freshness));
@@ -308,7 +234,6 @@ function drawNeuronNode(node: NeuronNode, ctx: CanvasRenderingContext2D, globalS
   ctx.fillStyle = gradient;
   ctx.fill();
 
-  // Core neuron body
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, 2 * Math.PI);
   const coreGrad = ctx.createRadialGradient(x - radius * 0.2, y - radius * 0.2, 0, x, y, radius);
@@ -319,26 +244,24 @@ function drawNeuronNode(node: NeuronNode, ctx: CanvasRenderingContext2D, globalS
   ctx.fill();
   ctx.globalAlpha = 1;
 
-  // Bright nucleus
   ctx.beginPath();
   ctx.arc(x, y, radius * 0.3, 0, 2 * Math.PI);
   ctx.fillStyle = hexToRgba(node.glowColor, 0.6);
   ctx.fill();
 
-  // Label (only when zoomed enough)
+  // Labels canvas — couleurs adaptees au fond sombre du canvas
   if (globalScale > 0.6) {
     const fontSize = Math.max(9, 11 / globalScale);
     ctx.font = `500 ${fontSize}px -apple-system, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillStyle = hexToRgba("#e4e4e7", 0.7 + node.freshness * 0.3);
+    ctx.fillStyle = hexToRgba("#0f172a", 0.7 + node.freshness * 0.3);
     ctx.fillText(node.label, x, y + radius + 4);
 
-    // Item count
     if (node.items > 0) {
       const countFontSize = Math.max(7, 9 / globalScale);
       ctx.font = `400 ${countFontSize}px -apple-system, system-ui, sans-serif`;
-      ctx.fillStyle = hexToRgba("#a1a1aa", 0.5);
+      ctx.fillStyle = hexToRgba("#64748b", 0.6);
       ctx.fillText(`${node.items}`, x, y + radius + 4 + fontSize + 1);
     }
   }
@@ -388,10 +311,8 @@ export function NeuralMemoryMap({ data, health, width, height }: NeuralMemoryMap
     return () => observer.disconnect();
   }, [width, height]);
 
-  // Build graph data
   const graphData = useMemo(() => buildGraphData(data, health), [data, health]);
 
-  // Custom node renderer
   const nodeCanvasObject = useCallback(
     (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
       drawNeuronNode(node as NeuronNode, ctx, globalScale);
@@ -399,33 +320,27 @@ export function NeuralMemoryMap({ data, health, width, height }: NeuralMemoryMap
     [],
   );
 
-  // Node size for collision/pointer
   const nodeRelSize = useCallback((node: any) => {
     const n = node as NeuronNode;
     return Math.max(8, 4 + Math.sqrt(n.items) * 2) * 1.5;
   }, []);
 
-  // Link width based on strength
   const linkWidth = useCallback((link: any) => {
     return 0.5 + (link as Synapse).strength * 2;
   }, []);
 
-  // Link color with very subtle visibility
   const linkColor = useCallback((link: any) => {
     const s = link as Synapse;
-    return hexToRgba("#ffffff", 0.03 + s.strength * 0.05);
+    return hexToRgba("#000000", 0.04 + s.strength * 0.06);
   }, []);
 
-  // Particle color per link — inherit from target node tier
   const particleColor = useCallback(() => PARTICLE_COLOR, []);
 
-  // Cool down after initial layout settles
   useEffect(() => {
     const timer = setTimeout(() => {
       if (graphRef.current) {
         graphRef.current.d3Force("charge")?.strength(-120);
         graphRef.current.d3Force("link")?.distance(80);
-        // Pull isolated nodes (no links) closer to center with radial force
         const linkedIds = new Set<string>();
         graphData.links.forEach((l: any) => {
           linkedIds.add(typeof l.source === "object" ? l.source.id : l.source);
@@ -437,7 +352,6 @@ export function NeuralMemoryMap({ data, health, width, height }: NeuralMemoryMap
             linkedIds.has(node.id) ? 0 : 0.3
           ),
         );
-        // Strengthen center force so nothing drifts too far
         graphRef.current.d3Force("center", forceCenter(0, 0).strength(0.05));
       }
     }, 100);
@@ -458,10 +372,10 @@ export function NeuralMemoryMap({ data, health, width, height }: NeuralMemoryMap
         position: "relative",
         width: "100%",
         height: height || "500px",
-        background: "#0A0A0B",
-        borderRadius: "8px",
-        border: "1px solid #27272a",
-        overflow: "hidden",
+        background: L.canvasBg,
+        borderRadius: "20px",
+        border: "1px solid rgba(255,255,255,0.7)",
+        boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
       }}
     >
       <ForceGraph2D
@@ -469,7 +383,7 @@ export function NeuralMemoryMap({ data, health, width, height }: NeuralMemoryMap
         graphData={graphData}
         width={dimensions.w}
         height={dimensions.h}
-        backgroundColor="#0A0A0B"
+        backgroundColor={L.canvasBg}
         nodeCanvasObject={nodeCanvasObject}
         nodeVal={nodeRelSize}
         nodeLabel={(node: any) => {
@@ -492,7 +406,7 @@ export function NeuralMemoryMap({ data, health, width, height }: NeuralMemoryMap
         enableNodeDrag={true}
       />
 
-      {/* Legend overlay */}
+      {/* Legend overlay — glass light warm */}
       <div
         style={{
           position: "absolute",
@@ -500,10 +414,13 @@ export function NeuralMemoryMap({ data, health, width, height }: NeuralMemoryMap
           left: "12px",
           display: "flex",
           gap: "16px",
-          padding: "8px 12px",
-          background: "rgba(10, 10, 11, 0.85)",
-          borderRadius: "6px",
-          border: "1px solid #27272a",
+          padding: "8px 14px",
+          background: L.glass,
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          borderRadius: "10px",
+          border: `1px solid ${L.glassBorder}`,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
         }}
       >
         {tiers.map((t) => (
@@ -518,12 +435,12 @@ export function NeuralMemoryMap({ data, health, width, height }: NeuralMemoryMap
                 flexShrink: 0,
               }}
             />
-            <span style={{ fontSize: "10px", color: "#a1a1aa" }}>{t.label}</span>
+            <span style={{ fontSize: "10px", color: L.textSecondary, fontFamily: L.sans }}>{t.label}</span>
           </div>
         ))}
       </div>
 
-      {/* Title */}
+      {/* Title — glass light warm */}
       <div
         style={{
           position: "absolute",
@@ -531,14 +448,22 @@ export function NeuralMemoryMap({ data, health, width, height }: NeuralMemoryMap
           left: "16px",
           fontSize: "13px",
           fontWeight: 600,
-          color: "#e4e4e7",
+          color: L.text,
           letterSpacing: "-0.01em",
+          fontFamily: L.serif,
+          padding: "4px 10px",
+          background: L.glass,
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          borderRadius: "8px",
+          border: `1px solid ${L.glassBorder}`,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
         }}
       >
         Neural Memory Map
       </div>
 
-      {/* GC status */}
+      {/* GC status — glass */}
       {health.lastGc && (
         <div
           style={{
@@ -546,7 +471,14 @@ export function NeuralMemoryMap({ data, health, width, height }: NeuralMemoryMap
             top: "12px",
             right: "16px",
             fontSize: "10px",
-            color: "#52525b",
+            color: L.textMuted,
+            fontFamily: L.mono,
+            padding: "4px 8px",
+            background: L.glass,
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            borderRadius: "6px",
+            border: `1px solid ${L.glassBorder}`,
           }}
         >
           Consolidation: {health.lastGc.slice(0, 10)}

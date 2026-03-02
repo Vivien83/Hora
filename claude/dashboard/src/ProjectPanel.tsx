@@ -1,12 +1,21 @@
 import type { ProjectContext, FailureEntry } from "./types";
 
 const C = {
-  card: "#18181b",
-  border: "#27272a",
-  text: "#e4e4e7",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  accent: "#14b8a6",
+  text: "#0f172a",
+  textSecondary: "#334155",
+  textMuted: "#64748b",
+  textTertiary: "#94a3b8",
+  gold: "#D4A853",
+  border: "rgba(0,0,0,0.06)",
+};
+
+const glass = {
+  background: "rgba(255,255,255,0.45)",
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid rgba(255,255,255,0.7)",
+  borderRadius: "20px",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
 };
 
 interface ProjectPanelProps {
@@ -20,10 +29,11 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
       style={{
         fontSize: "11px",
         fontWeight: 600,
-        color: C.dim,
-        letterSpacing: "0.05em",
+        color: C.textTertiary,
+        letterSpacing: "0.07em",
         textTransform: "uppercase",
         marginBottom: "8px",
+        fontFamily: "'JetBrains Mono', monospace",
       }}
     >
       {children}
@@ -35,9 +45,7 @@ function Card({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: "8px",
+        ...glass,
         padding: "14px 16px",
       }}
     >
@@ -82,7 +90,7 @@ export function ProjectPanel({ project, failures }: ProjectPanelProps) {
       >
         <SectionTitle>Projet en cours</SectionTitle>
         <Card>
-          <div style={{ color: C.dim, fontSize: "13px" }}>
+          <div style={{ color: C.textMuted, fontSize: "13px", fontFamily: "'DM Sans', sans-serif" }}>
             Aucun contexte projet detecte. Verifiez que .hora/ existe a la racine.
           </div>
         </Card>
@@ -111,17 +119,27 @@ export function ProjectPanel({ project, failures }: ProjectPanelProps) {
       {/* Checkpoint */}
       {project.checkpoint && (
         <Card>
-          <div style={{ fontSize: "11px", color: C.accent, fontWeight: 600, marginBottom: "6px" }}>
+          <div
+            style={{
+              fontSize: "11px",
+              color: C.gold,
+              fontWeight: 600,
+              marginBottom: "6px",
+              fontFamily: "'JetBrains Mono', monospace",
+              letterSpacing: "0.05em",
+            }}
+          >
             CHECKPOINT
           </div>
           <div
             style={{
               fontSize: "12px",
-              color: C.muted,
+              color: C.textMuted,
               lineHeight: 1.5,
               whiteSpace: "pre-wrap",
               maxHeight: "140px",
               overflow: "hidden",
+              fontFamily: "'DM Sans', sans-serif",
             }}
           >
             {truncateMarkdown(project.checkpoint, 12)}
@@ -132,17 +150,27 @@ export function ProjectPanel({ project, failures }: ProjectPanelProps) {
       {/* Knowledge summary */}
       {project.knowledge && (
         <Card>
-          <div style={{ fontSize: "11px", color: C.accent, fontWeight: 600, marginBottom: "6px" }}>
+          <div
+            style={{
+              fontSize: "11px",
+              color: C.gold,
+              fontWeight: 600,
+              marginBottom: "6px",
+              fontFamily: "'JetBrains Mono', monospace",
+              letterSpacing: "0.05em",
+            }}
+          >
             KNOWLEDGE
           </div>
           <div
             style={{
               fontSize: "12px",
-              color: C.muted,
+              color: C.textMuted,
               lineHeight: 1.5,
               whiteSpace: "pre-wrap",
               maxHeight: "120px",
               overflow: "hidden",
+              fontFamily: "'DM Sans', sans-serif",
             }}
           >
             {truncateMarkdown(project.knowledge, 10)}
@@ -153,7 +181,16 @@ export function ProjectPanel({ project, failures }: ProjectPanelProps) {
       {/* Snapshots */}
       {project.snapshots.length > 0 && (
         <Card>
-          <div style={{ fontSize: "11px", color: C.accent, fontWeight: 600, marginBottom: "6px" }}>
+          <div
+            style={{
+              fontSize: "11px",
+              color: C.gold,
+              fontWeight: 600,
+              marginBottom: "6px",
+              fontFamily: "'JetBrains Mono', monospace",
+              letterSpacing: "0.05em",
+            }}
+          >
             SNAPSHOTS ({project.snapshots.length})
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -169,16 +206,19 @@ export function ProjectPanel({ project, failures }: ProjectPanelProps) {
               >
                 <span
                   style={{
-                    color: C.muted,
+                    color: C.textSecondary,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
                     maxWidth: "180px",
+                    fontFamily: "'DM Sans', sans-serif",
                   }}
                 >
                   {snap.path.split("/").pop()}
                 </span>
-                <span style={{ color: C.dim, flexShrink: 0 }}>{formatBytes(snap.size)}</span>
+                <span style={{ color: C.textMuted, flexShrink: 0, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {formatBytes(snap.size)}
+                </span>
               </div>
             ))}
           </div>
@@ -188,18 +228,27 @@ export function ProjectPanel({ project, failures }: ProjectPanelProps) {
       {/* Backup state */}
       {project.backupState && (
         <Card>
-          <div style={{ fontSize: "11px", color: C.accent, fontWeight: 600, marginBottom: "6px" }}>
+          <div
+            style={{
+              fontSize: "11px",
+              color: C.gold,
+              fontWeight: 600,
+              marginBottom: "6px",
+              fontFamily: "'JetBrains Mono', monospace",
+              letterSpacing: "0.05em",
+            }}
+          >
             BACKUP
           </div>
-          <div style={{ fontSize: "12px", color: C.muted }}>
+          <div style={{ fontSize: "12px", color: C.textSecondary, fontFamily: "'DM Sans', sans-serif" }}>
             Strategie : {project.backupState.strategy}
           </div>
           {project.backupState.lastBackup && (
-            <div style={{ fontSize: "11px", color: C.dim, marginTop: "2px" }}>
+            <div style={{ fontSize: "11px", color: C.textMuted, marginTop: "2px", fontFamily: "'DM Sans', sans-serif" }}>
               Dernier : {formatTs(project.backupState.lastBackup)}
             </div>
           )}
-          <div style={{ fontSize: "11px", color: C.dim, marginTop: "2px" }}>
+          <div style={{ fontSize: "11px", color: C.textMuted, marginTop: "2px", fontFamily: "'DM Sans', sans-serif" }}>
             {project.backupState.commitCount} commits
           </div>
         </Card>
@@ -208,7 +257,16 @@ export function ProjectPanel({ project, failures }: ProjectPanelProps) {
       {/* Recent failures */}
       {failures.length > 0 && (
         <Card>
-          <div style={{ fontSize: "11px", color: "#ef4444", fontWeight: 600, marginBottom: "6px" }}>
+          <div
+            style={{
+              fontSize: "11px",
+              color: "#ef4444",
+              fontWeight: 600,
+              marginBottom: "6px",
+              fontFamily: "'JetBrains Mono', monospace",
+              letterSpacing: "0.05em",
+            }}
+          >
             FAILURES ({failures.length})
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -217,15 +275,23 @@ export function ProjectPanel({ project, failures }: ProjectPanelProps) {
                 <div
                   style={{
                     fontSize: "12px",
-                    color: C.muted,
+                    color: C.textSecondary,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
+                    fontFamily: "'DM Sans', sans-serif",
                   }}
                 >
                   {f.title}
                 </div>
-                <div style={{ fontSize: "10px", color: C.dim }}>
+                <div
+                  style={{
+                    fontSize: "10px",
+                    color: C.textMuted,
+                    fontFamily: "'JetBrains Mono', monospace",
+                    marginTop: "2px",
+                  }}
+                >
                   {f.type.toUpperCase()} · {f.session.slice(0, 8) || "—"}
                 </div>
               </div>

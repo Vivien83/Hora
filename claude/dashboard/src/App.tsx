@@ -20,23 +20,42 @@ import { Insights } from "./Insights";
 import { Overview } from "./Overview";
 
 const C = {
-  bg: "#0A0A0B",
-  border: "#27272a",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  accent: "#14b8a6",
+  bg: "#F2F0E9",
+  glass: "rgba(255, 255, 255, 0.45)",
+  glassBorder: "rgba(255, 255, 255, 0.7)",
+  border: "rgba(0, 0, 0, 0.06)",
+  text: "#0f172a",
+  textSecondary: "#334155",
+  textMuted: "#64748b",
+  textTertiary: "#94a3b8",
+  gold: "#D4A853",
+  accent: "#6366f1",
+};
+
+const sans = "'DM Sans', sans-serif";
+const mono = "'JetBrains Mono', monospace";
+const serif = "'Playfair Display', Georgia, serif";
+
+const glass: React.CSSProperties = {
+  background: C.glass,
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  border: `1px solid ${C.glassBorder}`,
+  borderRadius: "20px",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+    <section style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <h2
         style={{
-          fontSize: "13px",
+          fontSize: "11px",
           fontWeight: 600,
-          color: C.muted,
-          letterSpacing: "0.05em",
+          color: C.textTertiary,
+          letterSpacing: "0.08em",
           textTransform: "uppercase",
+          fontFamily: mono,
         }}
       >
         {title}
@@ -49,7 +68,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function avgSentiment(data: DashboardData): string {
   if (data.sentimentHistory.length === 0) {
     const scores = data.sessions.map((s) => s.sentiment).filter((s) => s > 0);
-    if (scores.length === 0) return "—";
+    if (scores.length === 0) return "\u2014";
     return (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
   }
   const scores = data.sentimentHistory.map((e) => e.score);
@@ -68,12 +87,11 @@ function ProfileCard({ profile }: { profile: DashboardData["profile"] }) {
     return (
       <div
         style={{
-          background: "#18181b",
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
-          padding: "20px 24px",
-          color: C.dim,
+          ...glass,
+          padding: "24px 28px",
+          color: C.textTertiary,
           fontSize: "14px",
+          fontFamily: sans,
         }}
       >
         Profil non encore initialise. Commencez quelques sessions HORA.
@@ -93,34 +111,46 @@ function ProfileCard({ profile }: { profile: DashboardData["profile"] }) {
         <div
           key={s.label}
           style={{
-            background: "#18181b",
-            border: `1px solid ${C.border}`,
-            borderRadius: "8px",
-            padding: "14px 16px",
+            ...glass,
+            padding: "18px 20px",
           }}
         >
           <div
             style={{
-              fontSize: "11px",
-              color: C.dim,
-              letterSpacing: "0.05em",
+              fontSize: "10px",
+              color: C.textTertiary,
+              letterSpacing: "0.08em",
               textTransform: "uppercase",
-              marginBottom: "6px",
+              marginBottom: "8px",
+              fontFamily: mono,
             }}
           >
             {s.label}
           </div>
           <div
             style={{
-              fontSize: "12px",
-              color: C.muted,
+              fontSize: "13px",
+              color: C.textSecondary,
               lineHeight: 1.6,
               whiteSpace: "pre-wrap",
-              maxHeight: "100px",
+              maxHeight: "120px",
               overflow: "hidden",
+              position: "relative",
+              fontFamily: sans,
             }}
           >
             {s.content.slice(0, 400)}
+            <div
+              style={{
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: "32px",
+                background: "linear-gradient(transparent, rgba(255,255,255,0.7))",
+                pointerEvents: "none",
+              }}
+            />
           </div>
         </div>
       ))}
@@ -145,16 +175,17 @@ export function App() {
           justifyContent: "center",
           gap: "16px",
           padding: "32px",
+          fontFamily: sans,
         }}
       >
-        <div style={{ fontSize: "20px", fontWeight: 600, color: "#ef4444" }}>
+        <div style={{ fontSize: "24px", fontWeight: 700, color: "#ef4444", fontFamily: serif }}>
           Connexion echouee
         </div>
-        <div style={{ fontSize: "14px", color: C.muted, textAlign: "center", maxWidth: "480px" }}>
-          Lancez <code style={{ color: C.accent, fontFamily: "monospace" }}>npm run dev</code> dans
+        <div style={{ fontSize: "14px", color: C.textMuted, textAlign: "center", maxWidth: "480px" }}>
+          Lancez <code style={{ color: C.accent, fontFamily: mono }}>npm run dev</code> dans
           le dossier dashboard.
         </div>
-        <div style={{ fontSize: "12px", color: C.dim }}>Erreur : {error}</div>
+        <div style={{ fontSize: "12px", color: C.textTertiary }}>Erreur : {error}</div>
       </div>
     );
   }
@@ -168,8 +199,9 @@ export function App() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: C.dim,
+          color: C.textTertiary,
           fontSize: "14px",
+          fontFamily: sans,
         }}
       >
         Chargement...
@@ -186,8 +218,9 @@ export function App() {
       style={{
         minHeight: "100vh",
         background: C.bg,
-        color: "#e4e4e7",
+        color: C.text,
         display: "flex",
+        fontFamily: sans,
       }}
     >
       {/* Sidebar */}
@@ -205,7 +238,7 @@ export function App() {
         style={{
           flex: 1,
           minWidth: 0,
-          padding: "24px 32px",
+          padding: "28px 36px",
           display: "flex",
           flexDirection: "column",
           gap: "32px",
@@ -248,7 +281,7 @@ export function App() {
           </div>
         )}
 
-        {/* Overview — premium Insights v6 design */}
+        {/* Overview */}
         {section === "overview" && (
           <Overview data={data} />
         )}
@@ -260,14 +293,13 @@ export function App() {
               {data.projectContext?.checkpoint ? (
                 <div
                   style={{
-                    background: "#18181b",
-                    border: `1px solid ${C.border}`,
-                    borderRadius: "8px",
-                    padding: "16px 20px",
+                    ...glass,
+                    padding: "20px 24px",
                     fontSize: "13px",
-                    color: C.muted,
+                    color: C.textSecondary,
                     lineHeight: 1.6,
                     whiteSpace: "pre-wrap",
+                    fontFamily: sans,
                   }}
                 >
                   {data.projectContext.checkpoint}
@@ -275,11 +307,9 @@ export function App() {
               ) : (
                 <div
                   style={{
-                    background: "#18181b",
-                    border: `1px solid ${C.border}`,
-                    borderRadius: "8px",
-                    padding: "24px",
-                    color: C.dim,
+                    ...glass,
+                    padding: "28px",
+                    color: C.textTertiary,
                     fontSize: "14px",
                   }}
                 >
@@ -292,16 +322,15 @@ export function App() {
               {data.projectContext?.knowledge ? (
                 <div
                   style={{
-                    background: "#18181b",
-                    border: `1px solid ${C.border}`,
-                    borderRadius: "8px",
-                    padding: "16px 20px",
+                    ...glass,
+                    padding: "20px 24px",
                     fontSize: "13px",
-                    color: C.muted,
+                    color: C.textSecondary,
                     lineHeight: 1.6,
                     whiteSpace: "pre-wrap",
                     maxHeight: "500px",
-                    overflow: "auto",
+                    overflowY: "auto",
+                    fontFamily: sans,
                   }}
                 >
                   {data.projectContext.knowledge}
@@ -309,11 +338,9 @@ export function App() {
               ) : (
                 <div
                   style={{
-                    background: "#18181b",
-                    border: `1px solid ${C.border}`,
-                    borderRadius: "8px",
-                    padding: "24px",
-                    color: C.dim,
+                    ...glass,
+                    padding: "28px",
+                    color: C.textTertiary,
                     fontSize: "14px",
                   }}
                 >
@@ -349,17 +376,15 @@ export function App() {
               {data.failures.length > 0 ? (
                 <div
                   style={{
-                    background: "#18181b",
-                    border: `1px solid ${C.border}`,
-                    borderRadius: "8px",
-                    overflow: "hidden",
+                    ...glass,
+                    padding: 0,
                   }}
                 >
                   {data.failures.map((f, i) => (
                     <div
                       key={`${f.session}-${f.date}-${i}`}
                       style={{
-                        padding: "10px 16px",
+                        padding: "12px 20px",
                         borderBottom:
                           i < data.failures.length - 1 ? `1px solid ${C.border}` : "none",
                         display: "flex",
@@ -368,12 +393,12 @@ export function App() {
                       }}
                     >
                       <div>
-                        <div style={{ fontSize: "13px", color: "#e4e4e7" }}>{f.title}</div>
-                        <div style={{ fontSize: "11px", color: C.dim, marginTop: "2px" }}>
-                          {f.type.toUpperCase()} · session {f.session.slice(0, 8) || "—"}
+                        <div style={{ fontSize: "13px", color: C.text, fontWeight: 500 }}>{f.title}</div>
+                        <div style={{ fontSize: "11px", color: C.textTertiary, marginTop: "2px", fontFamily: mono }}>
+                          {f.type.toUpperCase()} · session {f.session.slice(0, 8) || "\u2014"}
                         </div>
                       </div>
-                      <span style={{ fontSize: "11px", color: C.dim, flexShrink: 0 }}>
+                      <span style={{ fontSize: "11px", color: C.textTertiary, flexShrink: 0, fontFamily: mono }}>
                         {f.date.slice(0, 10)}
                       </span>
                     </div>
@@ -382,11 +407,9 @@ export function App() {
               ) : (
                 <div
                   style={{
-                    background: "#18181b",
-                    border: `1px solid ${C.border}`,
-                    borderRadius: "8px",
-                    padding: "24px",
-                    color: C.dim,
+                    ...glass,
+                    padding: "28px",
+                    color: C.textTertiary,
                     fontSize: "14px",
                   }}
                 >
@@ -416,13 +439,14 @@ export function App() {
                   style={{
                     background: "none",
                     border: "none",
-                    borderBottom: chatTab === tab ? "2px solid #D4A853" : "2px solid transparent",
-                    color: chatTab === tab ? "#e4e4e7" : C.muted,
+                    borderBottom: chatTab === tab ? `2px solid ${C.gold}` : "2px solid transparent",
+                    color: chatTab === tab ? C.text : C.textMuted,
                     fontSize: "13px",
                     fontWeight: chatTab === tab ? 600 : 400,
                     padding: "10px 16px",
                     cursor: "pointer",
                     transition: "all 100ms",
+                    fontFamily: sans,
                   }}
                 >
                   {tab === "ask" ? "Ask HORA" : "Transcripts"}
@@ -469,12 +493,10 @@ export function App() {
             <Section title="Knowledge Graph">
               <div
                 style={{
-                  background: "#18181b",
-                  border: `1px solid ${C.border}`,
-                  borderRadius: "8px",
+                  ...glass,
                   padding: "48px 24px",
                   textAlign: "center",
-                  color: C.dim,
+                  color: C.textTertiary,
                   fontSize: "14px",
                 }}
               >
@@ -493,7 +515,6 @@ export function App() {
         {section === "insights" && (
           <Insights data={data} />
         )}
-
 
       </main>
 

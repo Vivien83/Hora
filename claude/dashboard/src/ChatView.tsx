@@ -2,14 +2,26 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import type { TranscriptMessage } from "./types";
 
 const C = {
-  bg: "#0A0A0B",
-  card: "#18181b",
-  border: "#27272a",
-  text: "#e4e4e7",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  accent: "#14b8a6",
-  userBg: "#14b8a610",
+  bg: "#F2F0E9",
+  glass: {
+    background: "rgba(255,255,255,0.45)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    border: "1px solid rgba(255,255,255,0.7)",
+    borderRadius: "20px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
+  } as React.CSSProperties,
+  text: "#0f172a",
+  textSecondary: "#334155",
+  textMuted: "#64748b",
+  textTertiary: "#94a3b8",
+  gold: "#D4A853",
+  accent: "#6366f1",
+  border: "rgba(0,0,0,0.06)",
+  userBg: "rgba(212,168,83,0.06)",
+  serif: "'Playfair Display', Georgia, serif" as string,
+  sans: "'DM Sans', sans-serif" as string,
+  mono: "'JetBrains Mono', monospace" as string,
 };
 
 const MSG_COLLAPSE_HEIGHT = 500;
@@ -48,9 +60,9 @@ function SessionSeparator({ sessionId, date }: { sessionId: string; date: string
       <div style={{ flex: 1, height: "1px", background: C.border }} />
       <span
         style={{
-          fontFamily: "monospace",
+          fontFamily: C.mono,
           fontSize: "11px",
-          color: C.accent,
+          color: C.gold,
           fontWeight: 600,
           flexShrink: 0,
         }}
@@ -58,7 +70,7 @@ function SessionSeparator({ sessionId, date }: { sessionId: string; date: string
         {sessionId.slice(0, 8)}
       </span>
       {date && (
-        <span style={{ fontSize: "11px", color: C.dim, flexShrink: 0 }}>{date}</span>
+        <span style={{ fontSize: "11px", color: C.textTertiary, flexShrink: 0, fontFamily: C.sans }}>{date}</span>
       )}
       <div style={{ flex: 1, height: "1px", background: C.border }} />
     </div>
@@ -84,8 +96,8 @@ function MessageBubble({ msg }: { msg: TranscriptMessage }) {
         display: "flex",
         gap: "10px",
         padding: "8px 16px",
-        background: isUser ? C.userBg : "transparent",
-        borderBottom: `1px solid ${C.border}20`,
+        background: isUser ? C.userBg : "rgba(255,255,255,0.3)",
+        borderBottom: `1px solid ${C.border}`,
       }}
     >
       {/* Role badge */}
@@ -93,7 +105,7 @@ function MessageBubble({ msg }: { msg: TranscriptMessage }) {
         style={{
           width: "24px",
           height: "24px",
-          borderRadius: "4px",
+          borderRadius: "6px",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -101,8 +113,9 @@ function MessageBubble({ msg }: { msg: TranscriptMessage }) {
           fontWeight: 700,
           flexShrink: 0,
           marginTop: "2px",
-          background: isUser ? `${C.accent}20` : `${C.dim}20`,
-          color: isUser ? C.accent : C.dim,
+          background: isUser ? "rgba(212,168,83,0.15)" : "rgba(99,102,241,0.1)",
+          color: isUser ? C.gold : C.accent,
+          fontFamily: C.mono,
         }}
       >
         {isUser ? "U" : "A"}
@@ -115,12 +128,13 @@ function MessageBubble({ msg }: { msg: TranscriptMessage }) {
           style={{
             fontSize: "13px",
             lineHeight: 1.6,
-            color: isUser ? C.text : C.muted,
+            color: isUser ? C.text : C.textSecondary,
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
             maxHeight: !expanded && isOverflow ? `${MSG_COLLAPSE_HEIGHT}px` : "none",
             overflow: "hidden",
             position: "relative",
+            fontFamily: C.sans,
           }}
         >
           {msg.content}
@@ -132,7 +146,9 @@ function MessageBubble({ msg }: { msg: TranscriptMessage }) {
                 left: 0,
                 right: 0,
                 height: "60px",
-                background: `linear-gradient(transparent, ${isUser ? "#0d1a17" : C.bg})`,
+                background: isUser
+                  ? "linear-gradient(transparent, rgba(252,248,240,0.95))"
+                  : "linear-gradient(transparent, rgba(255,255,255,0.85))",
               }}
             />
           )}
@@ -143,12 +159,13 @@ function MessageBubble({ msg }: { msg: TranscriptMessage }) {
             style={{
               background: "none",
               border: `1px solid ${C.border}`,
-              borderRadius: "4px",
+              borderRadius: "6px",
               color: C.accent,
               fontSize: "11px",
               cursor: "pointer",
               padding: "2px 8px",
               marginTop: "4px",
+              fontFamily: C.sans,
             }}
           >
             {expanded ? "Reduire" : "Voir tout"}
@@ -160,10 +177,10 @@ function MessageBubble({ msg }: { msg: TranscriptMessage }) {
       <span
         style={{
           fontSize: "10px",
-          color: C.dim,
+          color: C.textTertiary,
           flexShrink: 0,
           marginTop: "4px",
-          fontFamily: "monospace",
+          fontFamily: C.mono,
         }}
       >
         {formatTime(msg.timestamp)}
@@ -210,13 +227,12 @@ export function ChatView({ messages }: ChatViewProps) {
     return (
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...C.glass,
           padding: "48px 24px",
           textAlign: "center",
-          color: C.dim,
+          color: C.textMuted,
           fontSize: "14px",
+          fontFamily: C.sans,
         }}
       >
         Aucun transcript trouve. Les fichiers JSONL de sessions Claude Code seront lus
@@ -271,16 +287,19 @@ export function ChatView({ messages }: ChatViewProps) {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Rechercher dans les transcripts..."
           style={{
-            background: C.card,
-            border: `1px solid ${C.border}`,
-            borderRadius: "6px",
+            background: "rgba(255,255,255,0.6)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            border: "1px solid rgba(255,255,255,0.8)",
+            borderRadius: "12px",
             padding: "10px 14px",
             color: C.text,
             fontSize: "13px",
             outline: "none",
             width: "100%",
             boxSizing: "border-box",
-            fontFamily: "monospace",
+            fontFamily: C.mono,
+            boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
           }}
         />
         <div
@@ -288,8 +307,9 @@ export function ChatView({ messages }: ChatViewProps) {
             display: "flex",
             gap: "16px",
             fontSize: "11px",
-            color: C.dim,
+            color: C.textTertiary,
             padding: "0 4px",
+            fontFamily: C.mono,
           }}
         >
           <span>{filtered.length} messages</span>
@@ -306,9 +326,7 @@ export function ChatView({ messages }: ChatViewProps) {
       <div
         ref={containerRef}
         style={{
-          background: C.bg,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...C.glass,
           overflow: "auto",
           flex: 1,
         }}
@@ -330,8 +348,9 @@ export function ChatView({ messages }: ChatViewProps) {
             style={{
               padding: "32px",
               textAlign: "center",
-              color: C.dim,
+              color: C.textMuted,
               fontSize: "13px",
+              fontFamily: C.sans,
             }}
           >
             Aucun resultat pour "{search}"

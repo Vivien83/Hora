@@ -618,189 +618,6 @@ export function Overview({ data }: Props) {
           </div>
         </div>
 
-        {/* SESSIONS TABLE */}
-        <div
-          className="o-card"
-          style={{
-            ...glass,
-            padding: "36px 40px",
-            position: "relative",
-            ...e(400),
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              top: "-30px",
-              left: "20%",
-              width: "60%",
-              height: "80px",
-              background: "rgba(99,102,241,0.06)",
-              filter: "blur(50px)",
-              borderRadius: "50%",
-              pointerEvents: "none",
-            }}
-          />
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "28px",
-              position: "relative",
-              zIndex: 1,
-            }}
-          >
-            <div>
-              <h3
-                style={{
-                  fontSize: "16px",
-                  fontWeight: 700,
-                  color: "#0f172a",
-                  letterSpacing: "-0.01em",
-                }}
-              >
-                Sessions Recentes
-              </h3>
-              <p
-                style={{
-                  fontSize: "13px",
-                  color: "#94a3b8",
-                  marginTop: "4px",
-                }}
-              >
-                12 dernieres sessions enregistrees
-              </p>
-            </div>
-            <div
-              style={{
-                fontSize: "28px",
-                fontFamily: serif,
-                color: "#0f172a",
-                letterSpacing: "-0.03em",
-              }}
-            >
-              {stats.recentSessions.length}
-            </div>
-          </div>
-
-          {/* Table header */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "3fr 1.5fr 1.2fr 0.8fr",
-              gap: "16px",
-              padding: "0 0 12px 0",
-              borderBottom: "1px solid rgba(0,0,0,0.06)",
-              position: "relative",
-              zIndex: 1,
-            }}
-          >
-            <span style={lbl}>Session</span>
-            <span style={lbl}>Date</span>
-            <span style={lbl}>Sentiment</span>
-            <span style={{ ...lbl, textAlign: "right" }}>Messages</span>
-          </div>
-
-          {/* Table rows */}
-          <div style={{ position: "relative", zIndex: 1 }}>
-            {stats.recentSessions.map((session, i) => {
-              const dot = sentimentDot(session.sentiment);
-              return (
-                <div
-                  key={session.sid || `${session.date}-${i}`}
-                  className="o-row"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "3fr 1.5fr 1.2fr 0.8fr",
-                    gap: "16px",
-                    padding: "14px 0",
-                    borderBottom:
-                      i < stats.recentSessions.length - 1
-                        ? "1px solid rgba(0,0,0,0.04)"
-                        : "none",
-                    alignItems: "center",
-                    borderRadius: "4px",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "13px",
-                      color: "#334155",
-                      fontWeight: 500,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {session.name || session.filename}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      color: "#94a3b8",
-                      fontFamily: mono,
-                    }}
-                  >
-                    {formatDate(session.date)}
-                  </span>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "7px",
-                        height: "7px",
-                        borderRadius: "50%",
-                        background: dot.color,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span
-                      style={{
-                        fontSize: "12px",
-                        color: "#64748b",
-                      }}
-                    >
-                      {session.sentiment > 0
-                        ? `${session.sentiment.toFixed(1)} ${dot.label}`
-                        : "\u2014"}
-                    </span>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: "13px",
-                      fontFamily: mono,
-                      color: "#64748b",
-                      textAlign: "right",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
-                    {session.messageCount}
-                  </span>
-                </div>
-              );
-            })}
-            {stats.recentSessions.length === 0 && (
-              <div
-                style={{
-                  padding: "32px 0",
-                  textAlign: "center",
-                  color: "#94a3b8",
-                  fontSize: "14px",
-                }}
-              >
-                Aucune session enregistree
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* TWO-COLUMN GRID: Sentiment Chart + Thread Preview */}
         {/* SENTIMENT CHART — full width */}
         <div
           className="o-card"
@@ -974,6 +791,188 @@ export function Overview({ data }: Props) {
               )}
             </div>
           </div>
+
+        {/* SESSIONS TABLE */}
+        <div
+          className="o-card"
+          style={{
+            ...glass,
+            padding: "36px 40px",
+            position: "relative",
+            ...e(400),
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: "-30px",
+              left: "20%",
+              width: "60%",
+              height: "80px",
+              background: "rgba(99,102,241,0.06)",
+              filter: "blur(50px)",
+              borderRadius: "50%",
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "28px",
+              position: "relative",
+              zIndex: 1,
+            }}
+          >
+            <div>
+              <h3
+                style={{
+                  fontSize: "16px",
+                  fontWeight: 700,
+                  color: "#0f172a",
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                Sessions Recentes
+              </h3>
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "#94a3b8",
+                  marginTop: "4px",
+                }}
+              >
+                5 dernieres sessions
+              </p>
+            </div>
+            <div
+              style={{
+                fontSize: "28px",
+                fontFamily: serif,
+                color: "#0f172a",
+                letterSpacing: "-0.03em",
+              }}
+            >
+              {stats.recentSessions.length}
+            </div>
+          </div>
+
+          {/* Table header */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "3fr 1.5fr 1.2fr 0.8fr",
+              gap: "16px",
+              padding: "0 0 12px 0",
+              borderBottom: "1px solid rgba(0,0,0,0.06)",
+              position: "relative",
+              zIndex: 1,
+            }}
+          >
+            <span style={lbl}>Session</span>
+            <span style={lbl}>Date</span>
+            <span style={lbl}>Sentiment</span>
+            <span style={{ ...lbl, textAlign: "right" }}>Messages</span>
+          </div>
+
+          {/* Table rows */}
+          <div style={{ position: "relative", zIndex: 1 }}>
+            {stats.recentSessions.map((session, i) => {
+              const dot = sentimentDot(session.sentiment);
+              return (
+                <div
+                  key={session.sid || `${session.date}-${i}`}
+                  className="o-row"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "3fr 1.5fr 1.2fr 0.8fr",
+                    gap: "16px",
+                    padding: "14px 0",
+                    borderBottom:
+                      i < stats.recentSessions.length - 1
+                        ? "1px solid rgba(0,0,0,0.04)"
+                        : "none",
+                    alignItems: "center",
+                    borderRadius: "4px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      color: "#334155",
+                      fontWeight: 500,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {session.name || session.filename}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      color: "#94a3b8",
+                      fontFamily: mono,
+                    }}
+                  >
+                    {formatDate(session.date)}
+                  </span>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "7px",
+                        height: "7px",
+                        borderRadius: "50%",
+                        background: dot.color,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        color: "#64748b",
+                      }}
+                    >
+                      {session.sentiment > 0
+                        ? `${session.sentiment.toFixed(1)} ${dot.label}`
+                        : "\u2014"}
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      fontFamily: mono,
+                      color: "#64748b",
+                      textAlign: "right",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {session.messageCount}
+                  </span>
+                </div>
+              );
+            })}
+            {stats.recentSessions.length === 0 && (
+              <div
+                style={{
+                  padding: "32px 0",
+                  textAlign: "center",
+                  color: "#94a3b8",
+                  fontSize: "14px",
+                }}
+              >
+                Aucune session enregistree
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* THREAD PREVIEW — full width */}
           <div

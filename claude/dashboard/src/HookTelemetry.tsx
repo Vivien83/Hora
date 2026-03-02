@@ -13,13 +13,34 @@ import {
 } from "recharts";
 
 const C = {
-  card: "#18181b",
-  border: "#27272a",
-  text: "#e4e4e7",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  accent: "#14b8a6",
+  bg: "#F2F0E9",
+  glass: {
+    background: "rgba(255,255,255,0.45)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    border: "1px solid rgba(255,255,255,0.7)",
+    borderRadius: "20px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
+  } as React.CSSProperties,
+  text: "#0f172a",
+  textSecondary: "#334155",
+  textMuted: "#64748b",
+  textTertiary: "#94a3b8",
   gold: "#D4A853",
+  accent: "#6366f1",
+  border: "rgba(0,0,0,0.06)",
+  grid: "rgba(0,0,0,0.06)",
+  serif: "'Playfair Display', Georgia, serif" as string,
+  sans: "'DM Sans', sans-serif" as string,
+  mono: "'JetBrains Mono', monospace" as string,
+  tooltipStyle: {
+    background: "rgba(255,255,255,0.85)",
+    backdropFilter: "blur(16px)",
+    WebkitBackdropFilter: "blur(16px)",
+    border: "1px solid rgba(255,255,255,0.8)",
+    borderRadius: "16px",
+    boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+  } as React.CSSProperties,
 };
 
 interface TelemetryData {
@@ -42,17 +63,9 @@ interface SimpleTooltipProps {
 function SimpleTooltip({ active, payload, label, suffix = "appels" }: SimpleTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
-    <div
-      style={{
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: "6px",
-        padding: "8px 12px",
-        fontSize: "12px",
-      }}
-    >
-      <div style={{ color: C.muted, marginBottom: "2px" }}>{label}</div>
-      <div style={{ color: C.text, fontWeight: 600 }}>
+    <div style={{ ...C.tooltipStyle, padding: "8px 12px", fontSize: "12px" }}>
+      <div style={{ color: C.textMuted, marginBottom: "2px", fontFamily: C.sans }}>{label}</div>
+      <div style={{ color: C.text, fontWeight: 600, fontFamily: C.mono }}>
         {payload[0].value} {suffix}
       </div>
     </div>
@@ -62,17 +75,9 @@ function SimpleTooltip({ active, payload, label, suffix = "appels" }: SimpleTool
 function HourlyTooltip({ active, payload, label }: SimpleTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
-    <div
-      style={{
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: "6px",
-        padding: "8px 12px",
-        fontSize: "12px",
-      }}
-    >
-      <div style={{ color: C.muted, marginBottom: "2px" }}>{label}h</div>
-      <div style={{ color: C.text, fontWeight: 600 }}>{payload[0].value} appels</div>
+    <div style={{ ...C.tooltipStyle, padding: "8px 12px", fontSize: "12px" }}>
+      <div style={{ color: C.textMuted, marginBottom: "2px", fontFamily: C.sans }}>{label}h</div>
+      <div style={{ color: C.text, fontWeight: 600, fontFamily: C.mono }}>{payload[0].value} appels</div>
     </div>
   );
 }
@@ -115,13 +120,12 @@ export function HookTelemetry() {
     return (
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...C.glass,
           padding: "48px 24px",
           textAlign: "center",
-          color: C.dim,
+          color: C.textMuted,
           fontSize: "14px",
+          fontFamily: C.sans,
         }}
       >
         Chargement de la telemetrie...
@@ -133,13 +137,12 @@ export function HookTelemetry() {
     return (
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...C.glass,
           padding: "48px 24px",
           textAlign: "center",
-          color: C.dim,
+          color: C.textMuted,
           fontSize: "14px",
+          fontFamily: C.sans,
         }}
       >
         {error ? `Erreur : ${error}` : "Aucune donnee de telemetrie disponible."}
@@ -154,6 +157,7 @@ export function HookTelemetry() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <style>{fadeInStyle}</style>
+
       {/* Stats row */}
       <div
         style={{
@@ -165,9 +169,7 @@ export function HookTelemetry() {
         {/* Session count */}
         <div
           style={{
-            background: C.card,
-            border: `1px solid ${C.border}`,
-            borderRadius: "8px",
+            ...C.glass,
             padding: "20px 24px",
             display: "flex",
             flexDirection: "column",
@@ -179,9 +181,10 @@ export function HookTelemetry() {
           <span
             style={{
               fontSize: "12px",
-              color: "#71717a",
+              color: C.textMuted,
               letterSpacing: "0.05em",
               textTransform: "uppercase",
+              fontFamily: C.mono,
             }}
           >
             Sessions (7j)
@@ -193,11 +196,12 @@ export function HookTelemetry() {
               lineHeight: 1.1,
               color: C.accent,
               letterSpacing: "-0.02em",
+              fontFamily: C.serif,
             }}
           >
             {data.sessionCount}
           </span>
-          <span style={{ fontSize: "12px", color: C.dim, marginTop: "2px" }}>
+          <span style={{ fontSize: "12px", color: C.textTertiary, marginTop: "2px", fontFamily: C.sans }}>
             sessions uniques
           </span>
         </div>
@@ -205,9 +209,7 @@ export function HookTelemetry() {
         {/* Total calls */}
         <div
           style={{
-            background: C.card,
-            border: `1px solid ${C.border}`,
-            borderRadius: "8px",
+            ...C.glass,
             padding: "20px 24px",
             display: "flex",
             flexDirection: "column",
@@ -219,9 +221,10 @@ export function HookTelemetry() {
           <span
             style={{
               fontSize: "12px",
-              color: "#71717a",
+              color: C.textMuted,
               letterSpacing: "0.05em",
               textTransform: "uppercase",
+              fontFamily: C.mono,
             }}
           >
             Appels (7j)
@@ -233,11 +236,12 @@ export function HookTelemetry() {
               lineHeight: 1.1,
               color: C.text,
               letterSpacing: "-0.02em",
+              fontFamily: C.serif,
             }}
           >
             {data.totalCalls.toLocaleString()}
           </span>
-          <span style={{ fontSize: "12px", color: C.dim, marginTop: "2px" }}>
+          <span style={{ fontSize: "12px", color: C.textTertiary, marginTop: "2px", fontFamily: C.sans }}>
             appels d'outils
           </span>
         </div>
@@ -245,9 +249,7 @@ export function HookTelemetry() {
         {/* Distinct tools */}
         <div
           style={{
-            background: C.card,
-            border: `1px solid ${C.border}`,
-            borderRadius: "8px",
+            ...C.glass,
             padding: "20px 24px",
             display: "flex",
             flexDirection: "column",
@@ -259,9 +261,10 @@ export function HookTelemetry() {
           <span
             style={{
               fontSize: "12px",
-              color: "#71717a",
+              color: C.textMuted,
               letterSpacing: "0.05em",
               textTransform: "uppercase",
+              fontFamily: C.mono,
             }}
           >
             Outils distincts
@@ -273,11 +276,12 @@ export function HookTelemetry() {
               lineHeight: 1.1,
               color: C.text,
               letterSpacing: "-0.02em",
+              fontFamily: C.serif,
             }}
           >
             {Object.keys(data.toolCounts).length}
           </span>
-          <span style={{ fontSize: "12px", color: C.dim, marginTop: "2px" }}>
+          <span style={{ fontSize: "12px", color: C.textTertiary, marginTop: "2px", fontFamily: C.sans }}>
             outils utilises
           </span>
         </div>
@@ -285,9 +289,7 @@ export function HookTelemetry() {
         {/* Peak hour */}
         <div
           style={{
-            background: C.card,
-            border: `1px solid ${C.border}`,
-            borderRadius: "8px",
+            ...C.glass,
             padding: "20px 24px",
             display: "flex",
             flexDirection: "column",
@@ -299,9 +301,10 @@ export function HookTelemetry() {
           <span
             style={{
               fontSize: "12px",
-              color: "#71717a",
+              color: C.textMuted,
               letterSpacing: "0.05em",
               textTransform: "uppercase",
+              fontFamily: C.mono,
             }}
           >
             Heure de pointe
@@ -313,11 +316,12 @@ export function HookTelemetry() {
               lineHeight: 1.1,
               color: C.gold,
               letterSpacing: "-0.02em",
+              fontFamily: C.serif,
             }}
           >
             {data.hourlyActivity.reduce((max, h) => (h.count > max.count ? h : max), { hour: 0, count: 0 }).hour}h
           </span>
-          <span style={{ fontSize: "12px", color: C.dim, marginTop: "2px" }}>
+          <span style={{ fontSize: "12px", color: C.textTertiary, marginTop: "2px", fontFamily: C.sans }}>
             {maxHourlyCount} appels
           </span>
         </div>
@@ -326,15 +330,13 @@ export function HookTelemetry() {
       {/* Top Tools horizontal bar chart */}
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...C.glass,
           padding: "20px 24px",
           animation: "horaFadeUp 0.5s ease-out both",
           animationDelay: "0.2s",
         }}
       >
-        <div style={{ fontSize: "11px", color: C.dim, marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        <div style={{ fontSize: "11px", color: C.textMuted, marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: C.mono }}>
           Top 10 outils (7 derniers jours)
         </div>
         {top10.length > 0 ? (
@@ -344,33 +346,33 @@ export function HookTelemetry() {
               layout="vertical"
               margin={{ top: 0, right: 16, left: 8, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke={C.border} horizontal={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
               <XAxis
                 type="number"
-                tick={{ fill: C.dim, fontSize: 11 }}
-                axisLine={{ stroke: C.border }}
+                tick={{ fill: C.textTertiary, fontSize: 11, fontFamily: C.mono }}
+                axisLine={{ stroke: C.grid }}
                 tickLine={false}
               />
               <YAxis
                 type="category"
                 dataKey="tool"
                 width={120}
-                tick={{ fill: C.muted, fontSize: 12 }}
+                tick={{ fill: C.textMuted, fontSize: 12, fontFamily: C.mono }}
                 axisLine={false}
                 tickLine={false}
               />
-              <Tooltip content={<SimpleTooltip />} cursor={{ fill: C.border }} />
+              <Tooltip content={<SimpleTooltip />} cursor={{ fill: "rgba(99,102,241,0.04)" }} />
               <Bar dataKey="count" radius={[0, 4, 4, 0]} isAnimationActive animationDuration={800} animationEasing="ease-out">
                 {top10.map((entry, index) => {
                   const ratio = entry.count / maxToolCount;
-                  const opacity = 0.4 + ratio * 0.6;
-                  return <Cell key={`cell-${index}`} fill={`rgba(20, 184, 166, ${opacity})`} />;
+                  const opacity = 0.35 + ratio * 0.65;
+                  return <Cell key={`cell-${index}`} fill={`rgba(99, 102, 241, ${opacity})`} />;
                 })}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div style={{ color: C.dim, fontSize: "13px", padding: "16px 0" }}>
+          <div style={{ color: C.textMuted, fontSize: "13px", padding: "16px 0", fontFamily: C.sans }}>
             Aucune donnee d'outils.
           </div>
         )}
@@ -379,37 +381,35 @@ export function HookTelemetry() {
       {/* Hourly activity heatmap-style bar chart */}
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...C.glass,
           padding: "20px 24px",
           animation: "horaFadeUp 0.5s ease-out both",
           animationDelay: "0.35s",
         }}
       >
-        <div style={{ fontSize: "11px", color: C.dim, marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        <div style={{ fontSize: "11px", color: C.textMuted, marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: C.mono }}>
           Activite par heure (7 jours cumules)
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={data.hourlyActivity} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+            <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
             <XAxis
               dataKey="hour"
-              tick={{ fill: C.dim, fontSize: 11 }}
-              axisLine={{ stroke: C.border }}
+              tick={{ fill: C.textTertiary, fontSize: 11, fontFamily: C.mono }}
+              axisLine={{ stroke: C.grid }}
               tickLine={false}
               tickFormatter={(h: number) => `${h}h`}
             />
             <YAxis
-              tick={{ fill: C.dim, fontSize: 11 }}
-              axisLine={{ stroke: C.border }}
+              tick={{ fill: C.textTertiary, fontSize: 11, fontFamily: C.mono }}
+              axisLine={{ stroke: C.grid }}
               tickLine={false}
             />
-            <Tooltip content={<HourlyTooltip />} cursor={{ fill: C.border }} />
+            <Tooltip content={<HourlyTooltip />} cursor={{ fill: "rgba(212,168,83,0.06)" }} />
             <Bar dataKey="count" radius={[4, 4, 0, 0]} isAnimationActive animationDuration={1000} animationEasing="ease-out">
               {data.hourlyActivity.map((entry, index) => {
                 const ratio = entry.count / maxHourlyCount;
-                const opacity = entry.count === 0 ? 0.1 : 0.3 + ratio * 0.7;
+                const opacity = entry.count === 0 ? 0.08 : 0.25 + ratio * 0.75;
                 return <Cell key={`h-${index}`} fill={`rgba(212, 168, 83, ${opacity})`} />;
               })}
             </Bar>
@@ -420,15 +420,13 @@ export function HookTelemetry() {
       {/* Daily activity sparkline */}
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...C.glass,
           padding: "20px 24px",
           animation: "horaFadeUp 0.5s ease-out both",
           animationDelay: "0.5s",
         }}
       >
-        <div style={{ fontSize: "11px", color: C.dim, marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        <div style={{ fontSize: "11px", color: C.textMuted, marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: C.mono }}>
           Activite quotidienne (7 derniers jours)
         </div>
         {data.dailyActivity.length > 0 ? (
@@ -439,20 +437,20 @@ export function HookTelemetry() {
             >
               <defs>
                 <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={C.accent} stopOpacity={0.3} />
-                  <stop offset="100%" stopColor={C.accent} stopOpacity={0.02} />
+                  <stop offset="0%" stopColor={C.accent} stopOpacity={0.2} />
+                  <stop offset="100%" stopColor={C.accent} stopOpacity={0.01} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
               <XAxis
                 dataKey="dateLabel"
-                tick={{ fill: C.dim, fontSize: 11 }}
-                axisLine={{ stroke: C.border }}
+                tick={{ fill: C.textTertiary, fontSize: 11, fontFamily: C.mono }}
+                axisLine={{ stroke: C.grid }}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fill: C.dim, fontSize: 11 }}
-                axisLine={{ stroke: C.border }}
+                tick={{ fill: C.textTertiary, fontSize: 11, fontFamily: C.mono }}
+                axisLine={{ stroke: C.grid }}
                 tickLine={false}
               />
               <Tooltip content={<SimpleTooltip />} />
@@ -469,7 +467,7 @@ export function HookTelemetry() {
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <div style={{ color: C.dim, fontSize: "13px", padding: "16px 0" }}>
+          <div style={{ color: C.textMuted, fontSize: "13px", padding: "16px 0", fontFamily: C.sans }}>
             Aucune activite sur les 7 derniers jours.
           </div>
         )}

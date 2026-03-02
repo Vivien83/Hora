@@ -13,13 +13,28 @@ import type { GraphData, GraphNode, GraphEdge } from "./types";
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const C = {
-  bg: "#0A0A0B",
-  card: "#18181b",
-  border: "#27272a",
-  text: "#e4e4e7",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  accent: "#14b8a6",
+  bg: "#F2F0E9",
+  glass: {
+    background: "rgba(255,255,255,0.45)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    border: "1px solid rgba(255,255,255,0.7)",
+    borderRadius: "12px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
+  },
+  text: "#0f172a",
+  textSecondary: "#334155",
+  textMuted: "#64748b",
+  textTertiary: "#94a3b8",
+  gold: "#D4A853",
+  accent: "#6366f1",
+  border: "rgba(0,0,0,0.06)",
+  serif: "'Playfair Display', Georgia, serif",
+  sans: "'DM Sans', sans-serif",
+  mono: "'JetBrains Mono', monospace",
+  canvasBg: "#EDE9E0",
+  canvasText: "#0f172a",
+  canvasMuted: "#64748b",
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -127,7 +142,6 @@ function buildForceData(
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
   const searchLower = search.toLowerCase();
 
-  // Filter entities
   let entities = graphData.entities;
   if (filterRecent) {
     entities = entities.filter((e) => new Date(e.last_seen).getTime() > thirtyDaysAgo);
@@ -138,7 +152,6 @@ function buildForceData(
 
   const entityIds = new Set(entities.map((e) => e.id));
 
-  // Filter facts by temporal cutoff and validity
   const facts = graphData.facts.filter((f) => {
     if (!entityIds.has(f.source) || !entityIds.has(f.target)) return false;
     if (f.expired_at && new Date(f.expired_at).getTime() < now) return false;
@@ -146,7 +159,6 @@ function buildForceData(
     return true;
   });
 
-  // Compute degree for sizing
   const degree: Record<string, number> = {};
   for (const f of facts) {
     degree[f.source] = (degree[f.source] || 0) + 1;
@@ -189,7 +201,7 @@ function DetailPanel({
   facts: GraphEdge[];
   onClose: () => void;
 }) {
-  const color = TYPE_COLORS[node.type] || C.muted;
+  const color = TYPE_COLORS[node.type] || C.textMuted;
   const connectedFacts = facts.filter(
     (f) =>
       (f.source === node.id || f.target === node.id) &&
@@ -201,11 +213,14 @@ function DetailPanel({
       style={{
         width: "300px",
         height: "100%",
-        background: C.card,
-        borderLeft: `1px solid ${C.border}`,
+        ...C.glass,
+        borderRadius: 0,
+        borderLeft: "1px solid rgba(255,255,255,0.7)",
+        borderTop: "none",
+        borderBottom: "none",
+        borderRight: "none",
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
         flexShrink: 0,
       }}
     >
@@ -229,6 +244,7 @@ function DetailPanel({
               lineHeight: 1.2,
               letterSpacing: "-0.01em",
               wordBreak: "break-word",
+              fontFamily: C.serif,
             }}
           >
             {node.name}
@@ -241,10 +257,11 @@ function DetailPanel({
               fontWeight: 600,
               letterSpacing: "0.05em",
               textTransform: "uppercase",
-              color: C.bg,
+              color: "#fff",
               background: color,
               padding: "2px 8px",
               borderRadius: "4px",
+              fontFamily: C.sans,
             }}
           >
             {node.type.replace("_", " ")}
@@ -255,7 +272,7 @@ function DetailPanel({
           style={{
             background: "none",
             border: "none",
-            color: C.dim,
+            color: C.textTertiary,
             cursor: "pointer",
             fontSize: "18px",
             lineHeight: 1,
@@ -272,20 +289,20 @@ function DetailPanel({
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
         {/* Dates */}
         <div style={{ marginBottom: "16px" }}>
-          <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+          <div style={{ fontSize: "10px", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px", fontFamily: C.sans }}>
             Dates
           </div>
-          <div style={{ fontSize: "12px", color: C.muted, lineHeight: 1.8 }}>
-            <span style={{ color: C.dim }}>Cree : </span>{formatDate(node.created_at)}
+          <div style={{ fontSize: "12px", color: C.textSecondary, lineHeight: 1.8, fontFamily: C.sans }}>
+            <span style={{ color: C.textMuted }}>Cree : </span>{formatDate(node.created_at)}
             <br />
-            <span style={{ color: C.dim }}>Vu : </span>{formatDate(node.last_seen)}
+            <span style={{ color: C.textMuted }}>Vu : </span>{formatDate(node.last_seen)}
           </div>
         </div>
 
         {/* Properties */}
         {Object.keys(node.properties).length > 0 && (
           <div style={{ marginBottom: "16px" }}>
-            <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+            <div style={{ fontSize: "10px", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px", fontFamily: C.sans }}>
               Proprietes
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -297,12 +314,13 @@ function DetailPanel({
                     justifyContent: "space-between",
                     fontSize: "12px",
                     padding: "4px 8px",
-                    background: C.bg,
-                    borderRadius: "4px",
+                    background: "rgba(255,255,255,0.5)",
+                    borderRadius: "6px",
+                    border: `1px solid ${C.border}`,
                   }}
                 >
-                  <span style={{ color: C.dim, fontFamily: "monospace" }}>{key}</span>
-                  <span style={{ color: C.muted, fontFamily: "monospace" }}>{String(val)}</span>
+                  <span style={{ color: C.textMuted, fontFamily: C.mono }}>{key}</span>
+                  <span style={{ color: C.textSecondary, fontFamily: C.mono }}>{String(val)}</span>
                 </div>
               ))}
             </div>
@@ -311,11 +329,11 @@ function DetailPanel({
 
         {/* Connected facts */}
         <div>
-          <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+          <div style={{ fontSize: "10px", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px", fontFamily: C.sans }}>
             Faits ({connectedFacts.length})
           </div>
           {connectedFacts.length === 0 ? (
-            <div style={{ fontSize: "12px", color: C.dim }}>Aucun fait actif</div>
+            <div style={{ fontSize: "12px", color: C.textTertiary, fontFamily: C.sans }}>Aucun fait actif</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               {connectedFacts.slice(0, 20).map((f) => {
@@ -326,15 +344,18 @@ function DetailPanel({
                     key={f.id}
                     style={{
                       padding: "8px 10px",
-                      background: C.bg,
-                      borderRadius: "4px",
+                      background: "rgba(255,255,255,0.55)",
+                      borderRadius: "8px",
                       borderLeft: `2px solid ${catColor}`,
+                      border: `1px solid ${C.border}`,
+                      borderLeftWidth: "2px",
+                      borderLeftColor: catColor,
                     }}
                   >
-                    <div style={{ fontSize: "11px", color: C.text, lineHeight: 1.4 }}>
+                    <div style={{ fontSize: "11px", color: C.text, lineHeight: 1.4, fontFamily: C.sans }}>
                       {f.description || f.relation}
                     </div>
-                    <div style={{ fontSize: "10px", color: C.dim, marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div style={{ fontSize: "10px", color: C.textTertiary, marginTop: "4px", display: "flex", alignItems: "center", gap: "6px", fontFamily: C.mono }}>
                       <span style={{ color: catColor, fontWeight: 600 }}>{f.relation}</span>
                       <span>·</span>
                       <span>conf. {(f.confidence * 100).toFixed(0)}%</span>
@@ -372,11 +393,14 @@ function LinkDetailPanel({
       style={{
         width: "300px",
         height: "100%",
-        background: C.card,
-        borderLeft: `1px solid ${C.border}`,
+        ...C.glass,
+        borderRadius: 0,
+        borderLeft: "1px solid rgba(255,255,255,0.7)",
+        borderTop: "none",
+        borderBottom: "none",
+        borderRight: "none",
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
         flexShrink: 0,
       }}
     >
@@ -400,6 +424,7 @@ function LinkDetailPanel({
               lineHeight: 1.2,
               letterSpacing: "-0.01em",
               wordBreak: "break-word",
+              fontFamily: C.serif,
             }}
           >
             {link.relation}
@@ -416,10 +441,11 @@ function LinkDetailPanel({
                     fontWeight: 600,
                     letterSpacing: "0.05em",
                     textTransform: "uppercase",
-                    color: C.bg,
+                    color: "#fff",
                     background: catColor,
                     padding: "2px 8px",
                     borderRadius: "4px",
+                    fontFamily: C.sans,
                   }}
                 >
                   {cat}
@@ -433,7 +459,7 @@ function LinkDetailPanel({
           style={{
             background: "none",
             border: "none",
-            color: C.dim,
+            color: C.textTertiary,
             cursor: "pointer",
             fontSize: "18px",
             lineHeight: 1,
@@ -450,7 +476,7 @@ function LinkDetailPanel({
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
         {/* Connection */}
         <div style={{ marginBottom: "16px" }}>
-          <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+          <div style={{ fontSize: "10px", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px", fontFamily: C.sans }}>
             Connexion
           </div>
           <div
@@ -461,12 +487,14 @@ function LinkDetailPanel({
               fontSize: "12px",
               color: C.text,
               padding: "8px 10px",
-              background: C.bg,
-              borderRadius: "4px",
+              background: "rgba(255,255,255,0.55)",
+              borderRadius: "8px",
+              border: `1px solid ${C.border}`,
+              fontFamily: C.sans,
             }}
           >
             <span style={{ fontWeight: 600 }}>{sourceName}</span>
-            <span style={{ color: C.dim }}>→</span>
+            <span style={{ color: C.textTertiary }}>→</span>
             <span style={{ fontWeight: 600 }}>{targetName}</span>
           </div>
         </div>
@@ -474,10 +502,10 @@ function LinkDetailPanel({
         {/* Description */}
         {link.description && (
           <div style={{ marginBottom: "16px" }}>
-            <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+            <div style={{ fontSize: "10px", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px", fontFamily: C.sans }}>
               Description
             </div>
-            <div style={{ fontSize: "12px", color: C.muted, lineHeight: 1.5 }}>
+            <div style={{ fontSize: "12px", color: C.textSecondary, lineHeight: 1.5, fontFamily: C.sans }}>
               {link.description}
             </div>
           </div>
@@ -486,10 +514,10 @@ function LinkDetailPanel({
         {/* Context from metadata */}
         {link.metadata?.context && (
           <div style={{ marginBottom: "16px" }}>
-            <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+            <div style={{ fontSize: "10px", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px", fontFamily: C.sans }}>
               Contexte
             </div>
-            <div style={{ fontSize: "12px", color: C.muted, lineHeight: 1.5, fontStyle: "italic" }}>
+            <div style={{ fontSize: "12px", color: C.textSecondary, lineHeight: 1.5, fontStyle: "italic", fontFamily: C.sans }}>
               {link.metadata.context}
             </div>
           </div>
@@ -497,7 +525,7 @@ function LinkDetailPanel({
 
         {/* Metadata */}
         <div style={{ marginBottom: "16px" }}>
-          <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+          <div style={{ fontSize: "10px", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px", fontFamily: C.sans }}>
             Metadata
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -514,12 +542,13 @@ function LinkDetailPanel({
                   justifyContent: "space-between",
                   fontSize: "12px",
                   padding: "4px 8px",
-                  background: C.bg,
-                  borderRadius: "4px",
+                  background: "rgba(255,255,255,0.55)",
+                  borderRadius: "6px",
+                  border: `1px solid ${C.border}`,
                 }}
               >
-                <span style={{ color: C.dim, fontFamily: "monospace" }}>{row.label}</span>
-                <span style={{ color: C.muted, fontFamily: "monospace" }}>{row.value}</span>
+                <span style={{ color: C.textMuted, fontFamily: C.mono }}>{row.label}</span>
+                <span style={{ color: C.textSecondary, fontFamily: C.mono }}>{row.value}</span>
               </div>
             ))}
           </div>
@@ -553,7 +582,6 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
 
   const [temporalCutoff, setTemporalCutoff] = useState(allDates.max);
 
-  // Build graph data, restoring persisted positions
   const forceData = useMemo(() => {
     const data = buildForceData(graphData, search, filterRecent, temporalCutoff);
     for (const node of data.nodes) {
@@ -566,7 +594,6 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     return data;
   }, [graphData, search, filterRecent, temporalCutoff]);
 
-  // Configure link distance force
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg) return;
@@ -574,25 +601,23 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     fg.d3Force("link")?.distance(120);
   }, [forceData]);
 
-  // Node canvas renderer
+  // Node canvas renderer — fond du label adapte au canvas sombre
   const nodeCanvasObject = useCallback(
     (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const n = node as ForceNode;
       const x = n.x || 0;
       const y = n.y || 0;
-      const color = TYPE_COLORS[n.type] || C.muted;
+      const color = TYPE_COLORS[n.type] || C.canvasMuted;
       const isHighlighted = highlightNodes.has(n.id);
       const deg = n.connections || 0;
       const radius = Math.max(6, Math.min(24, deg * 3 + 6));
 
-      // Breathing for recently seen entities
       let breathScale = 1;
       if (isRecent(n.last_seen, 48)) {
         breathScale = 1 + Math.sin(Date.now() / 1500) * 0.06;
       }
       const r = radius * breathScale;
 
-      // Glow for highlighted nodes
       if (isHighlighted) {
         const glow = ctx.createRadialGradient(x, y, r * 0.5, x, y, r * 2.5);
         glow.addColorStop(0, hexToRgba(color, 0.3));
@@ -603,19 +628,16 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
         ctx.fill();
       }
 
-      // Node circle
       ctx.beginPath();
       ctx.arc(x, y, r, 0, 2 * Math.PI);
       ctx.fillStyle = isHighlighted ? color : hexToRgba(color, 0.75);
       ctx.fill();
 
-      // Inner highlight
       ctx.beginPath();
       ctx.arc(x, y, r * 0.4, 0, 2 * Math.PI);
-      ctx.fillStyle = hexToRgba("#ffffff", isHighlighted ? 0.25 : 0.12);
+      ctx.fillStyle = hexToRgba("#ffffff", isHighlighted ? 0.4 : 0.25);
       ctx.fill();
 
-      // Label — only for nodes with 3+ connections or highlighted
       const showLabel = deg >= 3 || isHighlighted;
       if (showLabel && globalScale > 0.3) {
         const fontSize = Math.max(11, 13 / globalScale);
@@ -626,28 +648,26 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
         const textWidth = ctx.measureText(label).width;
         const labelY = y + r + 4;
 
-        // Dark background behind label for contrast
-        const padX = 4;
-        const padY = 2;
-        ctx.fillStyle = hexToRgba(C.bg, 0.85);
-        ctx.beginPath();
-        ctx.roundRect(
-          x - textWidth / 2 - padX,
-          labelY - padY,
-          textWidth + padX * 2,
-          fontSize + padY * 2,
-          3,
-        );
-        ctx.fill();
+        const padX = 8;
+        const padY = 4;
+        const bgW = textWidth + padX * 2;
+        const bgH = fontSize + padY * 2;
+        const cx = x;
+        const cy = labelY - padY + bgH / 2;
+        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(bgW, bgH) * 0.7);
+        grad.addColorStop(0, hexToRgba("#F2F0E9", 0.65));
+        grad.addColorStop(0.7, hexToRgba("#F2F0E9", 0.3));
+        grad.addColorStop(1, "transparent");
+        ctx.fillStyle = grad;
+        ctx.fillRect(x - bgW / 2 - 4, cy - bgH / 2 - 4, bgW + 8, bgH + 8);
 
-        ctx.fillStyle = isHighlighted ? C.text : C.muted;
+        ctx.fillStyle = isHighlighted ? C.canvasText : C.canvasMuted;
         ctx.fillText(label, x, labelY);
       }
     },
     [highlightNodes],
   );
 
-  // Node pointer area size
   const nodePointerAreaPaint = useCallback(
     (node: any, color: string, ctx: CanvasRenderingContext2D) => {
       const n = node as ForceNode;
@@ -660,7 +680,6 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     [],
   );
 
-  // Hover handler
   const handleNodeHover = useCallback(
     (node: any) => {
       if (!node) {
@@ -684,7 +703,6 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     [graphData.facts],
   );
 
-  // Click handler
   const handleNodeClick = useCallback(
     (node: any) => {
       const n = node as ForceNode;
@@ -695,7 +713,6 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     [graphData.entities],
   );
 
-  // Drag handlers — persist node positions
   const handleNodeDrag = useCallback((node: any) => {
     const n = node as ForceNode;
     n.fx = n.x;
@@ -711,7 +728,6 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     }
   }, []);
 
-  // Link click handler — extract string IDs since ForceGraph2D resolves references to objects
   const handleLinkClick = useCallback((link: any) => {
     const l = link as ForceLink;
     const sourceId = typeof l.source === "object" ? (l.source as any).id : l.source;
@@ -720,7 +736,6 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     setSelectedNode(null);
   }, []);
 
-  // Link tooltip
   const linkLabel = useCallback((link: any) => {
     const l = link as ForceLink;
     const parts = [l.relation];
@@ -730,7 +745,6 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     return parts.join(" · ");
   }, []);
 
-  // Link width
   const linkWidth = useCallback(
     (link: any) => {
       const l = link as ForceLink;
@@ -739,19 +753,17 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     [highlightLinks],
   );
 
-  // Link color (highlight aware)
   const linkColor = useCallback(
     (link: any) => {
       const l = link as ForceLink;
       if (highlightLinks.has(l.id)) {
-        return hexToRgba("#ffffff", 0.2 + l.confidence * 0.3);
+        return hexToRgba("#000000", 0.15 + l.confidence * 0.2);
       }
       return l.color;
     },
     [highlightLinks],
   );
 
-  // Stats
   const activeFacts = graphData.facts.filter(
     (f) => !f.expired_at || new Date(f.expired_at).getTime() > Date.now(),
   ).length;
@@ -769,11 +781,11 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           alignItems: "center",
           justifyContent: "center",
           gap: "16px",
-          color: C.dim,
+          color: C.textTertiary,
         }}
       >
-        <div style={{ fontSize: "36px", opacity: 0.3, fontWeight: 200 }}>*</div>
-        <div style={{ fontSize: "14px", maxWidth: "400px", textAlign: "center", lineHeight: 1.6 }}>
+        <div style={{ fontSize: "36px", opacity: 0.3, fontWeight: 200, color: C.gold }}>*</div>
+        <div style={{ fontSize: "14px", maxWidth: "400px", textAlign: "center", lineHeight: 1.6, fontFamily: C.sans, color: C.textSecondary }}>
           Le knowledge graph est vide. Il sera enrichi automatiquement a chaque fin de session.
         </div>
       </div>
@@ -783,8 +795,8 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   return (
     <div style={{ width: "100%", height: "100%", display: "flex", background: C.bg }}>
       {/* Graph area */}
-      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-        {/* Top bar */}
+      <div style={{ flex: 1, position: "relative", minWidth: 0, overflow: "hidden" }}>
+        {/* Top bar — glass overlay */}
         <div
           style={{
             position: "absolute",
@@ -796,7 +808,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
             alignItems: "center",
             justifyContent: "space-between",
             padding: "12px 16px",
-            background: `linear-gradient(to bottom, ${C.bg}, transparent)`,
+            background: `linear-gradient(to bottom, rgba(242,240,233,0.9) 0%, rgba(242,240,233,0) 100%)`,
             pointerEvents: "none",
           }}
         >
@@ -811,12 +823,13 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
                 width: "200px",
                 padding: "6px 12px",
                 fontSize: "12px",
-                fontFamily: "system-ui, sans-serif",
-                background: C.card,
-                border: `1px solid ${C.border}`,
-                borderRadius: "6px",
+                fontFamily: C.sans,
+                background: "rgba(255,255,255,0.8)",
+                border: `1px solid rgba(0,0,0,0.10)`,
+                borderRadius: "8px",
                 color: C.text,
                 outline: "none",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
               }}
             />
             <div style={{ display: "flex", gap: "2px" }}>
@@ -826,11 +839,12 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
                   padding: "5px 10px",
                   fontSize: "11px",
                   fontWeight: 500,
-                  color: !filterRecent ? C.text : C.dim,
-                  background: !filterRecent ? C.card : "transparent",
-                  border: `1px solid ${!filterRecent ? C.border : "transparent"}`,
-                  borderRadius: "4px 0 0 4px",
+                  color: !filterRecent ? C.text : C.textMuted,
+                  background: !filterRecent ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
+                  border: `1px solid ${!filterRecent ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.06)"}`,
+                  borderRadius: "6px 0 0 6px",
                   cursor: "pointer",
+                  fontFamily: C.sans,
                 }}
               >
                 Tout
@@ -841,11 +855,12 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
                   padding: "5px 10px",
                   fontSize: "11px",
                   fontWeight: 500,
-                  color: filterRecent ? C.text : C.dim,
-                  background: filterRecent ? C.card : "transparent",
-                  border: `1px solid ${filterRecent ? C.border : "transparent"}`,
-                  borderRadius: "0 4px 4px 0",
+                  color: filterRecent ? C.text : C.textMuted,
+                  background: filterRecent ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
+                  border: `1px solid ${filterRecent ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.06)"}`,
+                  borderRadius: "0 6px 6px 0",
                   cursor: "pointer",
+                  fontFamily: C.sans,
                 }}
               >
                 Recents (30j)
@@ -855,7 +870,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
 
           {/* Title + recenter */}
           <div style={{ display: "flex", alignItems: "center", gap: "12px", pointerEvents: "auto" }}>
-            <div style={{ fontSize: "14px", fontWeight: 700, color: C.text, letterSpacing: "-0.01em" }}>
+            <div style={{ fontSize: "14px", fontWeight: 700, color: C.text, letterSpacing: "-0.01em", fontFamily: C.serif }}>
               Knowledge Graph
             </div>
             <button
@@ -868,11 +883,13 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
                 padding: "5px 10px",
                 fontSize: "11px",
                 fontWeight: 500,
-                color: C.muted,
-                background: C.card,
-                border: `1px solid ${C.border}`,
-                borderRadius: "4px",
+                color: C.textMuted,
+                background: "rgba(255,255,255,0.8)",
+                border: `1px solid rgba(0,0,0,0.08)`,
+                borderRadius: "6px",
                 cursor: "pointer",
+                fontFamily: C.sans,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
               }}
             >
               Recentrer
@@ -880,7 +897,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           </div>
         </div>
 
-        {/* Stats overlay (top-left, below search bar) */}
+        {/* Stats overlay — glass cards */}
         <div
           style={{
             position: "absolute",
@@ -903,23 +920,26 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
               key={s.label}
               style={{
                 padding: "8px 12px",
-                background: hexToRgba(C.card, 0.85),
-                border: `1px solid ${C.border}`,
-                borderRadius: "6px",
+                background: "rgba(255,255,255,0.70)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                border: `1px solid rgba(255,255,255,0.8)`,
+                borderRadius: "10px",
+                boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
                 minWidth: "100px",
               }}
             >
-              <div style={{ fontSize: "10px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <div style={{ fontSize: "10px", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: C.sans }}>
                 {s.label}
               </div>
-              <div style={{ fontSize: "18px", fontWeight: 700, color: C.text, marginTop: "2px", fontFamily: "monospace" }}>
+              <div style={{ fontSize: "18px", fontWeight: 700, color: C.text, marginTop: "2px", fontFamily: C.mono }}>
                 {s.value}
               </div>
             </div>
           ))}
         </div>
 
-        {/* Legend (bottom-left) */}
+        {/* Legend — glass */}
         <div
           style={{
             position: "absolute",
@@ -930,9 +950,12 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
             flexWrap: "wrap",
             gap: "8px",
             padding: "8px 12px",
-            background: hexToRgba(C.bg, 0.85),
-            borderRadius: "6px",
-            border: `1px solid ${C.border}`,
+            background: "rgba(255,255,255,0.70)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            borderRadius: "10px",
+            border: `1px solid rgba(255,255,255,0.8)`,
+            boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
             pointerEvents: "none",
           }}
         >
@@ -947,12 +970,12 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
                   flexShrink: 0,
                 }}
               />
-              <span style={{ fontSize: "10px", color: C.muted }}>{type.replace("_", " ")}</span>
+              <span style={{ fontSize: "10px", color: C.textSecondary, fontFamily: C.sans }}>{type.replace("_", " ")}</span>
             </div>
           ))}
         </div>
 
-        {/* Temporal slider (bottom) */}
+        {/* Temporal slider — glass */}
         <div
           style={{
             position: "absolute",
@@ -964,12 +987,15 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
             alignItems: "center",
             gap: "12px",
             padding: "6px 12px",
-            background: hexToRgba(C.bg, 0.85),
-            borderRadius: "6px",
-            border: `1px solid ${C.border}`,
+            background: "rgba(255,255,255,0.70)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            borderRadius: "10px",
+            border: `1px solid rgba(255,255,255,0.8)`,
+            boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
           }}
         >
-          <span style={{ fontSize: "10px", color: C.dim, flexShrink: 0 }}>
+          <span style={{ fontSize: "10px", color: C.textMuted, flexShrink: 0, fontFamily: C.mono }}>
             {new Date(allDates.min).toLocaleDateString("fr-FR", { month: "short", year: "numeric" })}
           </span>
           <input
@@ -980,21 +1006,21 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
             onChange={(e) => setTemporalCutoff(Number(e.target.value))}
             style={{
               flex: 1,
-              accentColor: C.accent,
+              accentColor: C.gold,
               height: "4px",
               cursor: "pointer",
             }}
           />
-          <span style={{ fontSize: "10px", color: C.muted, flexShrink: 0, fontFamily: "monospace" }}>
+          <span style={{ fontSize: "10px", color: C.textSecondary, flexShrink: 0, fontFamily: C.mono }}>
             {new Date(temporalCutoff).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
           </span>
         </div>
 
-        {/* Force graph */}
+        {/* Force graph — canvas reste sombre pour lisibilite des noeuds */}
         <ForceGraph2D
           ref={graphRef}
           graphData={forceData}
-          backgroundColor={C.bg}
+          backgroundColor={C.canvasBg}
           nodeCanvasObject={nodeCanvasObject}
           nodePointerAreaPaint={nodePointerAreaPaint}
           nodeVal="val"
@@ -1013,7 +1039,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           }}
           linkDirectionalParticleSpeed={0.005}
           linkDirectionalParticleWidth={2}
-          linkDirectionalParticleColor={() => C.accent}
+          linkDirectionalParticleColor={() => C.gold}
           linkCurvature={0.1}
           d3AlphaDecay={0.03}
           d3VelocityDecay={0.25}

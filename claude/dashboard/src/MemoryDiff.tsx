@@ -1,16 +1,31 @@
 import { useState, useEffect } from "react";
 
 const C = {
-  card: "#18181b",
-  border: "#27272a",
-  text: "#e4e4e7",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  accent: "#14b8a6",
-  green: "#22c55e",
-  red: "#ef4444",
-  amber: "#f59e0b",
+  bg: "#F2F0E9",
+  glass: {
+    background: "rgba(255,255,255,0.45)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    border: "1px solid rgba(255,255,255,0.7)",
+    borderRadius: "20px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
+  } as React.CSSProperties,
+  text: "#0f172a",
+  textSecondary: "#334155",
+  textMuted: "#64748b",
+  textTertiary: "#94a3b8",
   gold: "#D4A853",
+  accent: "#6366f1",
+  border: "rgba(0,0,0,0.06)",
+  green: "#22c55e",
+  greenBg: "rgba(34,197,94,0.06)",
+  red: "#ef4444",
+  redBg: "rgba(239,68,68,0.06)",
+  amber: "#f59e0b",
+  amberBg: "rgba(245,158,11,0.06)",
+  serif: "'Playfair Display', Georgia, serif" as string,
+  sans: "'DM Sans', sans-serif" as string,
+  mono: "'JetBrains Mono', monospace" as string,
 };
 
 interface DiffSummary {
@@ -45,7 +60,7 @@ interface MemoryDiffResponse {
 }
 
 function scoreColor(score: number): string {
-  if (score === 0) return C.dim;
+  if (score === 0) return C.textTertiary;
   if (score <= 10) return C.accent;
   if (score <= 30) return C.green;
   if (score <= 60) return C.amber;
@@ -74,7 +89,7 @@ function formatTs(ts: string): string {
   }
 }
 
-function DeltaStat({ label, value, color }: { label: string; value: number; color: string }) {
+function DeltaStat({ label, value, color, bgColor }: { label: string; value: number; color: string; bgColor: string }) {
   return (
     <div
       style={{
@@ -83,26 +98,27 @@ function DeltaStat({ label, value, color }: { label: string; value: number; colo
         alignItems: "center",
         gap: "2px",
         padding: "12px 16px",
-        background: "#0f0f10",
-        borderRadius: "6px",
+        background: bgColor,
+        borderRadius: "12px",
+        border: `1px solid ${color}22`,
         minWidth: "80px",
       }}
     >
-      <span style={{ fontSize: "24px", fontWeight: 700, color, lineHeight: 1.1 }}>
+      <span style={{ fontSize: "24px", fontWeight: 700, color, lineHeight: 1.1, fontFamily: C.serif }}>
         {value > 0 ? `+${value}` : value}
       </span>
-      <span style={{ fontSize: "11px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+      <span style={{ fontSize: "11px", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.04em", fontFamily: C.mono }}>
         {label}
       </span>
     </div>
   );
 }
 
-function IdList({ ids, color, label }: { ids: string[]; color: string; label: string }) {
+function IdList({ ids, color, bgColor, label }: { ids: string[]; color: string; bgColor: string; label: string }) {
   if (ids.length === 0) return null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-      <span style={{ fontSize: "11px", color: C.dim, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+      <span style={{ fontSize: "11px", color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.04em", fontFamily: C.mono }}>
         {label} ({ids.length})
       </span>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
@@ -111,11 +127,11 @@ function IdList({ ids, color, label }: { ids: string[]; color: string; label: st
             key={id}
             style={{
               fontSize: "11px",
-              fontFamily: "monospace",
+              fontFamily: C.mono,
               color,
-              background: `${color}12`,
+              background: bgColor,
               padding: "2px 6px",
-              borderRadius: "3px",
+              borderRadius: "6px",
               border: `1px solid ${color}22`,
             }}
           >
@@ -123,7 +139,7 @@ function IdList({ ids, color, label }: { ids: string[]; color: string; label: st
           </span>
         ))}
         {ids.length > 12 && (
-          <span style={{ fontSize: "11px", color: C.dim }}>+{ids.length - 12} autres</span>
+          <span style={{ fontSize: "11px", color: C.textMuted, fontFamily: C.sans }}>+{ids.length - 12} autres</span>
         )}
       </div>
     </div>
@@ -145,12 +161,11 @@ export function MemoryDiff() {
     return (
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...C.glass,
           padding: "24px",
-          color: C.dim,
+          color: C.textMuted,
           fontSize: "13px",
+          fontFamily: C.sans,
         }}
       >
         Chargement du diff memoire...
@@ -162,12 +177,11 @@ export function MemoryDiff() {
     return (
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...C.glass,
           padding: "24px",
-          color: C.dim,
+          color: C.textMuted,
           fontSize: "13px",
+          fontFamily: C.sans,
         }}
       >
         {data?.error ?? "Impossible de charger le diff memoire."}
@@ -180,9 +194,7 @@ export function MemoryDiff() {
     return (
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...C.glass,
           padding: "16px 20px",
           display: "flex",
           flexDirection: "column",
@@ -190,18 +202,18 @@ export function MemoryDiff() {
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: "13px", fontWeight: 600, color: C.text }}>Memory Diff</span>
-          <span style={{ fontSize: "11px", color: C.dim }}>1 snapshot</span>
+          <span style={{ fontSize: "13px", fontWeight: 600, color: C.text, fontFamily: C.serif }}>Memory Diff</span>
+          <span style={{ fontSize: "11px", color: C.textMuted, fontFamily: C.mono }}>1 snapshot</span>
         </div>
         {snap ? (
-          <div style={{ fontSize: "12px", color: C.muted, lineHeight: 1.5 }}>
+          <div style={{ fontSize: "12px", color: C.textSecondary, lineHeight: 1.5, fontFamily: C.sans }}>
             Snapshot du {formatTs(snap.ts)} : {snap.entityCount} entites, {snap.factCount} faits
             ({snap.activeFactCount} actifs), {snap.episodeCount} episodes.
             <br />
-            <span style={{ color: C.dim }}>Un second snapshot sera cree a la prochaine session.</span>
+            <span style={{ color: C.textMuted }}>Un second snapshot sera cree a la prochaine session.</span>
           </div>
         ) : (
-          <div style={{ fontSize: "12px", color: C.dim }}>
+          <div style={{ fontSize: "12px", color: C.textMuted, fontFamily: C.sans }}>
             Aucun snapshot disponible. Le premier sera cree a la fin de la prochaine session.
           </div>
         )}
@@ -215,9 +227,7 @@ export function MemoryDiff() {
   return (
     <div
       style={{
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: "8px",
+        ...C.glass,
         padding: "16px 20px",
         display: "flex",
         flexDirection: "column",
@@ -226,8 +236,8 @@ export function MemoryDiff() {
     >
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: "13px", fontWeight: 600, color: C.text }}>Memory Diff</span>
-        <span style={{ fontSize: "11px", color: C.dim }}>
+        <span style={{ fontSize: "13px", fontWeight: 600, color: C.text, fontFamily: C.serif }}>Memory Diff</span>
+        <span style={{ fontSize: "11px", color: C.textMuted, fontFamily: C.mono }}>
           {formatTs(diff.from)} → {formatTs(diff.to)}
         </span>
       </div>
@@ -239,8 +249,9 @@ export function MemoryDiff() {
           alignItems: "center",
           gap: "12px",
           padding: "10px 14px",
-          background: "#0f0f10",
-          borderRadius: "6px",
+          background: "rgba(255,255,255,0.6)",
+          borderRadius: "12px",
+          border: `1px solid ${C.border}`,
         }}
       >
         <div
@@ -253,15 +264,16 @@ export function MemoryDiff() {
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
+            background: `${scoreColor(sc)}10`,
           }}
         >
-          <span style={{ fontSize: "18px", fontWeight: 700, color: scoreColor(sc) }}>{sc}</span>
+          <span style={{ fontSize: "18px", fontWeight: 700, color: scoreColor(sc), fontFamily: C.serif }}>{sc}</span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-          <span style={{ fontSize: "13px", fontWeight: 500, color: C.text }}>
+          <span style={{ fontSize: "13px", fontWeight: 500, color: C.text, fontFamily: C.sans }}>
             Change Score : {scoreLabel(sc)}
           </span>
-          <span style={{ fontSize: "11px", color: C.dim }}>
+          <span style={{ fontSize: "11px", color: C.textMuted, fontFamily: C.mono }}>
             {snapshots[0]?.entityCount ?? "?"} → {snapshots[1]?.entityCount ?? "?"} entites |{" "}
             {snapshots[0]?.activeFactCount ?? "?"} → {snapshots[1]?.activeFactCount ?? "?"} faits actifs
           </span>
@@ -270,13 +282,13 @@ export function MemoryDiff() {
 
       {/* Delta Stats */}
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        <DeltaStat label="Entites" value={diff.summary.entitiesAdded} color={C.green} />
+        <DeltaStat label="Entites" value={diff.summary.entitiesAdded} color={C.green} bgColor={C.greenBg} />
         {diff.summary.entitiesRemoved > 0 && (
-          <DeltaStat label="Retirees" value={-diff.summary.entitiesRemoved} color={C.red} />
+          <DeltaStat label="Retirees" value={-diff.summary.entitiesRemoved} color={C.red} bgColor={C.redBg} />
         )}
-        <DeltaStat label="Faits" value={diff.summary.factsAdded} color={C.accent} />
+        <DeltaStat label="Faits" value={diff.summary.factsAdded} color={C.accent} bgColor="rgba(99,102,241,0.06)" />
         {diff.summary.factsSuperseded > 0 && (
-          <DeltaStat label="Remplaces" value={diff.summary.factsSuperseded} color={C.amber} />
+          <DeltaStat label="Remplaces" value={diff.summary.factsSuperseded} color={C.amber} bgColor={C.amberBg} />
         )}
       </div>
 
@@ -284,10 +296,10 @@ export function MemoryDiff() {
       {(diff.entities.added.length > 0 || diff.entities.removed.length > 0 ||
         diff.facts.added.length > 0 || diff.facts.superseded.length > 0) && (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <IdList ids={diff.entities.added} color={C.green} label="Entites ajoutees" />
-          <IdList ids={diff.entities.removed} color={C.red} label="Entites retirees" />
-          <IdList ids={diff.facts.added} color={C.accent} label="Faits ajoutes" />
-          <IdList ids={diff.facts.superseded} color={C.amber} label="Faits remplaces" />
+          <IdList ids={diff.entities.added} color={C.green} bgColor={C.greenBg} label="Entites ajoutees" />
+          <IdList ids={diff.entities.removed} color={C.red} bgColor={C.redBg} label="Entites retirees" />
+          <IdList ids={diff.facts.added} color={C.accent} bgColor="rgba(99,102,241,0.06)" label="Faits ajoutes" />
+          <IdList ids={diff.facts.superseded} color={C.amber} bgColor={C.amberBg} label="Faits remplaces" />
         </div>
       )}
     </div>

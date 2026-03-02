@@ -1,13 +1,20 @@
 import type { MemoryHealth as MemoryHealthData } from "./types";
 
 const C = {
-  card: "#18181b",
-  border: "#27272a",
-  text: "#e4e4e7",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  accent: "#14b8a6",
+  text: "#0f172a",
+  textSecondary: "#334155",
+  textMuted: "#64748b",
+  textTertiary: "#94a3b8",
   warn: "#f59e0b",
+};
+
+const glass = {
+  background: "rgba(255,255,255,0.45)",
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid rgba(255,255,255,0.7)",
+  borderRadius: "20px",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
 };
 
 interface MemoryHealthProps {
@@ -25,8 +32,23 @@ function TierBar({ label, tier, color, maxItems }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <span style={{ fontSize: "12px", fontWeight: 500, color: C.text }}>{label}</span>
-        <span style={{ fontSize: "11px", color: C.dim }}>
+        <span
+          style={{
+            fontSize: "12px",
+            fontWeight: 500,
+            color: C.textSecondary,
+            fontFamily: "'DM Sans', sans-serif",
+          }}
+        >
+          {label}
+        </span>
+        <span
+          style={{
+            fontSize: "11px",
+            color: C.textMuted,
+            fontFamily: "'JetBrains Mono', monospace",
+          }}
+        >
           {tier.items} items · {tier.sizeKb} KB
           {tier.oldestDays !== undefined && tier.oldestDays > 0 ? ` · ${tier.oldestDays}j` : ""}
         </span>
@@ -35,8 +57,7 @@ function TierBar({ label, tier, color, maxItems }: {
         style={{
           height: "6px",
           borderRadius: "3px",
-          background: "#27272a",
-          overflow: "hidden",
+          background: "rgba(0,0,0,0.06)",
         }}
       >
         <div
@@ -69,9 +90,7 @@ export function MemoryHealth({ health }: MemoryHealthProps) {
   return (
     <div
       style={{
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: "8px",
+        ...glass,
         padding: "16px 20px",
         display: "flex",
         flexDirection: "column",
@@ -79,11 +98,28 @@ export function MemoryHealth({ health }: MemoryHealthProps) {
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: "13px", fontWeight: 600, color: C.text }}>Memory Health</span>
-        <span style={{ fontSize: "11px", color: C.dim }}>GC: {gcAgo}</span>
+        <span
+          style={{
+            fontSize: "13px",
+            fontWeight: 600,
+            color: C.text,
+            fontFamily: "'DM Sans', sans-serif",
+          }}
+        >
+          Memory Health
+        </span>
+        <span
+          style={{
+            fontSize: "11px",
+            color: C.textMuted,
+            fontFamily: "'JetBrains Mono', monospace",
+          }}
+        >
+          GC: {gcAgo}
+        </span>
       </div>
 
-      <TierBar label="T1 Court terme" tier={health.t1} color={C.accent} maxItems={maxItems} />
+      <TierBar label="T1 Court terme" tier={health.t1} color="#6366f1" maxItems={maxItems} />
       <TierBar label="T2 Moyen terme" tier={health.t2} color="#3b82f6" maxItems={maxItems} />
       <TierBar label="T3 Long terme" tier={health.t3} color="#8b5cf6" maxItems={maxItems} />
 
@@ -97,7 +133,8 @@ export function MemoryHealth({ health }: MemoryHealthProps) {
                 color: C.warn,
                 padding: "4px 8px",
                 background: "rgba(245, 158, 11, 0.08)",
-                borderRadius: "4px",
+                borderRadius: "6px",
+                fontFamily: "'DM Sans', sans-serif",
               }}
             >
               {alert}

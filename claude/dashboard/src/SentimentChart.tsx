@@ -9,6 +9,18 @@ import {
 } from "recharts";
 import type { SentimentEntry } from "./types";
 
+const sans = "'DM Sans', sans-serif";
+const mono = "'JetBrains Mono', monospace";
+
+const glass = {
+  background: "rgba(255,255,255,0.45)",
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid rgba(255,255,255,0.7)",
+  borderRadius: "20px",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
+};
+
 interface SentimentChartProps {
   data: SentimentEntry[];
 }
@@ -48,19 +60,23 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   return (
     <div
       style={{
-        background: "#18181b",
-        border: "1px solid #27272a",
-        borderRadius: "6px",
-        padding: "8px 12px",
+        background: "rgba(255,255,255,0.85)",
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        border: "1px solid rgba(255,255,255,0.8)",
+        borderRadius: "16px",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
+        padding: "12px 16px",
         fontSize: "12px",
+        fontFamily: sans,
       }}
     >
-      <div style={{ color: "#71717a", marginBottom: "2px" }}>{label}</div>
+      <div style={{ color: "#94a3b8", marginBottom: "2px", fontFamily: mono }}>{label}</div>
       <div style={{ color, fontWeight: 600 }}>
         {score} — {scoreLabel(score)}
       </div>
       {payload[0].payload.trigger && (
-        <div style={{ color: "#52525b", marginTop: "2px", maxWidth: "200px" }}>
+        <div style={{ color: "#64748b", marginTop: "2px", maxWidth: "200px" }}>
           {payload[0].payload.trigger}
         </div>
       )}
@@ -73,12 +89,11 @@ export function SentimentChart({ data }: SentimentChartProps) {
     return (
       <div
         style={{
-          background: "#18181b",
-          border: "1px solid #27272a",
-          borderRadius: "8px",
+          ...glass,
           padding: "24px",
-          color: "#52525b",
+          color: "#64748b",
           fontSize: "14px",
+          fontFamily: sans,
         }}
       >
         Aucune donnee de sentiment. Lancez collect-data.ts apres quelques sessions.
@@ -92,42 +107,35 @@ export function SentimentChart({ data }: SentimentChartProps) {
   }));
 
   return (
-    <div
-      style={{
-        background: "#18181b",
-        border: "1px solid #27272a",
-        borderRadius: "8px",
-        padding: "20px 24px",
-      }}
-    >
+    <div style={{ ...glass, padding: "20px 24px" }}>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" vertical={false} />
           <XAxis
             dataKey="label"
-            tick={{ fill: "#52525b", fontSize: 11 }}
-            axisLine={{ stroke: "#27272a" }}
+            tick={{ fill: "#94a3b8", fontSize: 11, fontFamily: mono }}
+            axisLine={{ stroke: "rgba(0,0,0,0.06)" }}
             tickLine={false}
           />
           <YAxis
             domain={[1, 5]}
             ticks={[1, 2, 3, 4, 5]}
-            tick={{ fill: "#52525b", fontSize: 11 }}
-            axisLine={{ stroke: "#27272a" }}
+            tick={{ fill: "#94a3b8", fontSize: 11, fontFamily: mono }}
+            axisLine={{ stroke: "rgba(0,0,0,0.06)" }}
             tickLine={false}
           />
           <Tooltip content={<CustomTooltip />} />
           <Line
             type="monotone"
             dataKey="score"
-            stroke="#14b8a6"
+            stroke="#6366f1"
             strokeWidth={2}
-            dot={{ fill: "#14b8a6", r: 3, strokeWidth: 0 }}
-            activeDot={{ r: 5, fill: "#14b8a6" }}
+            dot={{ fill: "#6366f1", r: 3, strokeWidth: 0 }}
+            activeDot={{ r: 5, fill: "#6366f1" }}
           />
         </LineChart>
       </ResponsiveContainer>
-      <div style={{ marginTop: "8px", fontSize: "11px", color: "#52525b" }}>
+      <div style={{ marginTop: "8px", fontSize: "11px", color: "#94a3b8", fontFamily: mono }}>
         1 = tres positif  /  5 = tres tendu
       </div>
     </div>

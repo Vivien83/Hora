@@ -1,5 +1,17 @@
 import type { SessionEntry } from "./types";
 
+const sans = "'DM Sans', sans-serif";
+const mono = "'JetBrains Mono', monospace";
+
+const glass = {
+  background: "rgba(255,255,255,0.45)",
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid rgba(255,255,255,0.7)",
+  borderRadius: "20px",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
+};
+
 function sentimentColor(score: number): string {
   if (score <= 2) return "#22c55e";
   if (score === 3) return "#eab308";
@@ -26,24 +38,18 @@ export function SessionsTable({ sessions }: SessionsTableProps) {
   const recent = sessions.slice(0, 15);
 
   return (
-    <div
-      style={{
-        background: "#18181b",
-        border: "1px solid #27272a",
-        borderRadius: "8px",
-        overflow: "hidden",
-      }}
-    >
+    <div style={{ ...glass, fontFamily: sans }}>
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 120px 80px 180px",
-          padding: "10px 16px",
-          borderBottom: "1px solid #27272a",
+          padding: "10px 20px",
+          borderBottom: "1px solid rgba(0,0,0,0.06)",
           fontSize: "11px",
-          color: "#52525b",
-          letterSpacing: "0.05em",
+          color: "#94a3b8",
+          letterSpacing: "0.08em",
           textTransform: "uppercase",
+          fontFamily: mono,
         }}
       >
         <span>Session</span>
@@ -52,7 +58,7 @@ export function SessionsTable({ sessions }: SessionsTableProps) {
         <span>SID</span>
       </div>
       {recent.length === 0 ? (
-        <div style={{ padding: "24px 16px", color: "#52525b", fontSize: "14px" }}>
+        <div style={{ padding: "24px 20px", color: "#64748b", fontSize: "14px" }}>
           Aucune session trouvee. Lancez collect-data.ts.
         </div>
       ) : (
@@ -62,15 +68,15 @@ export function SessionsTable({ sessions }: SessionsTableProps) {
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 120px 80px 180px",
-              padding: "10px 16px",
-              borderBottom: "1px solid #1f1f22",
+              padding: "10px 20px",
+              borderBottom: "1px solid rgba(0,0,0,0.04)",
               alignItems: "center",
               fontSize: "13px",
             }}
           >
             <span
               style={{
-                color: "#e4e4e7",
+                color: "#0f172a",
                 fontWeight: 500,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -79,7 +85,7 @@ export function SessionsTable({ sessions }: SessionsTableProps) {
             >
               {s.name || s.filename}
             </span>
-            <span style={{ color: "#71717a", fontSize: "12px" }}>
+            <span style={{ color: "#64748b", fontSize: "12px" }}>
               {formatDate(s.date)}
             </span>
             <span>
@@ -108,9 +114,9 @@ export function SessionsTable({ sessions }: SessionsTableProps) {
             </span>
             <span
               style={{
-                color: "#3f3f46",
+                color: "#94a3b8",
                 fontSize: "11px",
-                fontFamily: "monospace",
+                fontFamily: mono,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",

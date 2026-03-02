@@ -1,13 +1,25 @@
 import { useState, useEffect } from "react";
 
 const C = {
-  bg: "#0A0A0B",
-  card: "#18181b",
-  border: "#27272a",
-  text: "#e4e4e7",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  accent: "#14b8a6",
+  bg: "#F2F0E9",
+  glass: {
+    background: "rgba(255,255,255,0.45)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    border: "1px solid rgba(255,255,255,0.7)",
+    borderRadius: "20px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
+  } as React.CSSProperties,
+  text: "#0f172a",
+  textSecondary: "#334155",
+  textMuted: "#64748b",
+  textTertiary: "#94a3b8",
+  gold: "#D4A853",
+  accent: "#6366f1",
+  border: "rgba(0,0,0,0.06)",
+  serif: "'Playfair Display', Georgia, serif" as string,
+  sans: "'DM Sans', sans-serif" as string,
+  mono: "'JetBrains Mono', monospace" as string,
 };
 
 interface SessionListItem {
@@ -78,7 +90,7 @@ export function SessionReplay() {
 
   if (loading) {
     return (
-      <div style={{ color: C.dim, fontSize: "14px", padding: "48px 24px", textAlign: "center" }}>
+      <div style={{ color: C.textMuted, fontSize: "14px", padding: "48px 24px", textAlign: "center", fontFamily: C.sans }}>
         Chargement des sessions...
       </div>
     );
@@ -88,13 +100,12 @@ export function SessionReplay() {
     return (
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...C.glass,
           padding: "48px 24px",
           textAlign: "center",
-          color: C.dim,
+          color: C.textMuted,
           fontSize: "14px",
+          fontFamily: C.sans,
         }}
       >
         Aucune session archivee. Les sessions sont enregistrees automatiquement par HORA.
@@ -111,10 +122,7 @@ export function SessionReplay() {
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
-          overflow: "hidden",
+          ...C.glass,
         }}
       >
         <div
@@ -123,9 +131,10 @@ export function SessionReplay() {
             borderBottom: `1px solid ${C.border}`,
             fontSize: "12px",
             fontWeight: 600,
-            color: C.muted,
+            color: C.textMuted,
             letterSpacing: "0.05em",
             textTransform: "uppercase",
+            fontFamily: C.mono,
           }}
         >
           Sessions ({sessions.length})
@@ -143,16 +152,16 @@ export function SessionReplay() {
                 border: "none",
                 borderBottom: `1px solid ${C.border}`,
                 cursor: "pointer",
-                background: selectedId === s.id ? "#1e1e22" : "transparent",
-                borderLeft: selectedId === s.id ? `2px solid ${C.accent}` : "2px solid transparent",
+                background: selectedId === s.id ? "rgba(99,102,241,0.06)" : "transparent",
+                borderLeft: selectedId === s.id ? `2px solid ${C.gold}` : "2px solid transparent",
                 transition: "all 100ms",
               }}
             >
               <div
                 style={{
                   fontSize: "11px",
-                  color: selectedId === s.id ? C.accent : C.dim,
-                  fontFamily: "monospace",
+                  color: selectedId === s.id ? C.gold : C.textTertiary,
+                  fontFamily: C.mono,
                   marginBottom: "4px",
                 }}
               >
@@ -161,16 +170,17 @@ export function SessionReplay() {
               <div
                 style={{
                   fontSize: "12px",
-                  color: selectedId === s.id ? C.text : C.muted,
+                  color: selectedId === s.id ? C.text : C.textMuted,
                   lineHeight: 1.4,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
+                  fontFamily: C.sans,
                 }}
               >
                 {s.summary || "(sans titre)"}
               </div>
-              <div style={{ fontSize: "10px", color: C.dim, marginTop: "2px" }}>
+              <div style={{ fontSize: "10px", color: C.textTertiary, marginTop: "2px", fontFamily: C.mono }}>
                 {s.sizeKb} Ko
               </div>
             </button>
@@ -185,10 +195,7 @@ export function SessionReplay() {
           minWidth: 0,
           display: "flex",
           flexDirection: "column",
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
-          overflow: "hidden",
+          ...C.glass,
         }}
       >
         {!selectedId && (
@@ -198,8 +205,9 @@ export function SessionReplay() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: C.dim,
+              color: C.textMuted,
               fontSize: "14px",
+              fontFamily: C.sans,
             }}
           >
             Selectionnez une session pour la visualiser.
@@ -213,8 +221,9 @@ export function SessionReplay() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: C.dim,
+              color: C.textMuted,
               fontSize: "14px",
+              fontFamily: C.sans,
             }}
           >
             Chargement...
@@ -230,6 +239,7 @@ export function SessionReplay() {
               justifyContent: "center",
               color: "#ef4444",
               fontSize: "14px",
+              fontFamily: C.sans,
             }}
           >
             Session introuvable.
@@ -254,7 +264,7 @@ export function SessionReplay() {
                   fontSize: "13px",
                   fontWeight: 600,
                   color: C.text,
-                  fontFamily: "monospace",
+                  fontFamily: C.mono,
                 }}
               >
                 {selectedId}
@@ -267,11 +277,12 @@ export function SessionReplay() {
                     alignItems: "center",
                     gap: "4px",
                     padding: "2px 8px",
-                    borderRadius: "4px",
+                    borderRadius: "8px",
                     fontSize: "11px",
                     fontWeight: 600,
-                    color: "#0A0A0B",
+                    color: "#fff",
                     background: sentimentColor(detail.sentiment),
+                    fontFamily: C.sans,
                   }}
                 >
                   {detail.sentiment}/5 {sentimentLabel(detail.sentiment)}
@@ -286,14 +297,15 @@ export function SessionReplay() {
                     alignItems: "center",
                     gap: "4px",
                     padding: "2px 8px",
-                    borderRadius: "4px",
+                    borderRadius: "8px",
                     fontSize: "11px",
                     fontWeight: 600,
-                    color: "#fca5a5",
-                    background: "#451a1a",
-                    border: "none",
+                    color: "#ef4444",
+                    background: "rgba(239,68,68,0.08)",
+                    border: "1px solid rgba(239,68,68,0.2)",
                     cursor: "pointer",
                     transition: "all 100ms",
+                    fontFamily: C.sans,
                   }}
                 >
                   {detail.failures.length} failure{detail.failures.length > 1 ? "s" : ""}
@@ -308,7 +320,7 @@ export function SessionReplay() {
                 style={{
                   padding: "8px 20px",
                   borderBottom: `1px solid ${C.border}`,
-                  background: "#1a1215",
+                  background: "rgba(239,68,68,0.04)",
                 }}
               >
                 {detail.failures.map((f, i) => (
@@ -316,9 +328,10 @@ export function SessionReplay() {
                     key={i}
                     style={{
                       fontSize: "12px",
-                      color: "#fca5a5",
+                      color: "#ef4444",
                       lineHeight: 1.5,
                       padding: "2px 0",
+                      fontFamily: C.sans,
                     }}
                   >
                     - {f.summary}
@@ -338,9 +351,9 @@ export function SessionReplay() {
               <pre
                 style={{
                   margin: 0,
-                  fontFamily: "'JetBrains Mono', 'Geist Mono', monospace",
+                  fontFamily: C.mono,
                   fontSize: "12px",
-                  color: C.muted,
+                  color: C.textSecondary,
                   lineHeight: 1.6,
                   whiteSpace: "pre-wrap",
                   wordBreak: "break-word",

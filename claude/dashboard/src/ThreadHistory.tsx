@@ -1,15 +1,16 @@
 import { useState, useMemo } from "react";
 import type { ThreadEntry } from "./types";
 
-const C = {
-  card: "#18181b",
-  border: "#27272a",
-  text: "#e4e4e7",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  accent: "#14b8a6",
-  userBg: "#14b8a610",
-  assistBg: "#27272a80",
+const sans = "'DM Sans', sans-serif";
+const mono = "'JetBrains Mono', monospace";
+
+const glass = {
+  background: "rgba(255,255,255,0.45)",
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid rgba(255,255,255,0.7)",
+  borderRadius: "20px",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
 };
 
 const SENTIMENT_COLORS: Record<number, string> = {
@@ -86,13 +87,13 @@ function EntryRow({ entry }: { entry: ThreadEntry }) {
   const hasMore = uLong || aLong;
 
   return (
-    <div style={{ padding: "6px 12px", fontSize: "12px", lineHeight: 1.5 }}>
+    <div style={{ padding: "8px 16px", fontSize: "12px", lineHeight: 1.5, fontFamily: sans }}>
       {/* User */}
       <div style={{ display: "flex", gap: "6px" }}>
-        <span style={{ color: C.accent, fontWeight: 700, fontSize: "10px", flexShrink: 0, marginTop: "2px" }}>U</span>
+        <span style={{ color: "#D4A853", fontWeight: 700, fontSize: "10px", flexShrink: 0, marginTop: "2px", fontFamily: mono }}>U</span>
         <span
           style={{
-            color: C.text,
+            color: "#0f172a",
             whiteSpace: expanded ? "pre-wrap" : "nowrap",
             overflow: expanded ? "visible" : "hidden",
             textOverflow: "ellipsis",
@@ -104,10 +105,10 @@ function EntryRow({ entry }: { entry: ThreadEntry }) {
       </div>
       {/* Assistant */}
       <div style={{ display: "flex", gap: "6px", marginTop: "2px" }}>
-        <span style={{ color: C.dim, fontWeight: 700, fontSize: "10px", flexShrink: 0, marginTop: "2px" }}>A</span>
+        <span style={{ color: "#94a3b8", fontWeight: 700, fontSize: "10px", flexShrink: 0, marginTop: "2px", fontFamily: mono }}>A</span>
         <span
           style={{
-            color: C.muted,
+            color: "#64748b",
             whiteSpace: expanded ? "pre-wrap" : "nowrap",
             overflow: expanded ? "visible" : "hidden",
             textOverflow: "ellipsis",
@@ -119,11 +120,11 @@ function EntryRow({ entry }: { entry: ThreadEntry }) {
       </div>
       {/* Time + expand */}
       <div style={{ display: "flex", gap: "8px", marginTop: "2px", paddingLeft: "16px" }}>
-        <span style={{ fontSize: "10px", color: C.dim }}>{formatTime(entry.ts)}</span>
+        <span style={{ fontSize: "10px", color: "#94a3b8", fontFamily: mono }}>{formatTime(entry.ts)}</span>
         {hasMore && (
           <button
             onClick={() => setExpanded(!expanded)}
-            style={{ background: "none", border: "none", color: C.accent, fontSize: "10px", cursor: "pointer", padding: 0 }}
+            style={{ background: "none", border: "none", color: "#D4A853", fontSize: "10px", cursor: "pointer", padding: 0, fontFamily: sans }}
           >
             {expanded ? "reduire" : "voir plus"}
           </button>
@@ -135,47 +136,41 @@ function EntryRow({ entry }: { entry: ThreadEntry }) {
 
 function GroupCard({ group }: { group: SessionGroup }) {
   return (
-    <div
-      style={{
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: "8px",
-        overflow: "hidden",
-      }}
-    >
+    <div style={{ ...glass }}>
       {/* Session header */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           gap: "8px",
-          padding: "6px 12px",
-          borderBottom: `1px solid ${C.border}`,
+          padding: "8px 16px",
+          borderBottom: "1px solid rgba(0,0,0,0.06)",
           fontSize: "11px",
+          fontFamily: sans,
         }}
       >
-        <span style={{ fontFamily: "monospace", color: C.accent, fontWeight: 600 }}>
+        <span style={{ fontFamily: mono, color: "#D4A853", fontWeight: 600 }}>
           {group.sid.slice(0, 8)}
         </span>
         {group.sessionName && (
-          <span style={{ color: C.text, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "200px" }}>
+          <span style={{ color: "#0f172a", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "200px" }}>
             {group.sessionName}
           </span>
         )}
-        <span style={{ color: C.dim, marginLeft: "auto", flexShrink: 0 }}>{group.date}</span>
+        <span style={{ color: "#94a3b8", marginLeft: "auto", flexShrink: 0 }}>{group.date}</span>
         {group.sentiment !== undefined && (
-          <span style={{ color: SENTIMENT_COLORS[group.sentiment] ?? C.dim, fontWeight: 600, fontSize: "10px" }}>
+          <span style={{ color: SENTIMENT_COLORS[group.sentiment] ?? "#94a3b8", fontWeight: 600, fontSize: "10px", fontFamily: mono }}>
             {group.sentiment}/5
           </span>
         )}
-        <span style={{ color: C.dim, flexShrink: 0 }}>{group.entries.length}msg</span>
+        <span style={{ color: "#94a3b8", flexShrink: 0 }}>{group.entries.length}msg</span>
       </div>
 
       {/* All entries — no limit */}
       {group.entries.map((entry, i) => (
         <div
           key={`${entry.ts}-${i}`}
-          style={{ borderBottom: i < group.entries.length - 1 ? "1px solid #1f1f22" : "none" }}
+          style={{ borderBottom: i < group.entries.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}
         >
           <EntryRow entry={entry} />
         </div>
@@ -215,12 +210,11 @@ export function ThreadHistory({ thread }: ThreadHistoryProps) {
     return (
       <div
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "8px",
+          ...glass,
           padding: "24px",
-          color: C.dim,
+          color: "#64748b",
           fontSize: "14px",
+          fontFamily: sans,
         }}
       >
         Aucun echange enregistre.
@@ -229,7 +223,7 @@ export function ThreadHistory({ thread }: ThreadHistoryProps) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {/* Search bar */}
       <input
         type="text"
@@ -237,25 +231,29 @@ export function ThreadHistory({ thread }: ThreadHistoryProps) {
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Rechercher (message, session, date...)"
         style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: "6px",
-          padding: "8px 12px",
-          color: C.text,
-          fontSize: "12px",
+          background: "rgba(255,255,255,0.6)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          border: "1px solid rgba(255,255,255,0.7)",
+          borderRadius: "12px",
+          padding: "10px 14px",
+          color: "#0f172a",
+          fontSize: "13px",
           outline: "none",
           width: "100%",
           boxSizing: "border-box",
+          fontFamily: sans,
+          boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
         }}
       />
 
       {/* Stats */}
-      <div style={{ display: "flex", gap: "16px", fontSize: "11px", color: C.dim, padding: "0 4px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: "16px", fontSize: "11px", color: "#94a3b8", padding: "0 4px", flexWrap: "wrap", fontFamily: mono }}>
         <span>{reversed.length} echanges</span>
         <span>{groupBySession(reversed).length} sessions</span>
         {dateRange && <span>{dateRange}</span>}
         {search.trim() && filtered.length !== reversed.length && (
-          <span style={{ color: C.accent }}>{filtered.length} resultat{filtered.length !== 1 ? "s" : ""}</span>
+          <span style={{ color: "#D4A853" }}>{filtered.length} resultat{filtered.length !== 1 ? "s" : ""}</span>
         )}
       </div>
 
@@ -267,13 +265,12 @@ export function ThreadHistory({ thread }: ThreadHistoryProps) {
       {search.trim() && groups.length === 0 && (
         <div
           style={{
-            background: C.card,
-            border: `1px solid ${C.border}`,
-            borderRadius: "8px",
+            ...glass,
             padding: "16px",
-            color: C.dim,
+            color: "#64748b",
             fontSize: "12px",
             textAlign: "center",
+            fontFamily: sans,
           }}
         >
           Aucun resultat pour "{search}"
