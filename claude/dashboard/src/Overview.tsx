@@ -70,10 +70,10 @@ export function Overview({ data }: Props) {
             trigger: s.name,
           }));
 
-    // Recent sessions (last 12)
+    // Recent sessions (last 5)
     const recentSessions = [...sessions]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 12);
+      .slice(0, 5);
 
     // Recent thread exchanges (last 5)
     const recentThread = data.thread.slice(-5).reverse();

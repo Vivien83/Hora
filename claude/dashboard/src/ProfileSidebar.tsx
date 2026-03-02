@@ -275,7 +275,7 @@ export function ProfileSidebar({
                 fontSize: "13px",
                 fontWeight: isActive ? 500 : 400,
                 fontFamily: sans,
-                color: isActive ? C.text : isHovered ? C.textSecondary : C.textTertiary,
+                color: isActive ? C.text : isHovered ? C.text : C.textSecondary,
                 background: isActive ? C.surfaceActive : "transparent",
                 gap: "10px",
                 position: "relative",
