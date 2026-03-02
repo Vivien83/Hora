@@ -19,8 +19,7 @@ export async function getEmbedder(): Promise<any> {
   try {
     const { pipeline } = await import("@huggingface/transformers");
     pipelineInstance = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
-      quantized: true,  // quantized ONNX for speed
-      dtype: "fp32",    // explicit dtype to suppress ONNX warning
+      dtype: "fp32",    // explicit dtype — quantization controlled via dtype in v3.x
     });
     return pipelineInstance;
   } catch {

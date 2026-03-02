@@ -135,7 +135,7 @@ export function hybridSearch(
     .map((r) => ({ id: r.id, score: r.score, fact: r.fact! }));
 
   // BM25 search
-  const bm25Results = bm25Index.search(query, { limit: 20 });
+  const bm25Results = bm25Index.search(query).slice(0, 20);
   const bm25Ranked: RankedItem[] = bm25Results
     .map((r) => {
       const fact = factsMap.get(r.id as string);
