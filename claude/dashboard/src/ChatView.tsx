@@ -198,22 +198,47 @@ function matchesSearch(msg: TranscriptMessage, query: string): boolean {
   );
 }
 
+interface SessionInfo {
+  id: string;
+  date: string;
+  messageCount: number;
+}
+
 export function ChatView({ messages }: ChatViewProps) {
   const [search, setSearch] = useState("");
+  const [activeSession, setActiveSession] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [autoScrolled, setAutoScrolled] = useState(false);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return messages;
-    return messages.filter((m) => matchesSearch(m, search.trim()));
-  }, [messages, search]);
+  // Build session list (ordered by most recent first)
+  const sessions = useMemo<SessionInfo[]>(() => {
+    const map = new Map<string, { date: string; count: number }>();
+    for (const m of messages) {
+      const existing = map.get(m.sessionId);
+      if (existing) {
+        existing.count++;
+      } else {
+        map.set(m.sessionId, { date: m.timestamp, count: 1 });
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, v]) => ({ id, date: v.date, messageCount: v.count }))
+      .reverse();
+  }, [messages]);
 
-  // Count sessions
-  const sessionCount = useMemo(() => {
-    const sids = new Set(filtered.map((m) => m.sessionId));
-    return sids.size;
-  }, [filtered]);
+  const filtered = useMemo(() => {
+    let msgs = messages;
+    if (activeSession) {
+      msgs = msgs.filter((m) => m.sessionId === activeSession);
+    }
+    if (search.trim()) {
+      msgs = msgs.filter((m) => matchesSearch(m, search.trim()));
+    }
+    return msgs;
+  }, [messages, search, activeSession]);
+
+  const sessionCount = sessions.length;
 
   // Auto-scroll to bottom on first load
   useEffect(() => {
@@ -268,7 +293,7 @@ export function ChatView({ messages }: ChatViewProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0px", height: "100%" }}>
-      {/* Search + stats bar */}
+      {/* Search + session tabs */}
       <div
         style={{
           position: "sticky",
@@ -302,6 +327,64 @@ export function ChatView({ messages }: ChatViewProps) {
             boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
           }}
         />
+
+        {/* Session tabs */}
+        <div
+          style={{
+            display: "flex",
+            gap: "6px",
+            overflowX: "auto",
+            padding: "2px 0",
+          }}
+        >
+          <button
+            onClick={() => setActiveSession(null)}
+            style={{
+              flexShrink: 0,
+              padding: "4px 10px",
+              borderRadius: "8px",
+              border: activeSession === null ? `1px solid ${C.gold}` : `1px solid ${C.border}`,
+              background: activeSession === null ? "rgba(212,168,83,0.1)" : "rgba(255,255,255,0.4)",
+              color: activeSession === null ? C.gold : C.textMuted,
+              fontSize: "11px",
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: C.mono,
+              transition: "all 100ms",
+            }}
+          >
+            Toutes ({sessionCount})
+          </button>
+          {sessions.map((s) => {
+            const d = new Date(s.date);
+            const label = isNaN(d.getTime()) ? s.id.slice(0, 8) : d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) + " " + s.id.slice(0, 8);
+            const isActive = activeSession === s.id;
+            return (
+              <button
+                key={s.id}
+                onClick={() => setActiveSession(isActive ? null : s.id)}
+                style={{
+                  flexShrink: 0,
+                  padding: "4px 10px",
+                  borderRadius: "8px",
+                  border: isActive ? `1px solid ${C.accent}` : `1px solid ${C.border}`,
+                  background: isActive ? "rgba(99,102,241,0.08)" : "rgba(255,255,255,0.4)",
+                  color: isActive ? C.accent : C.textTertiary,
+                  fontSize: "11px",
+                  fontWeight: isActive ? 600 : 400,
+                  cursor: "pointer",
+                  fontFamily: C.mono,
+                  transition: "all 100ms",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {label}
+                <span style={{ marginLeft: "4px", opacity: 0.6 }}>{s.messageCount}</span>
+              </button>
+            );
+          })}
+        </div>
+
         <div
           style={{
             display: "flex",
@@ -313,8 +396,10 @@ export function ChatView({ messages }: ChatViewProps) {
           }}
         >
           <span>{filtered.length} messages</span>
-          <span>{sessionCount} sessions</span>
-          {search.trim() && filtered.length !== messages.length && (
+          {activeSession && (
+            <span style={{ color: C.accent }}>session {activeSession.slice(0, 8)}</span>
+          )}
+          {search.trim() && (
             <span style={{ color: C.accent }}>
               {filtered.length} resultat{filtered.length !== 1 ? "s" : ""}
             </span>

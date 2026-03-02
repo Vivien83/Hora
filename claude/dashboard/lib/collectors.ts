@@ -177,7 +177,10 @@ function collectSessions(
     const sentimentFromContent = sentimentMatch ? parseInt(sentimentMatch[1], 10) : 0;
     const sentiment = sentimentMap.get(sid) ?? sentimentFromContent;
 
-    const messageCount = (content.match(/^(User|Assistant|Utilisateur)\s*:/gm) ?? []).length;
+    // Session format uses [user]: and [assistant]: with brackets
+    const messageCount =
+      (content.match(/^\[(user|assistant|utilisateur)\]\s*:/gim) ?? []).length ||
+      parseInt(content.match(/Messages\s*:\s*(\d+)/)?.[1] ?? "0", 10);
 
     // Try to extract project from content
     const projectMatch = content.match(/projet?[:\s]+([a-z0-9]+)/i);

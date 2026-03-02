@@ -17,6 +17,7 @@ const C = {
   gold: "#D4A853",
   accent: "#6366f1",
   border: "rgba(0,0,0,0.06)",
+  glassBorder: "rgba(255,255,255,0.7)",
   serif: "'Playfair Display', Georgia, serif" as string,
   sans: "'DM Sans', sans-serif" as string,
   mono: "'JetBrains Mono', monospace" as string,
@@ -34,6 +35,45 @@ interface SessionDetail {
   sentiment: number | null;
   failures: Array<{ type: string; summary: string }>;
   date: string;
+}
+
+interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+function parseMessages(raw: string): { header: string; messages: ChatMessage[] } {
+  const lines = raw.split("\n");
+  const headerLines: string[] = [];
+  const messages: ChatMessage[] = [];
+  let inHeader = true;
+  let currentRole: ChatMessage["role"] | null = null;
+  let currentLines: string[] = [];
+
+  for (const line of lines) {
+    // Detect message start: [user]: or [assistant]: or [queue-operation]:
+    const match = line.match(/^\[(user|assistant|utilisateur|queue-operation)\]\s*:\s*(.*)/i);
+    if (match) {
+      inHeader = false;
+      // Flush previous message
+      if (currentRole !== null) {
+        messages.push({ role: currentRole, content: currentLines.join("\n").trim() });
+      }
+      const tag = match[1].toLowerCase();
+      currentRole = tag === "user" || tag === "utilisateur" ? "user"
+        : tag === "assistant" ? "assistant" : "system";
+      currentLines = match[2] ? [match[2]] : [];
+    } else if (inHeader) {
+      headerLines.push(line);
+    } else if (currentRole !== null) {
+      currentLines.push(line);
+    }
+  }
+  // Flush last message
+  if (currentRole !== null) {
+    messages.push({ role: currentRole, content: currentLines.join("\n").trim() });
+  }
+  return { header: headerLines.join("\n").trim(), messages };
 }
 
 function sentimentColor(score: number): string {
@@ -340,27 +380,107 @@ export function SessionReplay() {
               </div>
             )}
 
-            {/* Content */}
+            {/* Content — parsed chat messages */}
             <div
               style={{
                 flex: 1,
                 overflowY: "auto",
                 padding: "16px 20px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
               }}
             >
-              <pre
-                style={{
-                  margin: 0,
-                  fontFamily: C.mono,
-                  fontSize: "12px",
-                  color: C.textSecondary,
-                  lineHeight: 1.6,
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                }}
-              >
-                {detail.content}
-              </pre>
+              {(() => {
+                const { header, messages } = parseMessages(detail.content);
+                return (
+                  <>
+                    {header && (
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: C.textTertiary,
+                          fontFamily: C.mono,
+                          lineHeight: 1.5,
+                          whiteSpace: "pre-wrap",
+                          padding: "8px 12px",
+                          background: "rgba(0,0,0,0.02)",
+                          borderRadius: "8px",
+                          borderLeft: `2px solid ${C.gold}`,
+                        }}
+                      >
+                        {header}
+                      </div>
+                    )}
+                    {messages.map((msg, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: msg.role === "user" ? "flex-end" : "flex-start",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 600,
+                            color: msg.role === "user" ? C.gold
+                              : msg.role === "assistant" ? C.accent
+                              : C.textTertiary,
+                            fontFamily: C.mono,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          {msg.role === "user" ? "Utilisateur" : msg.role === "assistant" ? "HORA" : "Systeme"}
+                        </div>
+                        <div
+                          style={{
+                            maxWidth: msg.role === "user" ? "75%" : "90%",
+                            padding: "10px 14px",
+                            borderRadius: msg.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                            background: msg.role === "user"
+                              ? "rgba(212, 168, 83, 0.08)"
+                              : msg.role === "assistant"
+                              ? "rgba(255, 255, 255, 0.6)"
+                              : "rgba(0, 0, 0, 0.03)",
+                            border: msg.role === "user"
+                              ? "1px solid rgba(212, 168, 83, 0.15)"
+                              : msg.role === "assistant"
+                              ? `1px solid ${C.glassBorder}`
+                              : `1px solid ${C.border}`,
+                            fontSize: "12px",
+                            color: C.textSecondary,
+                            lineHeight: 1.6,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            fontFamily: msg.role === "user" ? C.sans : C.mono,
+                          }}
+                        >
+                          {msg.content || "(vide)"}
+                        </div>
+                      </div>
+                    ))}
+                    {messages.length === 0 && (
+                      <pre
+                        style={{
+                          margin: 0,
+                          fontFamily: C.mono,
+                          fontSize: "12px",
+                          color: C.textSecondary,
+                          lineHeight: 1.6,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {detail.content}
+                      </pre>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </>
         )}

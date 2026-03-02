@@ -142,16 +142,24 @@ export function callClaude(prompt: string): string {
   try {
     if (!claudeAvailable()) return "";
 
+    const env = { ...process.env, HORA_SKIP_HOOKS: "1" };
+    delete env.CLAUDECODE;
+
     const result = execSync("claude -p --output-format text --max-turns 1", {
       input: prompt,
       encoding: "utf8",
-      timeout: 45000,
+      timeout: 90_000,
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, HORA_SKIP_HOOKS: "1" },
+      env,
     });
 
     return (result || "").trim();
-  } catch {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Log timeout/crash to stderr for debugging (silent in production)
+    if (msg.includes("TIMEOUT") || msg.includes("ETIMEDOUT")) {
+      process.stderr.write(`[hora-graph] claude -p timeout (90s)\n`);
+    }
     return "";
   }
 }

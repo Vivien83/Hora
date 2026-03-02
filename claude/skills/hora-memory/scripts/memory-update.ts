@@ -356,6 +356,114 @@ function runRepair(): StepResult[] {
   return steps;
 }
 
+// ─── Graph Build Mode ───────────────────────────────────────────────────────
+
+async function runGraphBuild(): Promise<StepResult> {
+  try {
+    const { HoraGraph } = await import(lib("knowledge-graph.js"));
+    const { buildGraphFromSession } = await import(lib("graph-builder.js"));
+    const { disposeEmbedder } = await import(lib("embeddings.js"));
+
+    fs.mkdirSync(GRAPH_DIR, { recursive: true });
+    const graph = new HoraGraph(GRAPH_DIR);
+
+    // Get session IDs already in the graph (episodes)
+    const existingEpisodes = new Set<string>();
+    const episodes = graph.getEpisodes();
+    for (const ep of episodes) {
+      if (ep.source_ref) existingEpisodes.add(ep.source_ref);
+      // Also match by short sid (first 8 chars)
+      if (ep.source_ref && ep.source_ref.length >= 8) {
+        existingEpisodes.add(ep.source_ref.slice(0, 8));
+      }
+      if (ep.sessionId) existingEpisodes.add(ep.sessionId);
+    }
+
+    // Read archived sessions
+    const sessionsDir = path.join(MEMORY_DIR, "SESSIONS");
+    if (!fs.existsSync(sessionsDir)) {
+      return { step: "Graph build", status: "skip", detail: "Pas de sessions archivees" };
+    }
+
+    const files = fs.readdirSync(sessionsDir).filter((f) => f.endsWith(".md")).sort().reverse();
+    let processed = 0;
+    let newEntities = 0;
+    let newFacts = 0;
+    const MAX_SESSIONS = 5; // Max sessions to process per run (claude -p is slow)
+
+    for (const filename of files) {
+      if (processed >= MAX_SESSIONS) break;
+
+      // Extract sid from filename: 2026-03-02T08-23-02_59461f1b.md → 59461f1b
+      const sidMatch = filename.match(/_([a-f0-9]+)\.md$/);
+      const sid = sidMatch?.[1] ?? "";
+      if (!sid) continue;
+
+      // Skip if already in graph
+      if (existingEpisodes.has(sid)) continue;
+
+      // Read session content
+      const content = fs.readFileSync(path.join(sessionsDir, filename), "utf-8");
+      if (content.length < 200) continue;
+
+      // Parse session metadata from header
+      const idMatch = content.match(/\*\*ID\*\*\s*:\s*([a-f0-9-]+)/i);
+      const fullId = idMatch?.[1] ?? sid;
+
+      // Check full ID too
+      if (existingEpisodes.has(fullId)) continue;
+
+      const sentimentMatch = content.match(/\*\*Sentiment\*\*\s*:\s*(\d)/i);
+      const sentiment = sentimentMatch ? parseInt(sentimentMatch[1], 10) : 3;
+
+      const projectMatch = content.match(/\*\*Projet\*\*\s*:\s*(.+)/i);
+      const projectName = projectMatch?.[1]?.trim() ?? "unknown";
+
+      const projectIdMatch = content.match(/\*\*ProjetID\*\*\s*:\s*([a-z0-9]+)/i);
+      const projectId = projectIdMatch?.[1] ?? projectName;
+
+      // Extract transcript part (after ---)
+      const parts = content.split("---");
+      const archive = (parts.slice(2).join("---") || content).slice(0, 5000);
+
+      log(`Processing session ${sid} (${projectName})...`);
+
+      const report = await buildGraphFromSession(graph, {
+        sessionId: fullId,
+        archive,
+        failures: [],
+        sentiment,
+        toolUsage: {},
+        projectId,
+      });
+
+      if (report.error) {
+        log(`  -> error: ${report.error}`);
+      } else {
+        newEntities += report.newEntities.length;
+        newFacts += report.newFacts.length;
+        log(`  -> +${report.newEntities.length} entites, +${report.newFacts.length} faits`);
+      }
+      processed++;
+    }
+
+    if (processed > 0) {
+      graph.save();
+      await disposeEmbedder();
+    }
+
+    return {
+      step: "Graph build",
+      status: processed > 0 ? "ok" : "skip",
+      detail: processed > 0
+        ? `${processed} sessions traitees: +${newEntities} entites, +${newFacts} faits`
+        : "Toutes les sessions sont deja dans le graph",
+    };
+  } catch (err) {
+    return { step: "Graph build", status: "error", detail: String(err) };
+  }
+}
+
 // ─── Full Update Mode ───────────────────────────────────────────────────────
 
 async function runFullUpdate(): Promise<UpdateReport> {
@@ -367,12 +475,9 @@ async function runFullUpdate(): Promise<UpdateReport> {
   const gcSteps = await runGc();
   steps.push(...gcSteps);
 
-  // Step 3: Graph build — skip in manual mode (needs session data)
-  steps.push({
-    step: "Graph build",
-    status: "skip",
-    detail: "Extraction automatique a la fin de session (session-end hook)",
-  });
+  // Step 3: Graph build — process sessions not yet in graph
+  log("[3/7] Graph build...");
+  steps.push(await runGraphBuild());
 
   // Step 4: Expire facts (ACT-R)
   log("[4/7] Expire facts...");
@@ -434,6 +539,11 @@ async function main(): Promise<void> {
     case "--dream": {
       const d = await runDream();
       report = { mode: "dream", steps: [d] };
+      break;
+    }
+    case "--graph": {
+      const g = await runGraphBuild();
+      report = { mode: "graph", steps: [g] };
       break;
     }
     case "--repair": {
