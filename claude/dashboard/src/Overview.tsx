@@ -48,9 +48,9 @@ export function Overview({ data }: Props) {
     const secTotal =
       data.security.alerts + data.security.blocks + data.security.confirms;
 
-    // Sentiment chart data
+    // Sentiment chart data — max 20 points for readability
     const sentimentChartData = data.sentimentHistory.length > 0
-      ? data.sentimentHistory.map((e) => ({
+      ? data.sentimentHistory.slice(-20).map((e) => ({
           date: new Date(e.ts).toLocaleDateString("fr-FR", {
             day: "2-digit",
             month: "short",
@@ -801,24 +801,16 @@ export function Overview({ data }: Props) {
         </div>
 
         {/* TWO-COLUMN GRID: Sentiment Chart + Thread Preview */}
+        {/* SENTIMENT CHART — full width */}
         <div
+          className="o-card"
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(12, 1fr)",
-            gap: "24px",
+            ...glass,
+            padding: "36px 40px",
+            position: "relative",
+            ...e(600),
           }}
         >
-          {/* Sentiment Evolution Chart (span 7) */}
-          <div
-            className="o-card"
-            style={{
-              ...glass,
-              gridColumn: "span 7",
-              padding: "32px 36px",
-              position: "relative",
-              ...e(600),
-            }}
-          >
             <div
               style={{
                 position: "absolute",
@@ -886,7 +878,7 @@ export function Overview({ data }: Props) {
                 </div>
               </div>
             </div>
-            <div style={{ height: "220px", position: "relative", zIndex: 1 }}>
+            <div style={{ height: "280px", position: "relative", zIndex: 1 }}>
               {stats.sentimentChartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
@@ -952,14 +944,17 @@ export function Overview({ data }: Props) {
                         fill: "#6366f1",
                         stroke: "#fff",
                         strokeWidth: 2,
-                        r: 3,
+                        r: 4,
                       }}
                       activeDot={{
                         fill: "#6366f1",
                         stroke: "#fff",
                         strokeWidth: 2,
-                        r: 5,
+                        r: 6,
                       }}
+                      isAnimationActive={true}
+                      animationDuration={2000}
+                      animationEasing="ease-in-out"
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -980,12 +975,11 @@ export function Overview({ data }: Props) {
             </div>
           </div>
 
-          {/* Thread Preview (span 5) */}
+        {/* THREAD PREVIEW — full width */}
           <div
             className="o-card"
             style={{
               ...glass,
-              gridColumn: "span 5",
               padding: "28px 32px",
               position: "relative",
               ...e(700),
@@ -1145,7 +1139,6 @@ export function Overview({ data }: Props) {
               )}
             </div>
           </div>
-        </div>
 
         {/* TOOL USAGE BAR CHART */}
         <div
