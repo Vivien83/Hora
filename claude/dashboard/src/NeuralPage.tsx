@@ -648,19 +648,6 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
         const textWidth = ctx.measureText(label).width;
         const labelY = y + r + 4;
 
-        const padX = 8;
-        const padY = 4;
-        const bgW = textWidth + padX * 2;
-        const bgH = fontSize + padY * 2;
-        const cx = x;
-        const cy = labelY - padY + bgH / 2;
-        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(bgW, bgH) * 0.7);
-        grad.addColorStop(0, hexToRgba("#F2F0E9", 0.65));
-        grad.addColorStop(0.7, hexToRgba("#F2F0E9", 0.3));
-        grad.addColorStop(1, "transparent");
-        ctx.fillStyle = grad;
-        ctx.fillRect(x - bgW / 2 - 4, cy - bgH / 2 - 4, bgW + 8, bgH + 8);
-
         ctx.fillStyle = isHighlighted ? C.canvasText : C.canvasMuted;
         ctx.fillText(label, x, labelY);
       }
