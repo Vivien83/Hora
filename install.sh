@@ -47,6 +47,7 @@ HORA_MANAGED=(
   "hooks"
   "agents"
   "skills"
+  "rules"
   ".hora/patterns.yaml"
 )
 
@@ -96,7 +97,7 @@ else
 fi
 
 STEP_CURRENT=0
-STEP_TOTAL=9
+STEP_TOTAL=10
 
 ui_header() {
   local GOLD='\033[38;2;212;168;83m'
@@ -752,6 +753,19 @@ _cp "$HORA_DIR/statusline.sh" "$CLAUDE_DIR/statusline.sh"
 _chmod +x "$CLAUDE_DIR/statusline.sh"
 ui_ok "statusline.sh"
 
+# ─── Rules (modular CLAUDE.md extensions) ─────────────────────────────────
+
+if [ -d "$HORA_DIR/rules" ]; then
+  _mkdir -p "$CLAUDE_DIR/rules"
+  RULES_COUNT=0
+  for rule_file in "$HORA_DIR/rules/"*.md; do
+    [ -f "$rule_file" ] || continue
+    _cp "$rule_file" "$CLAUDE_DIR/rules/$(basename "$rule_file")"
+    RULES_COUNT=$((RULES_COUNT + 1))
+  done
+  ui_ok "rules/ ${DIM}($RULES_COUNT fichiers)${RESET}"
+fi
+
 # ─── Hooks ─────────────────────────────────────────────────────────────────
 
 ui_step "Hooks & Agents"
@@ -824,14 +838,21 @@ case "$(uname -s)" in
     ;;
 esac
 
-# ─── Agents ────────────────────────────────────────────────────────────────
+# ─── Agents (recursif — inclut references/) ──────────────────────────────
 
+AGENT_COUNT=$(find "$HORA_DIR/agents" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
 if $DRY_RUN; then
-  ui_detail "[DRY-RUN] agents/ — fichiers seraient copies"
+  ui_detail "[DRY-RUN] agents/ — $AGENT_COUNT fichiers seraient copies"
 else
-  cp "$HORA_DIR/agents/"*.md "$CLAUDE_DIR/agents/"
+  # Copier recursivement tous les .md (preserve la structure de sous-dossiers)
+  find "$HORA_DIR/agents" -name "*.md" | while read -r f; do
+    rel="${f#$HORA_DIR/agents/}"
+    target_dir="$CLAUDE_DIR/agents/$(dirname "$rel")"
+    mkdir -p "$target_dir"
+    cp "$f" "$CLAUDE_DIR/agents/$rel"
+  done
 fi
-ui_ok "agents/ ${DIM}($(ls "$HORA_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ') agents)${RESET}"
+ui_ok "agents/ ${DIM}($AGENT_COUNT fichiers)${RESET}"
 
 # ─── Skills ────────────────────────────────────────────────────────────────
 
@@ -844,14 +865,28 @@ for old_skill in "$CLAUDE_DIR/skills/"*.md; do
   ui_detail "$(basename "$old_skill") supprime (ancien format)"
 done
 
-# Copier les dossiers de skills
+# Copier les dossiers de skills (integralement — SKILL.md + scripts/ + references/)
+SKILLS_COUNT=0
 for skill_dir in "$HORA_DIR/skills/"*/; do
   [ -d "$skill_dir" ] || continue
   skill_name="$(basename "$skill_dir")"
-  _mkdir -p "$CLAUDE_DIR/skills/$skill_name"
-  _cp "$skill_dir"SKILL.md "$CLAUDE_DIR/skills/$skill_name/SKILL.md"
+  if $DRY_RUN; then
+    ui_detail "[DRY-RUN] skills/$skill_name/"
+  else
+    # Copier recursivement le dossier complet (exclut .hora/ snapshots)
+    mkdir -p "$CLAUDE_DIR/skills/$skill_name"
+    find "$skill_dir" -not -path '*/.hora/*' -not -name '.DS_Store' -type f | while read -r f; do
+      rel="${f#$skill_dir}"
+      target_dir="$CLAUDE_DIR/skills/$skill_name/$(dirname "$rel")"
+      mkdir -p "$target_dir"
+      cp "$f" "$CLAUDE_DIR/skills/$skill_name/$rel"
+    done
+  fi
+  SKILLS_COUNT=$((SKILLS_COUNT + 1))
 done
-ui_ok "skills/ ${DIM}($(find "$HORA_DIR/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ') skills)${RESET}"
+SCRIPTS_COUNT=$(find "$HORA_DIR/skills" -path '*/scripts/*' -type f 2>/dev/null | wc -l | tr -d ' ')
+REFS_COUNT=$(find "$HORA_DIR/skills" -path '*/references/*' -type f 2>/dev/null | wc -l | tr -d ' ')
+ui_ok "skills/ ${DIM}($SKILLS_COUNT skills + ${SCRIPTS_COUNT} scripts + ${REFS_COUNT} references)${RESET}"
 
 # ─── Dashboard ─────────────────────────────────────────────────────────────
 
