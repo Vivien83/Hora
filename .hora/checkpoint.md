@@ -1,23 +1,23 @@
 ---
-session: a909827f
-timestamp: 2026-02-28T22:15:00.000Z
-context_pct: 35
+session: 0573e858
+timestamp: 2026-03-01T14:44:51.602Z
+context_pct: 74
 ---
 # Objectif en cours
-Agent Designer refondu — écrit du code React/Tailwind/shadcn anti-AI
+Page Insights premium avec patterns Gemini. Corriger le problème récurrent de padding/troncage texte.
 
 # Etat actuel
-- Designer.md reécrit : 280 lignes, orienté code, anti-patterns, few-shot
-- references/design-patterns.md créé : 8 exemples complets (hero, features, dashboard, nav, form, table, pricing, empty state)
-- Syncé global → projet
-- Non commité, non pushé
+- Contraintes design nettoyées (Designer.md supprimé, app.css purgé, MEMORY nettoyé)
+- Skill Tailwind v4 intégré dans rules/
+- Insights.tsx v4 avec glassmorphism, ambient glow, hover lift, sentiment gauge
+- PROBLÈME RÉCURRENT : texte tronqué et padding insuffisant dans les cards — signalé par l'utilisateur
 
 # Decisions prises
-- CLAUDE.md < 200 lignes + 7 rules (fait et pushé)
-- Agents standardisés opus/sonnet/haiku (fait et pushé)
-- Statusline heure de reprise (fait et pushé)
-- Agent Designer refondu avec Context7 (shadcn/ui, Tailwind, Radix, Motion)
+- Zero agent Designer, coder directement
+- Patterns Gemini (bg-white/[0.02], backdrop-blur-xl, border-white/5, rounded-3xl)
+- Données réelles, pas fictives
 
 # Prochaines etapes
-- Commit + push si user valide
-- Tester l'agent sur un cas réel
+- Corriger padding + troncage texte (problème récurrent)
+- Ouvrir dans le browser de l'utilisateur
+- Itérer selon feedback

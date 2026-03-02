@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { homedir } from "os";
 import { horaPlugin } from "./src/vite-hora-plugin";
 
@@ -7,6 +8,6 @@ import { horaPlugin } from "./src/vite-hora-plugin";
 const projectDir = process.env.HORA_PROJECT_DIR ?? homedir();
 
 export default defineConfig({
-  plugins: [react(), horaPlugin(projectDir)],
+  plugins: [tailwindcss(), react(), horaPlugin(projectDir)],
   server: { port: 3847 },
 });

@@ -1,24 +1,22 @@
 ---
 name: hora-design
-description: Anti-AI web design workflow — intentional, premium design. Detects and eliminates generic AI patterns. Use when user says design, UI, UX, landing page, component, layout, redesign, style, theme, dark mode, branding. Do NOT use for design system audit only — use hora-vision for screenshot analysis.
+description: Premium web design workflow — intentional, creative, state-of-the-art. Based on the proven Insights v6 design language. Use when user says design, UI, UX, landing page, component, layout, redesign, style, theme, dark mode, branding. Do NOT use for design system audit only — use hora-vision for screenshot analysis.
 metadata:
   author: HORA
-  version: 2.1.0
-compatibility: Claude Code. Works with Tailwind CSS + shadcn/ui projects.
+  version: 3.0.0
+compatibility: Claude Code. Works with React + Tailwind CSS + Vite projects.
 ---
 
 # Skill: hora-design
 
-> "L'IA ajoute. Un bon designer retire." — Dieter Rams, adapte.
+> "L'IA ajoute. Un bon designer retire. Un excellent designer innove." — adapte de Dieter Rams
 
-Workflow de design web ou **chaque choix visuel est intentionnel**. Le but n'est pas de produire du "joli" — c'est de produire du design qu'un humain reconnait comme craft, pas comme output.
-
-Inspire de : Dieter Rams (10 principes), Bauhaus (form follows function), Swiss/International Typographic Style (Linear, Vercel), Ma japonais (espace actif), wabi-sabi (imperfection intentionnelle), Apple HIG, Stripe (animation narrative).
+Workflow de design web ou chaque choix visuel est **intentionnel et creatif**. Le but : produire du design premium qu'un humain reconnait comme du craft, tout en innovant constamment.
 
 ## Agent Designer (obligatoire)
 
 **Tout le code UI est ecrit par l'agent Designer** (`~/.claude/agents/Designer.md`).
-Ce skill definit le workflow (phases, gates, checklists). L'agent Designer execute le code.
+Ce skill definit le workflow (phases, gates). L'agent Designer execute le code.
 Quand `/hora-design` est invoque, lancer l'agent Designer avec le contexte du brief + la phase courante.
 
 ## Invocation
@@ -34,183 +32,140 @@ Quand `/hora-design` est invoque, lancer l'agent Designer avec le contexte du br
 | `-s` | **Save** : persiste les decisions dans `.hora/design/{task-id}/` |
 | `-e` | **Economy** : pas de sous-agents, outils directs uniquement |
 
-> **Il n'existe PAS de flag pour ignorer la checklist anti-AI.** C'est intentionnel.
-
 ---
 
 ## Phase 0 — BRIEF (comprendre avant de dessiner)
 
-Avant de toucher au moindre composant, comprendre le contexte. Un design sans brief est un template.
+Avant de toucher au moindre composant, comprendre le contexte.
 
-### Questions obligatoires
+### Questions cles
 
 | Question | Pourquoi |
 |----------|----------|
-| **Quel est le produit/service ?** | Le design sert le produit, pas l'inverse |
-| **Qui est l'utilisateur cible ?** | Developer? CEO? Grand public? Change tout |
-| **Quel est l'objectif de cette page/composant ?** | Une seule action principale par ecran |
-| **References visuelles ?** | Sites que le client admire (pas "fais comme Apple") |
-| **Contraintes existantes ?** | Design system en place ? Couleurs de marque ? Polices imposees ? |
+| **Quel est le produit/service ?** | Le design sert le produit |
+| **Qui est l'utilisateur cible ?** | Change les choix visuels |
+| **Quel est l'objectif de cette page/composant ?** | Une action principale par ecran |
+| **References visuelles ?** | Sites admires, mood, direction |
+| **Contraintes existantes ?** | Design system, couleurs, polices imposees |
 
 ### Classifier la tache
 
-| Niveau | Signal | Profondeur design |
-|--------|--------|-------------------|
-| **Micro** | Un composant, un etat | Token check + coherence |
+| Niveau | Signal | Profondeur |
+|--------|--------|------------|
+| **Micro** | Un composant, un etat | Coherence avec le design language |
 | **Page** | Une page ou section complete | + Layout + hierarchie + responsive |
-| **System** | Theme, design system, branding | + Tokens complets + documentation + multi-pages |
+| **System** | Theme, design system, branding | + Tokens + documentation + multi-pages |
 
-> **Gate 0** : le brief est compris. L'objectif utilisateur est clair. On ne dessine pas "pour que ce soit beau" — on dessine pour resoudre un probleme.
+> **Gate 0** : le brief est compris. L'objectif utilisateur est clair.
 
 ---
 
-## Phase 1 — AUDIT (detecter le generique)
+## Phase 1 — EXPLORE (s'inspirer)
 
-Scanner le code existant pour identifier les patterns AI a eliminer.
+Scanner le code existant ET chercher l'inspiration.
 
-### Scan anti-patterns
+### Audit interne
+- Lire `Insights.tsx` comme reference du design language etabli
+- Identifier ce qui existe deja dans le dashboard (composants, patterns, couleurs)
+- Reperer les incoherences avec le design language
+
+### Inspiration externe
+- Chercher les meilleurs exemples actuels (Dribbble, Awwwards, sites de reference)
+- Identifier les techniques CSS/React modernes applicables
+- Noter les idees creatives qui pourraient enrichir le resultat
+
+> **Gate 1** : on sait ce qui existe et ce qu'on peut faire de mieux.
+
+---
+
+## Phase 2 — FOUNDATION (decisions cles)
+
+Le design language de base est documente dans `Designer.md`. A cette phase :
+
+1. **Confirmer ou adapter** la palette pour ce contexte specifique
+2. **Choisir** la structure layout (bento grid, editorial, dashboard, etc.)
+3. **Identifier** les elements innovants a integrer (nouveau pattern, technique CSS recente, animation creative)
+
+> **Gate 2** : les decisions fondamentales sont prises. On sait ou on va.
+
+---
+
+## Phase 3 — BUILD (coder le design)
+
+L'agent Designer code directement en React avec :
+- Les patterns prouves (frosted glass, serif typo, staggered animations, inline spacing)
+- Les innovations choisies en Phase 2
+- La structure typique : page wrapper + noise + blobs + content grid
+
+### Regles techniques
+
+| Regle | Raison |
+|-------|--------|
+| **Inline styles pour spacing** | Tailwind classes causaient des troncatures (lecon validee) |
+| **`<style>` tag pour animations composant** | Plus simple, scope au composant |
+| **Constantes JS pour couleurs** | Flexibilite, lisibilite |
+| **Pas de `overflow: hidden` sur les cards** | Les effets fondent naturellement |
+| **Pas de classe `truncate` sauf intentionnel** | Cause du texte coupe invisible |
+
+### Creativite bienvenue
+
+- Nouveaux patterns de data viz
+- Techniques CSS modernes (`color-mix()`, `@container`, scroll-driven, View Transitions)
+- Layouts experimentaux
+- Micro-interactions innovantes
+- Typographie creative
+
+> **Gate 3** : le code est ecrit, le design est visible.
+
+---
+
+## Phase 4 — VERIFY (le design passe ou il ne passe pas)
+
+### Checklist rapide
 
 ```
-ANTI-PATTERNS AI — DETECTION :
-- [ ] Gradient indigo/violet/bleu-violet (bg-gradient-to-*, from-indigo-*, from-purple-*)
-- [ ] Inter/Roboto/Arial comme seule police
-- [ ] 3 colonnes d'icones symetriques ("features section")
-- [ ] Glassmorphism sans justification (backdrop-blur + bg-opacity)
-- [ ] Blobs SVG decoratifs (cercles flous, formes amorphes)
-- [ ] Hero > 100vh avec H1 centre + sous-titre + CTA
-- [ ] Fond noir pur #000000 ou bg-black
-- [ ] rounded-2xl applique uniformement sans variation
-- [ ] CTA gradient avec glow/shadow colore
-- [ ] Ombres identiques sur toutes les cards (pas de hierarchie)
-- [ ] Texte "seamless", "landscape", "delve", "leverage", "empower"
-- [ ] Paragraphes de longueur artificiellement identique
-- [ ] Icones Lucide/Heroicons utilisees comme decoration sans fonction
+VISUEL     : [ ] Hierarchie claire (3 niveaux) [ ] Pas de texte tronque [ ] Contraste OK
+TECHNIQUE  : [ ] Inline spacing [ ] Pas de overflow-hidden [ ] Animations fluides
+A11Y       : [ ] Contraste 4.5:1 min [ ] Focus visible [ ] Reduced motion gere
+RESPONSIVE : [ ] Pas de scroll horizontal [ ] Lisible sur mobile
 ```
 
-### Analyse du design system existant
+> **Gate 4** : la checklist passe. Le design est pret.
 
-- [ ] Tokens de couleur : semantiques ou hardcodes ?
-- [ ] Typographie : combien de familles ? scale coherente ?
-- [ ] Spacing : grille 8px respectee ou valeurs arbitraires ?
-- [ ] Composants shadcn/ui : customises ou defaut ?
-- [ ] Dark mode : tokens dedies ou simple inversion ?
-- [ ] Responsive : breakpoints coherents ou patchwork ?
+---
 
-### Verdict
+## Phase 5 — DELIVER
+
+Resume + commit. Format :
 
 ```
-AUDIT DESIGN :
-- Anti-patterns detectes : [N] / 13
-- Tokens : [semantiques | hardcodes | absents]
-- Hierarchie visuelle : [claire | plate | absente]
-- Score : [A: premium | B: correct | C: generique | D: template AI]
+design: [composant/page] — [description courte]
+
+- [Ce qui a ete fait]
+- [Technique(s) notable(s)]
+- [Innovation(s) si applicable]
 ```
-
-> **Gate 1** : les anti-patterns sont identifies. Le score est etabli. On sait ce qu'il faut corriger.
-
----
-
-## Phase 2 — FOUNDATION (les decisions qui determinent tout)
-
-Couleurs OKLCH (3 couches obligatoires), typographie intentionnelle (2 familles max), spacing grille 8px stricte, border radius hierarchise, ombres limitees a 2 niveaux, dark mode avec tokens dedies.
-
-**See `references/design-foundations.md` for complete OKLCH color system, typography choices, fluid type scale, spacing grid, border radius hierarchy, shadow tokens, and dark mode CSS examples.**
-
-> **Gate 2** : les fondations sont posees. Aucun token hardcode dans les composants.
-
----
-
-## Phase 3 — LAYOUT (la structure raconte une histoire)
-
-### Asymetrie deliberee
-
-L'IA produit des layouts symetriques par defaut. L'asymetrie est le signal visuel le plus fort de design humain. Utiliser des ratios editoriaux (2:1, 3:2, grille 12 colonnes libre) au lieu de colonnes egales.
-
-### Hierarchie visuelle — 3 niveaux max
-
-Chaque ecran a **un seul point focal** :
-
-| Niveau | Poids visuel | Exemples |
-|--------|--------------|----------|
-| **Primaire** | Le plus grand, le plus contrastant | Titre principal, CTA, donnee cle |
-| **Secondaire** | Taille moyenne, contraste moyen | Sous-titres, texte descriptif, navigation |
-| **Tertiaire** | Petit, faible contraste (muted) | Metadata, timestamps, labels, footnotes |
-
-**Test de la "vision floue"** : plisse les yeux devant l'ecran. Si tout parait au meme niveau → la hierarchie est plate.
-
-### Espace negatif — Ma
-
-L'espace vide n'est pas une absence. C'est un element de composition actif.
-
-- Marges genereuses entre sections (48-64px minimum)
-- Un seul element focal par viewport
-- Plus l'element est important, plus il a d'espace autour de lui
-- **Ne jamais remplir le vide avec des decorations** (blobs, patterns, gradients)
-- Le vide guide l'oeil vers le contenu
-
-### Responsive — fluid, pas breakpoints
-
-Privilegier `clamp()`, `auto-fit/minmax()`, Container Queries (`@container`). Tester : mobile (375px), tablet (768px), desktop (1280px), wide (1536px).
-
-> **Gate 3** : le layout utilise au moins un ratio asymetrique. La hierarchie est claire sur 3 niveaux. L'espace negatif est intentionnel. Zero decoration de remplissage.
-
----
-
-## Phase 4 — COMPONENTS (craft, pas assemblage)
-
-shadcn/ui customise via CSS variables + wrappers + CVA. Chaque composant interactif a 7 etats (default, hover, focus, active, disabled, loading, error). Hierarchie des boutons (1 primary par ecran). Cards avec variations. Forms avec labels visibles et validation inline.
-
-**See `references/design-foundations.md` (Phase 4 section) for component states table, button hierarchy, card variations, form rules, and table guidelines.**
-
-> **Gate 4** : chaque composant modifie a ses 7 etats definis.
-
----
-
-## Phase 5 — MOTION (animation fonctionnelle, pas decorative)
-
-Principe Stripe : chaque animation repond a Quoi/Ou/Pourquoi. Si aucune reponse → pas d'animation. Durees strictes (100-150ms hover, 150-200ms modals, jamais > 400ms). `prefers-reduced-motion` obligatoire.
-
-**See `references/design-foundations.md` (Phase 5 section) for duration table, CSS patterns (hover, fade-in-up, shimmer), and reduced motion media query.**
-
-> **Gate 5** : chaque animation a une justification fonctionnelle. Zero animation purement decorative.
-
----
-
-## Phase 6 — VERIFY (le design passe ou il ne passe pas)
-
-4 checklists obligatoires : anti-AI (13 points), accessibilite (8 points), dark mode (6 points), responsive (6 points).
-
-**See `references/design-checklists.md` for all 4 checklists and the Phase 7 DELIVER report template.**
-
-> **Gate 6** : les 4 checklists passent. Zero anti-pattern AI. A11y conforme. Dark mode teste. Responsive verifie.
-
----
-
-## Phase 7 — DELIVER
-
-Resume + commit. **See `references/design-checklists.md` (Phase 7 section) for report template and commit message format.**
 
 ---
 
 ## Regles absolues (non negociables)
 
-1. **Intentionnel > Joli** — Chaque choix visuel a une raison. Si on ne peut pas la formuler, retirer l'element.
-2. **Retirer > Ajouter** — Dieter Rams : "aussi peu de design que possible". L'IA ajoute, un bon designer retire.
-3. **Tokens > Hardcode** — Jamais `bg-blue-500` dans un composant. Toujours `bg-primary`.
-4. **Asymetrie > Symetrie** — Les grilles egales sont le signal AI numero 1. Varier les ratios.
-5. **Espace > Decoration** — Le vide guide l'oeil. Les blobs le distraient.
-6. **Fonction > Esthetique** — Une animation sans justification fonctionnelle est du bruit.
-7. **Accessibilite = Design** — Un design inaccessible est un mauvais design. Pas negociable.
+1. **Intentionnel > Joli** — Chaque choix a une raison
+2. **Retirer > Ajouter** — En cas de doute, simplifier
+3. **Innover > Conformer** — Si un meilleur pattern existe, l'utiliser
+4. **Inline spacing** — Non negociable (lecon apprise a la dure)
+5. **Accessibilite = Design** — Un design inaccessible est un mauvais design
 
 ---
 
 ## References de qualite
 
-| Reference | Ce qu'on prend | Ce qu'on laisse |
-|-----------|----------------|-----------------|
-| **Linear** | Dark mode, OKLCH theming, hierarchie claire | Specificite app desktop |
-| **Vercel** | Typographie Geist, minimalisme, espace | Trop de blanc parfois |
-| **Stripe** | Animations narratives, couleurs solides | Complexite WebGL |
-| **Clerk** | Cards, dashboard layout, data density | — |
-| **Resend** | Email-style simplicity, mono accent | — |
-| **Cal.com** | Forms, scheduling UI, mobile-first | — |
+| Reference | Ce qu'on prend |
+|-----------|----------------|
+| **Linear** | Dark mode, hierarchie, animations |
+| **Vercel** | Typographie, minimalisme, espace |
+| **Stripe** | Animations narratives, pedagogie visuelle |
+| **Raycast** | Performance UI, shortcuts, data density |
+| **Arc Browser** | Innovation UI, boosts, spaces |
+| **Figma** | Canvas, layers, collaboration patterns |
+| **Insights v6** | Notre reference interne — frosted glass, serif, warm light |

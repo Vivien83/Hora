@@ -16,6 +16,8 @@ import { MemoryChat } from "./MemoryChat";
 import { HookTelemetry } from "./HookTelemetry";
 import { MemoryDiff } from "./MemoryDiff";
 import { SessionReplay } from "./SessionReplay";
+import { Insights } from "./Insights";
+import { Overview } from "./Overview";
 
 const C = {
   bg: "#0A0A0B",
@@ -211,8 +213,8 @@ export function App() {
           maxHeight: "100vh",
         }}
       >
-        {/* Stats row */}
-        {(section === "overview" || section === "tools") && (
+        {/* Stats row — tools section only (overview has its own) */}
+        {section === "tools" && (
           <div
             style={{
               display: "grid",
@@ -246,21 +248,9 @@ export function App() {
           </div>
         )}
 
-        {/* Overview section */}
+        {/* Overview — premium Insights v6 design */}
         {section === "overview" && (
-          <>
-            <Section title="Sessions recentes">
-              <SessionsTable sessions={data.sessions} />
-            </Section>
-
-            <Section title="Evolution du sentiment">
-              <SentimentChart data={data.sentimentHistory} />
-            </Section>
-
-            <Section title="Thread recent">
-              <ThreadHistory thread={data.thread} />
-            </Section>
-          </>
+          <Overview data={data} />
         )}
 
         {/* Project section */}
@@ -498,6 +488,13 @@ export function App() {
         {section === "replay" && (
           <SessionReplay />
         )}
+
+        {/* Insights section */}
+        {section === "insights" && (
+          <Insights data={data} />
+        )}
+
+
       </main>
 
       {/* Right panel */}

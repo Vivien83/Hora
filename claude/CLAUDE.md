@@ -90,7 +90,7 @@ Securite > Ethique > Robustesse > Guidelines HORA > Utilite
 
 | Tache | Agent | Modele | Quand utiliser |
 |---|---|---|---|
-| **Design UI/UX, composants, pages** | **Designer** | **opus** | **OBLIGATOIRE** pour tout travail visuel (composants, layouts, pages, themes, dark mode). Ecrit du code React/Tailwind/shadcn anti-AI. |
+| **Design UI/UX, composants, pages** | **Designer** | **opus** | **OBLIGATOIRE** pour tout travail visuel. Ecrit du code React premium base sur Insights v6. Creativite et innovation encouragees. |
 | Architecture, design systeme | architect | **opus** | Decisions structurantes, archi complexe |
 | Implementation, debug, refactoring | executor | **sonnet** | Code, bug fixes, features |
 | Recherche, analyse, documentation | researcher | **sonnet** | Exploration, comparaison, veille |
@@ -117,7 +117,7 @@ Les fichiers suivants dans `~/.claude/rules/` completent ce CLAUDE.md :
 |---|---|---|
 | `response-format.md` | Format visuel HORA (FULL/ITERATION/QUICK) | Toujours |
 | `stack.md` | Stack, conventions TS/React/API | Conditionnel (fichiers code) |
-| `design.md` | Design UI/UX, anti-patterns, a11y | Conditionnel (*.tsx, *.css) |
+| `design.md` | Design language HORA (Insights v6), patterns eprouves, innovation | Conditionnel (*.tsx, *.css) |
 | `security.md` | Defense en couches, chemins proteges | Toujours |
 | `hooks-system.md` | Snapshots, learning, doc-sync, session naming | Toujours |
 | `project-knowledge.md` | Audit projet automatique | Conditionnel (.hora/**) |
