@@ -170,12 +170,21 @@ function buildForceData(
     val: Math.max(5, Math.min(20, (degree[e.id] || 0) * 2 + 5)),
   }));
 
+  // Build entity date lookup for temporal direction
+  const entityDate: Record<string, number> = {};
+  for (const e of entities) entityDate[e.id] = new Date(e.created_at).getTime() || 0;
+
   const links: ForceLink[] = facts.map((f) => {
     const category = f.metadata?.category || getRelationCategory(f.relation);
     const catColor = CATEGORY_COLORS[category] || CATEGORY_COLORS.conceptual;
+    // Orient particles from older node to newer node (temporal flow)
+    const srcTime = entityDate[f.source] || 0;
+    const tgtTime = entityDate[f.target] || 0;
+    const temporalSource = srcTime <= tgtTime ? f.source : f.target;
+    const temporalTarget = srcTime <= tgtTime ? f.target : f.source;
     return {
-      source: f.source,
-      target: f.target,
+      source: temporalSource,
+      target: temporalTarget,
       color: hexToRgba(catColor, 0.15 + f.confidence * 0.35),
       confidence: f.confidence,
       isRecent: isRecent(f.valid_at, 24),
@@ -581,8 +590,19 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   }, [graphData]);
 
   const [temporalCutoff, setTemporalCutoff] = useState(allDates.max);
-  const [spacing, setSpacing] = useState(-400);
-  const [linkDist, setLinkDist] = useState(120);
+  // Persisted graph settings
+  const [spacing, setSpacing] = useState(() => {
+    const saved = localStorage.getItem("hora-neural-spacing");
+    return saved ? Number(saved) : -400;
+  });
+  const [linkDist, setLinkDist] = useState(() => {
+    const saved = localStorage.getItem("hora-neural-linkDist");
+    return saved ? Number(saved) : 120;
+  });
+
+  // Save settings to localStorage on change
+  useEffect(() => { localStorage.setItem("hora-neural-spacing", String(spacing)); }, [spacing]);
+  useEffect(() => { localStorage.setItem("hora-neural-linkDist", String(linkDist)); }, [linkDist]);
 
   const forceData = useMemo(() => {
     const data = buildForceData(graphData, search, filterRecent, temporalCutoff);
@@ -604,6 +624,30 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     fg.d3ReheatSimulation();
   }, [forceData, spacing, linkDist]);
 
+  // Focus set: when a node is selected, compute its neighborhood (via ref to avoid re-renders)
+  const focusNodesRef = useRef<Set<string>>(new Set());
+  const focusLinksRef = useRef<Set<string>>(new Set());
+
+  useMemo(() => {
+    const nodeIds = new Set<string>();
+    const linkIds = new Set<string>();
+    if (selectedNode) {
+      nodeIds.add(selectedNode.id);
+      for (const f of graphData.facts) {
+        if (f.source === selectedNode.id) { nodeIds.add(f.target); linkIds.add(f.id); }
+        if (f.target === selectedNode.id) { nodeIds.add(f.source); linkIds.add(f.id); }
+      }
+    }
+    focusNodesRef.current = nodeIds;
+    focusLinksRef.current = linkIds;
+  }, [selectedNode, graphData.facts]);
+
+  // Trigger a soft repaint when focus changes (without full re-render)
+  useEffect(() => {
+    const fg = graphRef.current;
+    if (fg) requestAnimationFrame(() => fg.refresh());
+  }, [selectedNode]);
+
   // Node canvas renderer — fond du label adapte au canvas sombre
   const nodeCanvasObject = useCallback(
     (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
@@ -612,8 +656,14 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
       const y = n.y || 0;
       const color = TYPE_COLORS[n.type] || C.canvasMuted;
       const isHighlighted = highlightNodes.has(n.id);
+      const fn = focusNodesRef.current;
+      const isFocused = fn.size === 0 || fn.has(n.id);
       const deg = n.connections || 0;
       const radius = Math.max(6, Math.min(24, deg * 3 + 6));
+
+      // Dim non-focused nodes when a node is selected
+      const prevAlpha = ctx.globalAlpha;
+      if (!isFocused) ctx.globalAlpha = 0.25;
 
       let breathScale = 1;
       if (isRecent(n.last_seen, 48)) {
@@ -621,7 +671,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
       }
       const r = radius * breathScale;
 
-      if (isHighlighted) {
+      if (isHighlighted && isFocused) {
         const glow = ctx.createRadialGradient(x, y, r * 0.5, x, y, r * 2.5);
         glow.addColorStop(0, hexToRgba(color, 0.3));
         glow.addColorStop(1, "transparent");
@@ -641,19 +691,20 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
       ctx.fillStyle = hexToRgba("#ffffff", isHighlighted ? 0.4 : 0.25);
       ctx.fill();
 
-      const showLabel = deg >= 3 || isHighlighted;
-      if (showLabel && globalScale > 0.3) {
-        const fontSize = Math.max(11, 13 / globalScale);
+      // Show all labels when zoomed in enough
+      if (globalScale > 0.3) {
+        const fontSize = Math.max(10, (deg >= 3 || isHighlighted ? 13 : 11) / globalScale);
         ctx.font = `500 ${fontSize}px system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         const label = truncate(n.name, 18);
-        const textWidth = ctx.measureText(label).width;
         const labelY = y + r + 4;
 
         ctx.fillStyle = isHighlighted ? C.canvasText : C.canvasMuted;
         ctx.fillText(label, x, labelY);
       }
+
+      ctx.globalAlpha = prevAlpha;
     },
     [highlightNodes],
   );
@@ -693,9 +744,26 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     [graphData.facts],
   );
 
+  const lastClickRef = useRef<{ id: string; time: number }>({ id: "", time: 0 });
+
   const handleNodeClick = useCallback(
     (node: any) => {
       const n = node as ForceNode;
+      const now = Date.now();
+      const last = lastClickRef.current;
+
+      // Double-click detection (< 400ms on same node) → center view
+      if (last.id === n.id && now - last.time < 400) {
+        const fg = graphRef.current;
+        if (fg && n.x != null && n.y != null) {
+          fg.centerAt(n.x, n.y, 600);
+          fg.zoom(3, 600);
+        }
+        lastClickRef.current = { id: "", time: 0 };
+        return;
+      }
+
+      lastClickRef.current = { id: n.id, time: now };
       const entity = graphData.entities.find((e) => e.id === n.id);
       setSelectedNode(entity || null);
       setSelectedLink(null);
@@ -738,6 +806,8 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   const linkWidth = useCallback(
     (link: any) => {
       const l = link as ForceLink;
+      const fl = focusLinksRef.current;
+      if (fl.size > 0 && !fl.has(l.id)) return 0.4;
       return highlightLinks.has(l.id) ? 2 : 1;
     },
     [highlightLinks],
@@ -746,6 +816,8 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   const linkColor = useCallback(
     (link: any) => {
       const l = link as ForceLink;
+      const fl = focusLinksRef.current;
+      if (fl.size > 0 && !fl.has(l.id)) return hexToRgba("#000000", 0.06);
       if (highlightLinks.has(l.id)) {
         return hexToRgba("#000000", 0.15 + l.confidence * 0.2);
       }
@@ -1006,12 +1078,12 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           </span>
         </div>
 
-        {/* Spacing controls */}
+        {/* Spacing controls — right side to avoid legend overlap */}
         <div
           style={{
             position: "absolute",
-            bottom: "48px",
-            left: "16px",
+            bottom: "56px",
+            right: "16px",
             zIndex: 10,
             display: "flex",
             alignItems: "center",
@@ -1067,6 +1139,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           nodeLabel=""
           onNodeHover={handleNodeHover}
           onNodeClick={handleNodeClick}
+          onBackgroundClick={() => { setSelectedNode(null); setSelectedLink(null); }}
           onNodeDrag={handleNodeDrag}
           onNodeDragEnd={handleNodeDragEnd}
           linkWidth={linkWidth}
@@ -1074,11 +1147,13 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           linkLabel={linkLabel}
           onLinkClick={handleLinkClick}
           linkDirectionalParticles={(link: any) => {
+            const fl = focusLinksRef.current;
             const l = link as ForceLink;
-            return l.isRecent ? 3 : 0;
+            if (fl.size > 0 && !fl.has(l.id)) return 0;
+            return 2;
           }}
-          linkDirectionalParticleSpeed={0.005}
-          linkDirectionalParticleWidth={2}
+          linkDirectionalParticleSpeed={0.003}
+          linkDirectionalParticleWidth={3}
           linkDirectionalParticleColor={() => C.gold}
           linkCurvature={0.1}
           d3AlphaDecay={0.03}
