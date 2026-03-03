@@ -170,7 +170,11 @@ function buildForceData(
     degree[f.target] = (degree[f.target] || 0) + 1;
   }
 
-  const nodes: ForceNode[] = entities.map((e) => ({
+  // Only show nodes that have at least one visible link (avoids isolated pile-up)
+  const connectedIds = new Set(facts.flatMap((f) => [f.source, f.target]));
+  const visibleEntities = entities.filter((e) => connectedIds.has(e.id));
+
+  const nodes: ForceNode[] = visibleEntities.map((e) => ({
     ...e,
     val: Math.max(5, Math.min(20, (degree[e.id] || 0) * 2 + 5)),
   }));
@@ -862,24 +866,21 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     fg.d3Force("link")?.distance(linkDist);
 
     const cutoffChanged = prevCutoffRef.current !== temporalCutoff;
-    const settingsChanged = true; // always apply forces
+    const searchChanged = prevSearchRef.current !== search;
+    const filterChanged = prevFilterRef.current !== filterRecent;
     prevCutoffRef.current = temporalCutoff;
-
-    if (cutoffChanged && prevSearchRef.current === search && prevFilterRef.current === filterRecent) {
-      // Temporal change only — gentle reheat so existing nodes barely move
-      const sim = fg.d3Force("simulation");
-      if (sim) {
-        sim.alpha(0.15).restart();
-      } else {
-        // Fallback: use alphaTarget briefly
-        fg.d3ReheatSimulation();
-      }
-    } else {
-      // Structural change (search, filter, spacing) — full reheat
-      fg.d3ReheatSimulation();
-    }
     prevSearchRef.current = search;
     prevFilterRef.current = filterRecent;
+
+    if (cutoffChanged && !searchChanged && !filterChanged) {
+      // Temporal change only — NO reheat. Positions are preserved,
+      // new nodes are placed near neighbors. react-force-graph handles
+      // the graphData diff internally.
+      return;
+    }
+
+    // Structural change (search, filter, spacing, linkDist) — full reheat
+    fg.d3ReheatSimulation();
   }, [forceData, spacing, linkDist, temporalCutoff, search, filterRecent]);
 
   // Focus set: when a node is selected, compute its neighborhood (via ref to avoid re-renders)
