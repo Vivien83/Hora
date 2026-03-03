@@ -18,6 +18,7 @@ export function Overview({ data }: Props) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [entranceDone, setEntranceDone] = useState(false);
   const [expandedThread, setExpandedThread] = useState<number | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   useEffect(() => {
     const t1 = setTimeout(() => setIsLoaded(true), 150);
@@ -84,6 +85,49 @@ export function Overview({ data }: Props) {
       .slice(0, 10);
     const toolMax = toolEntries[0]?.[1] ?? 1;
 
+    // Timeline data — aggregate by day (last 90 days)
+    const now = Date.now();
+    const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
+    const dayMap: Record<string, { sessions: number; messages: number; sentiment: number[]; entities: number; tools: number }> = {};
+
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+
+    for (const s of sessions) {
+      const d = new Date(s.date);
+      if (isNaN(d.getTime()) || d.getTime() < ninetyDaysAgo) continue;
+      const key = dayKey(d);
+      if (!dayMap[key]) dayMap[key] = { sessions: 0, messages: 0, sentiment: [], entities: 0, tools: 0 };
+      dayMap[key].sessions++;
+      dayMap[key].messages += s.messageCount;
+      if (s.sentiment > 0) dayMap[key].sentiment.push(s.sentiment);
+    }
+
+    for (const t of data.toolTimeline) {
+      const d = new Date(t.date);
+      if (isNaN(d.getTime()) || d.getTime() < ninetyDaysAgo) continue;
+      const key = dayKey(d);
+      if (!dayMap[key]) dayMap[key] = { sessions: 0, messages: 0, sentiment: [], entities: 0, tools: 0 };
+      dayMap[key].tools += t.total;
+    }
+
+    // Fill gaps — generate all days in range
+    const minDay = Object.keys(dayMap).sort()[0] || dayKey(new Date());
+    const startDate = new Date(minDay);
+    const timelineDays: { date: string; label: string; sessions: number; messages: number; avgSentiment: number; entities: number; tools: number }[] = [];
+    for (let d = new Date(startDate); d.getTime() <= now; d.setDate(d.getDate() + 1)) {
+      const key = dayKey(d);
+      const entry = dayMap[key];
+      timelineDays.push({
+        date: key,
+        label: d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }),
+        sessions: entry?.sessions || 0,
+        messages: entry?.messages || 0,
+        avgSentiment: entry?.sentiment.length ? entry.sentiment.reduce((a, b) => a + b, 0) / entry.sentiment.length : 0,
+        entities: entry?.entities || 0,
+        tools: entry?.tools || 0,
+      });
+    }
+
     return {
       totalSessions: sessions.length,
       totalMessages,
@@ -95,8 +139,18 @@ export function Overview({ data }: Props) {
       recentThread,
       toolEntries,
       toolMax,
+      timelineDays,
     };
   }, [data]);
+
+  // Display sessions: filtered by selected day or default recent 5
+  const displaySessions = useMemo(() => {
+    if (!selectedDay) return stats.recentSessions;
+    return data.sessions.filter((s) => {
+      const d = new Date(s.date);
+      return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === selectedDay;
+    });
+  }, [data.sessions, selectedDay, stats.recentSessions]);
 
   const sentimentNum = Number(stats.avgSentiment) || 0;
   const sentimentPct = stats.avgSentiment !== "\u2014" ? sentimentNum / 5 : 0;
@@ -320,6 +374,135 @@ export function Overview({ data }: Props) {
             })}
           </div>
         </header>
+
+        {/* ACTIVITY TIMELINE */}
+        {stats.timelineDays.length > 0 && (() => {
+          const maxSessions = Math.max(...stats.timelineDays.map(d => d.sessions), 1);
+          const maxMessages = Math.max(...stats.timelineDays.map(d => d.messages), 1);
+          const MAX_H = 48;
+
+          return (
+            <div style={{ ...e(50) }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                <div style={{ ...lbl }}>Activite</div>
+                {selectedDay && (
+                  <button
+                    onClick={() => setSelectedDay(null)}
+                    style={{
+                      background: "rgba(212,168,83,0.12)",
+                      border: "1px solid rgba(212,168,83,0.3)",
+                      borderRadius: "6px",
+                      padding: "3px 10px",
+                      fontSize: "11px",
+                      fontFamily: mono,
+                      color: "#D4A853",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {selectedDay} &times;
+                  </button>
+                )}
+              </div>
+              <div
+                style={{
+                  ...glass,
+                  padding: "16px 20px 12px",
+                  display: "flex",
+                  alignItems: "flex-end",
+                  gap: "2px",
+                }}
+              >
+                {stats.timelineDays.map((day) => {
+                  const sessH = Math.max(2, (day.sessions / maxSessions) * MAX_H);
+                  const msgH = Math.max(0, (day.messages / maxMessages) * MAX_H * 0.4);
+                  const isSelected = selectedDay === day.date;
+                  const isWeekend = [0, 6].includes(new Date(day.date).getDay());
+                  const sentColor = day.avgSentiment <= 1.5 ? "#10b981" : day.avgSentiment <= 3 ? "#f59e0b" : day.avgSentiment > 3 ? "#ef4444" : "transparent";
+                  const hasActivity = day.sessions > 0;
+
+                  return (
+                    <div
+                      key={day.date}
+                      onClick={() => setSelectedDay(isSelected ? null : day.date)}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: "2px",
+                        cursor: "pointer",
+                        flex: 1,
+                        minWidth: 0,
+                        opacity: selectedDay && !isSelected ? 0.3 : 1,
+                        transition: "opacity 0.2s ease",
+                      }}
+                      title={`${day.label}\n${day.sessions} session(s)\n${day.messages} messages`}
+                    >
+                      {/* Sentiment dot */}
+                      {day.avgSentiment > 0 && (
+                        <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: sentColor, marginBottom: "2px" }} />
+                      )}
+                      {/* Sessions bar */}
+                      <div
+                        style={{
+                          width: "100%",
+                          height: `${hasActivity ? sessH : 2}px`,
+                          borderRadius: "3px 3px 1px 1px",
+                          background: isSelected
+                            ? "#D4A853"
+                            : hasActivity
+                              ? "rgba(99,102,241,0.5)"
+                              : isWeekend
+                                ? "rgba(0,0,0,0.03)"
+                                : "rgba(0,0,0,0.06)",
+                          transition: "all 0.3s cubic-bezier(0.23,1,0.32,1)",
+                        }}
+                      />
+                      {/* Messages bar (stacked below) */}
+                      {msgH > 0 && (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: `${msgH}px`,
+                            borderRadius: "1px 1px 3px 3px",
+                            background: isSelected ? "rgba(212,168,83,0.4)" : "rgba(99,102,241,0.2)",
+                            transition: "all 0.3s cubic-bezier(0.23,1,0.32,1)",
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Date axis below bars */}
+              <div style={{ display: "flex", marginTop: "6px", position: "relative" }}>
+                {stats.timelineDays.map((day, i) => {
+                  const total = stats.timelineDays.length;
+                  // Show label: first, last, every ~7 days, and selected
+                  const isSelected = selectedDay === day.date;
+                  const step = Math.max(7, Math.floor(total / 12));
+                  const showLabel = i === 0 || i === total - 1 || i % step === 0 || isSelected;
+                  return (
+                    <div key={day.date} style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
+                      {showLabel && (
+                        <div
+                          style={{
+                            fontSize: "9px",
+                            fontFamily: mono,
+                            color: isSelected ? "#D4A853" : "#94a3b8",
+                            whiteSpace: "nowrap",
+                            overflow: "visible",
+                          }}
+                        >
+                          {day.label}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* KPI ROW */}
         <div
@@ -834,16 +1017,16 @@ export function Overview({ data }: Props) {
                   letterSpacing: "-0.01em",
                 }}
               >
-                Sessions Recentes
+                Sessions {selectedDay ? `du ${new Date(selectedDay).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}` : "Recentes"}
               </h3>
               <p
                 style={{
                   fontSize: "13px",
-                  color: "#94a3b8",
+                  color: selectedDay ? "#D4A853" : "#94a3b8",
                   marginTop: "4px",
                 }}
               >
-                5 dernieres sessions
+                {selectedDay ? "Filtre actif" : "5 dernieres sessions"}
               </p>
             </div>
             <div
@@ -854,7 +1037,7 @@ export function Overview({ data }: Props) {
                 letterSpacing: "-0.03em",
               }}
             >
-              {stats.recentSessions.length}
+              {displaySessions.length}
             </div>
           </div>
 
@@ -878,7 +1061,7 @@ export function Overview({ data }: Props) {
 
           {/* Table rows */}
           <div style={{ position: "relative", zIndex: 1 }}>
-            {stats.recentSessions.map((session, i) => {
+            {displaySessions.map((session, i) => {
               const dot = sentimentDot(session.sentiment);
               return (
                 <div
@@ -890,7 +1073,7 @@ export function Overview({ data }: Props) {
                     gap: "16px",
                     padding: "14px 0",
                     borderBottom:
-                      i < stats.recentSessions.length - 1
+                      i < displaySessions.length - 1
                         ? "1px solid rgba(0,0,0,0.04)"
                         : "none",
                     alignItems: "center",
@@ -959,7 +1142,7 @@ export function Overview({ data }: Props) {
                 </div>
               );
             })}
-            {stats.recentSessions.length === 0 && (
+            {displaySessions.length === 0 && (
               <div
                 style={{
                   padding: "32px 0",

@@ -143,6 +143,11 @@ function buildForceData(
   const searchLower = search.toLowerCase();
 
   let entities = graphData.entities;
+  // Temporal filter: only show entities that exist at this point in time
+  entities = entities.filter((e) => {
+    const created = new Date(e.created_at).getTime();
+    return !isNaN(created) && created <= temporalCutoff;
+  });
   if (filterRecent) {
     entities = entities.filter((e) => new Date(e.last_seen).getTime() > thirtyDaysAgo);
   }
@@ -567,10 +572,158 @@ function LinkDetailPanel({
   );
 }
 
+// ─── Minimap ────────────────────────────────────────────────────────────────
+
+function Minimap({
+  graphRef,
+  containerRef,
+  nodes,
+}: {
+  graphRef: React.RefObject<any>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  nodes: ForceNode[];
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const SIZE = 160;
+  const PADDING = 12;
+  const dragging = useRef(false);
+
+  // Helper: compute graph bounds and minimap transform
+  const getTransform = useCallback(() => {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      if (n.x == null || n.y == null) continue;
+      if (n.x < minX) minX = n.x;
+      if (n.x > maxX) maxX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.y > maxY) maxY = n.y;
+    }
+    if (!isFinite(minX)) return null;
+    const graphW = (maxX - minX) || 1;
+    const graphH = (maxY - minY) || 1;
+    const drawW = SIZE - PADDING * 2;
+    const drawH = SIZE - PADDING * 2;
+    const scale = Math.min(drawW / graphW, drawH / graphH);
+    const offX = PADDING + (drawW - graphW * scale) / 2;
+    const offY = PADDING + (drawH - graphH * scale) / 2;
+    return { minX, minY, scale, offX, offY };
+  }, [nodes]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const fg = graphRef.current;
+    if (!canvas || !fg) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animId: number;
+
+    const draw = () => {
+      ctx.clearRect(0, 0, SIZE, SIZE);
+      const t = getTransform();
+      if (!t) { animId = requestAnimationFrame(draw); return; }
+
+      // Draw nodes as dots
+      for (const n of nodes) {
+        if (n.x == null || n.y == null) continue;
+        const sx = t.offX + (n.x - t.minX) * t.scale;
+        const sy = t.offY + (n.y - t.minY) * t.scale;
+        const color = TYPE_COLORS[n.type] || C.canvasMuted;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+
+      // Draw viewport rectangle — use the container div, not querySelector("canvas")
+      try {
+        const container = containerRef.current;
+        if (container && fg.screen2GraphCoords) {
+          const rect = container.getBoundingClientRect();
+          const topLeft = fg.screen2GraphCoords(0, 0);
+          const bottomRight = fg.screen2GraphCoords(rect.width, rect.height);
+          const vx1 = t.offX + (topLeft.x - t.minX) * t.scale;
+          const vy1 = t.offY + (topLeft.y - t.minY) * t.scale;
+          const vx2 = t.offX + (bottomRight.x - t.minX) * t.scale;
+          const vy2 = t.offY + (bottomRight.y - t.minY) * t.scale;
+
+          ctx.strokeStyle = C.gold;
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(
+            Math.max(0, vx1), Math.max(0, vy1),
+            Math.min(SIZE, vx2) - Math.max(0, vx1),
+            Math.min(SIZE, vy2) - Math.max(0, vy1),
+          );
+        }
+      } catch { /* screen2GraphCoords may not be ready */ }
+
+      animId = requestAnimationFrame(draw);
+    };
+
+    animId = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(animId);
+  }, [graphRef, containerRef, nodes, getTransform]);
+
+  // Click/drag on minimap → navigate main graph
+  const navigateTo = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const fg = graphRef.current;
+    if (!fg) return;
+    const miniRect = canvasRef.current?.getBoundingClientRect();
+    if (!miniRect) return;
+    const cx = e.clientX - miniRect.left;
+    const cy = e.clientY - miniRect.top;
+    const t = getTransform();
+    if (!t) return;
+
+    const gx = t.minX + (cx - t.offX) / t.scale;
+    const gy = t.minY + (cy - t.offY) / t.scale;
+    fg.centerAt(gx, gy, 300);
+  }, [graphRef, getTransform]);
+
+  const onMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    dragging.current = true;
+    navigateTo(e);
+  }, [navigateTo]);
+
+  const onMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (dragging.current) navigateTo(e);
+  }, [navigateTo]);
+
+  const onMouseUp = useCallback(() => { dragging.current = false; }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={SIZE}
+      height={SIZE}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
+      style={{
+        position: "absolute",
+        top: "60px",
+        right: "16px",
+        zIndex: 10,
+        width: `${SIZE}px`,
+        height: `${SIZE}px`,
+        background: "rgba(255,255,255,0.60)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        borderRadius: "10px",
+        border: "1px solid rgba(255,255,255,0.8)",
+        boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
+        cursor: "crosshair",
+      }}
+    />
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function NeuralPage({ graphData }: NeuralPageProps) {
   const graphRef = useRef<any>(null);
+  const graphContainerRef = useRef<HTMLDivElement>(null);
   const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedLink, setSelectedLink] = useState<ForceLink | null>(null);
@@ -590,6 +743,36 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   }, [graphData]);
 
   const [temporalCutoff, setTemporalCutoff] = useState(allDates.max);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playSpeed, setPlaySpeed] = useState(1); // 0.5x, 1x, 2x
+  const playRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Animation loop for temporal playback
+  useEffect(() => {
+    if (!isPlaying) {
+      if (playRef.current) { clearInterval(playRef.current); playRef.current = null; }
+      return;
+    }
+    const range = allDates.max - allDates.min;
+    if (range <= 0) { setIsPlaying(false); return; }
+    // ~400 frames total at 1x speed (slower, more fluid), step adapts to speed
+    const stepMs = (range / 400) * playSpeed;
+    const intervalMs = 50;
+
+    playRef.current = setInterval(() => {
+      setTemporalCutoff((prev) => {
+        const next = prev + stepMs;
+        if (next >= allDates.max) {
+          setIsPlaying(false);
+          return allDates.max;
+        }
+        return next;
+      });
+    }, intervalMs);
+
+    return () => { if (playRef.current) { clearInterval(playRef.current); playRef.current = null; } };
+  }, [isPlaying, playSpeed, allDates.min, allDates.max]);
+
   // Persisted graph settings
   const [spacing, setSpacing] = useState(() => {
     const saved = localStorage.getItem("hora-neural-spacing");
@@ -604,25 +787,100 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   useEffect(() => { localStorage.setItem("hora-neural-spacing", String(spacing)); }, [spacing]);
   useEffect(() => { localStorage.setItem("hora-neural-linkDist", String(linkDist)); }, [linkDist]);
 
+  // Track what changed to decide reheat intensity
+  const prevCutoffRef = useRef(temporalCutoff);
+  const prevSearchRef = useRef(search);
+  const prevFilterRef = useRef(filterRecent);
+
   const forceData = useMemo(() => {
+    // Capture ALL live positions before rebuilding (not just dragged ones)
+    const fg = graphRef.current;
+    if (fg) {
+      try {
+        const liveData = fg.graphData();
+        if (liveData?.nodes) {
+          for (const n of liveData.nodes as ForceNode[]) {
+            if (n.x != null && n.y != null) {
+              positionsRef.current.set(n.id, { x: n.x, y: n.y });
+            }
+          }
+        }
+      } catch { /* graph not ready yet */ }
+    }
+
     const data = buildForceData(graphData, search, filterRecent, temporalCutoff);
+
+    // Build a lookup of connected nodes for placing new nodes nearby
+    const connectedTo = new Map<string, string[]>();
+    for (const link of data.links) {
+      const src = typeof link.source === "object" ? (link.source as any).id : link.source;
+      const tgt = typeof link.target === "object" ? (link.target as any).id : link.target;
+      if (!connectedTo.has(src)) connectedTo.set(src, []);
+      if (!connectedTo.has(tgt)) connectedTo.set(tgt, []);
+      connectedTo.get(src)!.push(tgt);
+      connectedTo.get(tgt)!.push(src);
+    }
+
     for (const node of data.nodes) {
       const saved = positionsRef.current.get(node.id);
       if (saved) {
-        node.fx = saved.x;
-        node.fy = saved.y;
+        // Existing node: keep its position stable
+        node.x = saved.x;
+        node.y = saved.y;
+      } else {
+        // NEW node: place near a connected node that already has a position
+        const neighbors = connectedTo.get(node.id) || [];
+        let placed = false;
+        for (const nid of neighbors) {
+          const npos = positionsRef.current.get(nid);
+          if (npos) {
+            const angle = Math.random() * 2 * Math.PI;
+            const dist = 30 + Math.random() * 40;
+            node.x = npos.x + Math.cos(angle) * dist;
+            node.y = npos.y + Math.sin(angle) * dist;
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          // No connected node with position — scatter around center
+          const angle = Math.random() * 2 * Math.PI;
+          const dist = 50 + Math.random() * 100;
+          node.x = Math.cos(angle) * dist;
+          node.y = Math.sin(angle) * dist;
+        }
       }
     }
     return data;
   }, [graphData, search, filterRecent, temporalCutoff]);
 
+  // Apply forces + reheat with appropriate intensity
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg) return;
     fg.d3Force("charge")?.strength(spacing);
     fg.d3Force("link")?.distance(linkDist);
-    fg.d3ReheatSimulation();
-  }, [forceData, spacing, linkDist]);
+
+    const cutoffChanged = prevCutoffRef.current !== temporalCutoff;
+    const settingsChanged = true; // always apply forces
+    prevCutoffRef.current = temporalCutoff;
+
+    if (cutoffChanged && prevSearchRef.current === search && prevFilterRef.current === filterRecent) {
+      // Temporal change only — gentle reheat so existing nodes barely move
+      const sim = fg.d3Force("simulation");
+      if (sim) {
+        sim.alpha(0.15).restart();
+      } else {
+        // Fallback: use alphaTarget briefly
+        fg.d3ReheatSimulation();
+      }
+    } else {
+      // Structural change (search, filter, spacing) — full reheat
+      fg.d3ReheatSimulation();
+    }
+    prevSearchRef.current = search;
+    prevFilterRef.current = filterRecent;
+  }, [forceData, spacing, linkDist, temporalCutoff, search, filterRecent]);
 
   // Focus set: when a node is selected, compute its neighborhood (via ref to avoid re-renders)
   const focusNodesRef = useRef<Set<string>>(new Set());
@@ -857,7 +1115,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   return (
     <div style={{ width: "100%", height: "100%", display: "flex", background: C.bg }}>
       {/* Graph area */}
-      <div style={{ flex: 1, position: "relative", minWidth: 0, overflow: "hidden" }}>
+      <div ref={graphContainerRef} style={{ flex: 1, position: "relative", minWidth: 0, overflow: "hidden" }}>
         {/* Top bar — glass overlay */}
         <div
           style={{
@@ -1037,7 +1295,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           ))}
         </div>
 
-        {/* Temporal slider — glass */}
+        {/* Temporal slider — glass with play controls */}
         <div
           style={{
             position: "absolute",
@@ -1047,7 +1305,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
             zIndex: 10,
             display: "flex",
             alignItems: "center",
-            gap: "12px",
+            gap: "8px",
             padding: "6px 12px",
             background: "rgba(255,255,255,0.70)",
             backdropFilter: "blur(12px)",
@@ -1057,6 +1315,72 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
             boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
           }}
         >
+          {/* Reset button */}
+          <button
+            onClick={() => { setIsPlaying(false); setTemporalCutoff(allDates.min); }}
+            title="Rembobiner"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "14px",
+              color: C.textMuted,
+              padding: "2px 4px",
+              lineHeight: 1,
+              flexShrink: 0,
+              opacity: temporalCutoff <= allDates.min ? 0.3 : 1,
+            }}
+          >
+            ⏮
+          </button>
+          {/* Play/Pause button */}
+          <button
+            onClick={() => {
+              if (temporalCutoff >= allDates.max) {
+                // If at the end, reset to start before playing
+                setTemporalCutoff(allDates.min);
+              }
+              setIsPlaying((p) => !p);
+            }}
+            title={isPlaying ? "Pause" : "Lecture"}
+            style={{
+              background: isPlaying ? "rgba(212,168,83,0.15)" : "none",
+              border: isPlaying ? `1px solid rgba(212,168,83,0.3)` : `1px solid rgba(0,0,0,0.08)`,
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontSize: "14px",
+              color: isPlaying ? C.gold : C.textSecondary,
+              padding: "2px 8px",
+              lineHeight: 1,
+              flexShrink: 0,
+              transition: "all 0.2s ease",
+            }}
+          >
+            {isPlaying ? "⏸" : "▶"}
+          </button>
+          {/* Speed selector */}
+          <button
+            onClick={() => setPlaySpeed((s) => s === 0.5 ? 1 : s === 1 ? 2 : 0.5)}
+            title="Vitesse de lecture"
+            style={{
+              background: "none",
+              border: `1px solid rgba(0,0,0,0.06)`,
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "9px",
+              fontWeight: 600,
+              fontFamily: C.mono,
+              color: C.textMuted,
+              padding: "2px 6px",
+              lineHeight: 1.2,
+              flexShrink: 0,
+              minWidth: "28px",
+              textAlign: "center",
+            }}
+          >
+            {playSpeed === 0.5 ? "½×" : playSpeed === 1 ? "1×" : "2×"}
+          </button>
+          {/* Date range + slider */}
           <span style={{ fontSize: "10px", color: C.textMuted, flexShrink: 0, fontFamily: C.mono }}>
             {new Date(allDates.min).toLocaleDateString("fr-FR", { month: "short", year: "numeric" })}
           </span>
@@ -1065,7 +1389,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
             min={allDates.min}
             max={allDates.max}
             value={temporalCutoff}
-            onChange={(e) => setTemporalCutoff(Number(e.target.value))}
+            onChange={(e) => { setIsPlaying(false); setTemporalCutoff(Number(e.target.value)); }}
             style={{
               flex: 1,
               accentColor: C.gold,
@@ -1073,10 +1397,13 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
               cursor: "pointer",
             }}
           />
-          <span style={{ fontSize: "10px", color: C.textSecondary, flexShrink: 0, fontFamily: C.mono }}>
+          <span style={{ fontSize: "10px", color: isPlaying ? C.gold : C.textSecondary, flexShrink: 0, fontFamily: C.mono, fontWeight: isPlaying ? 600 : 400, transition: "all 0.2s ease" }}>
             {new Date(temporalCutoff).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
           </span>
         </div>
+
+        {/* Minimap — top right */}
+        <Minimap graphRef={graphRef} containerRef={graphContainerRef} nodes={forceData.nodes} />
 
         {/* Spacing controls — right side to avoid legend overlap */}
         <div

@@ -62,9 +62,9 @@ export function SessionsTable({ sessions }: SessionsTableProps) {
           Aucune session trouvee. Lancez collect-data.ts.
         </div>
       ) : (
-        recent.map((s) => (
+        recent.map((s, i) => (
           <div
-            key={s.sid || s.filename}
+            key={s.sid || `${s.filename}-${i}`}
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 120px 80px 180px",
