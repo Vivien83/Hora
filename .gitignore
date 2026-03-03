@@ -18,7 +18,6 @@ claude/MEMORY/PROFILE/vocabulary.md
 
 # HORA runtime (session state, snapshots, backups, doc-sync)
 **/.hora/
-!.hora/checkpoint.md
 !.hora/project-knowledge.md
 !.hora/project-id
 

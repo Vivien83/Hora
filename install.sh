@@ -20,6 +20,7 @@ CLAUDE_DIR="$HOME/.claude"
 BACKUP_BASE="$HOME/.hora-install-backup"
 BACKUP_MAX=5
 DRY_RUN=false
+QUIET=false
 
 # ─────────────────────────────────────────────────────────────────────────────
 # INVENTAIRE
@@ -122,14 +123,17 @@ ui_header() {
 
 ui_step() {
   STEP_CURRENT=$((STEP_CURRENT + 1))
+  $QUIET && return
   printf "\n  ${BOLD}${WHITE}[${STEP_CURRENT}/${STEP_TOTAL}]${RESET} ${BOLD}$1${RESET}\n"
 }
 
 ui_ok() {
+  $QUIET && return
   printf "  ${GREEN}  ${SYM_OK}${RESET} $1\n"
 }
 
 ui_warn() {
+  $QUIET && return
   printf "  ${YELLOW}  ${SYM_WARN}${RESET} $1\n"
 }
 
@@ -138,10 +142,12 @@ ui_err() {
 }
 
 ui_info() {
+  $QUIET && return
   printf "  ${DIM}  ${SYM_INFO} $1${RESET}\n"
 }
 
 ui_detail() {
+  $QUIET && return
   printf "  ${DIM}    $1${RESET}\n"
 }
 
@@ -471,6 +477,9 @@ case "${1:-}" in
   --dry-run)
     DRY_RUN=true
     ;;
+  --quiet)
+    QUIET=true
+    ;;
   "")
     ;;
   *)
@@ -479,6 +488,7 @@ case "${1:-}" in
     echo "Usage :"
     echo "  bash install.sh                        # Installation"
     echo "  bash install.sh --dry-run              # Simulation"
+    echo "  bash install.sh --quiet                # Silencieux (auto-update)"
     echo "  bash install.sh --restore              # Restaurer (dernier backup)"
     echo "  bash install.sh --restore <timestamp>  # Restaurer un backup specifique"
     echo "  bash install.sh --list-backups         # Lister les backups"
@@ -909,6 +919,12 @@ fi
 
 _cp "$HORA_DIR/.hora/patterns.yaml" "$CLAUDE_DIR/.hora/patterns.yaml"
 ui_ok "patterns.yaml ${DIM}(securite)${RESET}"
+
+# ─── Save repo path for auto-update ──────────────────────────────────────
+
+REPO_ROOT="$(cd "$HORA_DIR/.." && pwd)"
+echo "$REPO_ROOT" > "$CLAUDE_DIR/.hora-repo"
+ui_ok "repo path saved ${DIM}(auto-update)${RESET}"
 
 # ─── MEMORY (ne pas ecraser si deja rempli) ───────────────────────────────
 

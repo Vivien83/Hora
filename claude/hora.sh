@@ -3,9 +3,10 @@
 #  HORA Launcher — Claude Code + Dashboard
 #
 #  Usage:
-#    hora              # Launch claude + dashboard
+#    hora              # Launch claude + dashboard (auto-update)
 #    hora --yolo       # Mode YOLO: auto-approve sauf ops dangereuses
 #    hora --no-dash    # Launch claude only (skip dashboard)
+#    hora --no-update  # Skip auto-update check
 #    hora [claude args] # Pass any args to claude (e.g. hora -p "hello")
 #
 #  The dashboard runs in the background on http://localhost:3847
@@ -18,12 +19,14 @@ DASHBOARD_DIR="${HOME}/.claude/dashboard"
 DASHBOARD_PID=""
 NO_DASH=false
 YOLO=false
+NO_UPDATE=false
 
 # Parse hora flags (remove from args before passing to claude)
 CLAUDE_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --no-dash|--no-dashboard) NO_DASH=true ;;
+    --no-update) NO_UPDATE=true ;;
     --yolo) YOLO=true ;;
     *) CLAUDE_ARGS+=("$arg") ;;
   esac
@@ -76,6 +79,49 @@ if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
   [ -d "$HOME/.claude/MEMORY/SESSIONS" ] && SESSIONS=$(ls "$HOME/.claude/MEMORY/SESSIONS/"*.md 2>/dev/null | wc -l | tr -d ' ')
   printf "  ${W}⟐${R} ${D}${ENTITIES} entites${R} ${DIM_GOLD}│${R} ${D}${FACTS} facts${R} ${DIM_GOLD}│${R} ${D}${SESSIONS} sessions${R}\n"
   printf "\n"
+fi
+
+# ─── Auto-update ──────────────────────────────────────────────────
+
+HORA_REPO_FILE="${HOME}/.claude/.hora-repo"
+
+if [[ "$NO_UPDATE" == false ]] && [[ -f "$HORA_REPO_FILE" ]]; then
+  HORA_REPO="$(cat "$HORA_REPO_FILE")"
+  if [[ -d "$HORA_REPO/.git" ]]; then
+    # Fetch with 5s timeout (silent fail if no network)
+    if (cd "$HORA_REPO" && git fetch --quiet 2>/dev/null &
+        FETCH_PID=$!
+        sleep 5 && kill $FETCH_PID 2>/dev/null &
+        wait $FETCH_PID 2>/dev/null); then
+
+      LOCAL_HEAD="$(cd "$HORA_REPO" && git rev-parse HEAD 2>/dev/null)"
+      REMOTE_HEAD="$(cd "$HORA_REPO" && git rev-parse '@{u}' 2>/dev/null)"
+
+      if [[ -n "$LOCAL_HEAD" ]] && [[ -n "$REMOTE_HEAD" ]] && [[ "$LOCAL_HEAD" != "$REMOTE_HEAD" ]]; then
+        # Count commits behind
+        BEHIND="$(cd "$HORA_REPO" && git rev-list --count HEAD..@{u} 2>/dev/null || echo 0)"
+        if [[ "$BEHIND" -gt 0 ]]; then
+          printf "${GOLD:-}  ⟳ Update disponible (${BEHIND} commit(s))...${R:-}\n"
+
+          # Stash local changes, pull, re-install, pop stash
+          (
+            cd "$HORA_REPO"
+            git stash --quiet 2>/dev/null || true
+            if git pull --quiet 2>/dev/null; then
+              # Re-run install silently
+              if [[ -f "install.sh" ]]; then
+                bash install.sh --quiet 2>/dev/null || true
+              fi
+              printf "\033[32m  ✓ HORA mis à jour\033[0m\n"
+            else
+              printf "\033[33m  ! Update échoué (non-bloquant)\033[0m\n"
+            fi
+            git stash pop --quiet 2>/dev/null || true
+          )
+        fi
+      fi
+    fi
+  fi
 fi
 
 # ─── Start dashboard ──────────────────────────────────────────────
