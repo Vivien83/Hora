@@ -8,6 +8,9 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import ForceGraph2D from "react-force-graph-2d";
+import ForceGraph3D from "react-force-graph-3d";
+import { forceCenter, forceRadial } from "d3-force-3d";
+import SpriteText from "three-spritetext";
 import type { GraphData, GraphNode, GraphEdge } from "./types";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -55,9 +58,13 @@ interface NeuralPageProps {
 interface ForceNode extends GraphNode {
   x?: number;
   y?: number;
+  z?: number;
   val: number;
   fx?: number | undefined;
   fy?: number | undefined;
+  fz?: number | undefined;
+  _createdTs?: number; // precomputed timestamp for temporal checks
+  __threeObj?: any; // cached Three.js object
 }
 
 interface ForceLinkMetadata {
@@ -176,7 +183,7 @@ function buildForceData(
 
   const nodes: ForceNode[] = visibleEntities.map((e) => ({
     ...e,
-    val: Math.max(5, Math.min(20, (degree[e.id] || 0) * 2 + 5)),
+    val: Math.max(12, Math.min(50, (degree[e.id] || 0) * 5 + 12)),
   }));
 
   // Build entity date lookup for temporal direction
@@ -582,10 +589,12 @@ function Minimap({
   graphRef,
   containerRef,
   nodes,
+  viewMode,
 }: {
   graphRef: React.RefObject<any>;
   containerRef: React.RefObject<HTMLDivElement | null>;
   nodes: ForceNode[];
+  viewMode: "2d" | "3d";
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const SIZE = 160;
@@ -639,34 +648,52 @@ function Minimap({
         ctx.fill();
       }
 
-      // Draw viewport rectangle — use the container div, not querySelector("canvas")
+      // Viewport indicator — adapts to 2D (rectangle) or 3D (crosshair)
       try {
-        const container = containerRef.current;
-        if (container && fg.screen2GraphCoords) {
-          const rect = container.getBoundingClientRect();
-          const topLeft = fg.screen2GraphCoords(0, 0);
-          const bottomRight = fg.screen2GraphCoords(rect.width, rect.height);
-          const vx1 = t.offX + (topLeft.x - t.minX) * t.scale;
-          const vy1 = t.offY + (topLeft.y - t.minY) * t.scale;
-          const vx2 = t.offX + (bottomRight.x - t.minX) * t.scale;
-          const vy2 = t.offY + (bottomRight.y - t.minY) * t.scale;
-
-          ctx.strokeStyle = C.gold;
-          ctx.lineWidth = 1.5;
-          ctx.strokeRect(
-            Math.max(0, vx1), Math.max(0, vy1),
-            Math.min(SIZE, vx2) - Math.max(0, vx1),
-            Math.min(SIZE, vy2) - Math.max(0, vy1),
-          );
+        if (viewMode === "2d" && fg.screen2GraphCoords) {
+          const container = containerRef.current;
+          if (container) {
+            const rect = container.getBoundingClientRect();
+            const topLeft = fg.screen2GraphCoords(0, 0);
+            const bottomRight = fg.screen2GraphCoords(rect.width, rect.height);
+            const vx1 = t.offX + (topLeft.x - t.minX) * t.scale;
+            const vy1 = t.offY + (topLeft.y - t.minY) * t.scale;
+            const vx2 = t.offX + (bottomRight.x - t.minX) * t.scale;
+            const vy2 = t.offY + (bottomRight.y - t.minY) * t.scale;
+            ctx.strokeStyle = C.gold;
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(
+              Math.max(0, vx1), Math.max(0, vy1),
+              Math.min(SIZE, vx2) - Math.max(0, vx1),
+              Math.min(SIZE, vy2) - Math.max(0, vy1),
+            );
+          }
+        } else if (viewMode === "3d" && fg.cameraPosition) {
+          const cam = fg.cameraPosition();
+          if (cam) {
+            const cx = t.offX + (cam.x - t.minX) * t.scale;
+            const cy = t.offY + (cam.y - t.minY) * t.scale;
+            ctx.strokeStyle = C.gold;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx - 12, cy);
+            ctx.lineTo(cx + 12, cy);
+            ctx.moveTo(cx, cy - 12);
+            ctx.lineTo(cx, cy + 12);
+            ctx.stroke();
+          }
         }
-      } catch { /* screen2GraphCoords may not be ready */ }
+      } catch { /* not ready */ }
 
       animId = requestAnimationFrame(draw);
     };
 
     animId = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animId);
-  }, [graphRef, containerRef, nodes, getTransform]);
+  }, [graphRef, containerRef, nodes, getTransform, viewMode]);
 
   // Click/drag on minimap → navigate main graph
   const navigateTo = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -681,8 +708,16 @@ function Minimap({
 
     const gx = t.minX + (cx - t.offX) / t.scale;
     const gy = t.minY + (cy - t.offY) / t.scale;
-    fg.centerAt(gx, gy, 300);
-  }, [graphRef, getTransform]);
+    if (viewMode === "2d") {
+      fg.centerAt(gx, gy, 300);
+    } else {
+      fg.cameraPosition(
+        { x: gx, y: gy, z: 300 },
+        { x: gx, y: gy, z: 0 },
+        300,
+      );
+    }
+  }, [graphRef, getTransform, viewMode]);
 
   const onMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     dragging.current = true;
@@ -729,6 +764,25 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   const graphRef = useRef<any>(null);
   const graphContainerRef = useRef<HTMLDivElement>(null);
   const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  // Track container size for ForceGraph3D (it defaults to window size otherwise)
+  const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
+  useEffect(() => {
+    const el = graphContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) setContainerSize({ width, height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // 2D/3D toggle — persisted
+  const [viewMode, setViewMode] = useState<"2d" | "3d">(() => {
+    return (localStorage.getItem("hora-neural-viewMode") as "2d" | "3d") || "3d";
+  });
+  useEffect(() => { localStorage.setItem("hora-neural-viewMode", viewMode); }, [viewMode]);
+
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedLink, setSelectedLink] = useState<ForceLink | null>(null);
   const [highlightNodes, setHighlightNodes] = useState<Set<string>>(new Set());
@@ -750,18 +804,120 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1); // 0.5x, 1x, 2x
   const playRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevForceDataRef = useRef<{ nodes: ForceNode[]; links: ForceLink[] } | null>(null);
 
-  // Animation loop for temporal playback
+  // Pre-compute sorted timeline for incremental playback
+  const timeline = useMemo(() => {
+    const now = Date.now();
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const searchLower = search.toLowerCase();
+
+    let entities = graphData.entities.filter((e) => {
+      const ts = new Date(e.created_at).getTime();
+      if (isNaN(ts)) return false;
+      if (filterRecent && new Date(e.last_seen).getTime() <= thirtyDaysAgo) return false;
+      if (searchLower && !e.name.toLowerCase().includes(searchLower)) return false;
+      return true;
+    });
+
+    const entityIdSet = new Set(entities.map((e) => e.id));
+
+    const facts = graphData.facts.filter((f) => {
+      if (!entityIdSet.has(f.source) || !entityIdSet.has(f.target)) return false;
+      if (f.expired_at && new Date(f.expired_at).getTime() < now) return false;
+      const ts = new Date(f.valid_at).getTime();
+      return !isNaN(ts);
+    });
+
+    // Degree for node sizing
+    const degree: Record<string, number> = {};
+    for (const f of facts) {
+      degree[f.source] = (degree[f.source] || 0) + 1;
+      degree[f.target] = (degree[f.target] || 0) + 1;
+    }
+
+    // Only entities with at least one connection
+    entities = entities.filter((e) => (degree[e.id] || 0) > 0);
+
+    // Entity date lookup for temporal link direction
+    const entityDate: Record<string, number> = {};
+    for (const e of entities) entityDate[e.id] = new Date(e.created_at).getTime() || 0;
+
+    // Adjacency map for neighbor placement
+    const adjacency = new Map<string, Set<string>>();
+    for (const f of facts) {
+      if (!adjacency.has(f.source)) adjacency.set(f.source, new Set());
+      if (!adjacency.has(f.target)) adjacency.set(f.target, new Set());
+      adjacency.get(f.source)!.add(f.target);
+      adjacency.get(f.target)!.add(f.source);
+    }
+
+    const sortedEntities = entities
+      .map((e) => ({
+        ...e,
+        _ts: new Date(e.created_at).getTime(),
+        val: Math.max(12, Math.min(50, (degree[e.id] || 0) * 5 + 12)),
+      } as ForceNode & { _ts: number }))
+      .sort((a, b) => a._ts - b._ts);
+
+    const sortedFacts = facts
+      .map((f) => {
+        const category = f.metadata?.category || getRelationCategory(f.relation);
+        const catColor = CATEGORY_COLORS[category] || CATEGORY_COLORS.conceptual;
+        const srcTime = entityDate[f.source] || 0;
+        const tgtTime = entityDate[f.target] || 0;
+        return {
+          _ts: new Date(f.valid_at).getTime(),
+          source: srcTime <= tgtTime ? f.source : f.target,
+          target: srcTime <= tgtTime ? f.target : f.source,
+          color: hexToRgba(catColor, 0.15 + f.confidence * 0.35),
+          confidence: f.confidence,
+          isRecent: isRecent(f.valid_at, 24),
+          id: f.id,
+          relation: f.relation,
+          description: f.description,
+          valid_at: f.valid_at,
+          metadata: f.metadata,
+        } as ForceLink & { _ts: number };
+      })
+      .sort((a, b) => a._ts - b._ts);
+
+    return { sortedEntities, sortedFacts, adjacency };
+  }, [graphData, search, filterRecent]);
+
+  // Playback incremental state
+  const playbackRef = useRef<{
+    entityIdx: number;
+    factIdx: number;
+    visibleIds: Set<string>;
+  } | null>(null);
+
+  // Animation loop for temporal playback — incremental, bypasses React
   useEffect(() => {
     if (!isPlaying) {
       if (playRef.current) { clearInterval(playRef.current); playRef.current = null; }
+      playbackRef.current = null;
       return;
     }
     const range = allDates.max - allDates.min;
     if (range <= 0) { setIsPlaying(false); return; }
-    // ~400 frames total at 1x speed (slower, more fluid), step adapts to speed
-    const stepMs = (range / 400) * playSpeed;
+    const stepMs = (range / 1000) * playSpeed;
     const intervalMs = 50;
+
+    // Initialize: walk timeline to current cutoff position
+    if (!playbackRef.current) {
+      const cur = temporalCutoff;
+      let ei = 0, fi = 0;
+      const visibleIds = new Set<string>();
+      while (ei < timeline.sortedEntities.length && timeline.sortedEntities[ei]._ts <= cur) {
+        visibleIds.add(timeline.sortedEntities[ei].id);
+        ei++;
+      }
+      while (fi < timeline.sortedFacts.length && timeline.sortedFacts[fi]._ts <= cur) {
+        fi++;
+      }
+      playbackRef.current = { entityIdx: ei, factIdx: fi, visibleIds };
+    }
 
     playRef.current = setInterval(() => {
       setTemporalCutoff((prev) => {
@@ -770,12 +926,81 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           setIsPlaying(false);
           return allDates.max;
         }
+
+        // Incremental graph update — no React re-render of ForceGraph2D
+        const fg = graphRef.current;
+        const ps = playbackRef.current;
+        if (fg && ps) {
+          const currentData = fg.graphData();
+          const currentNodes = currentData.nodes as ForceNode[];
+          let added = false;
+
+          // Build position lookup from live graph for neighbor placement
+          const posMap = new Map<string, { x: number; y: number }>();
+          for (const n of currentNodes) {
+            if (n.x != null && n.y != null) posMap.set(n.id, { x: n.x, y: n.y });
+          }
+
+          // Add new entities
+          while (ps.entityIdx < timeline.sortedEntities.length) {
+            const e = timeline.sortedEntities[ps.entityIdx];
+            if (e._ts > next) break;
+            ps.entityIdx++;
+            if (ps.visibleIds.has(e.id)) continue;
+            ps.visibleIds.add(e.id);
+
+            const node: ForceNode = { ...e };
+            // Place near a connected neighbor
+            const neighbors = timeline.adjacency.get(e.id);
+            let placed = false;
+            if (neighbors) {
+              for (const nid of neighbors) {
+                const npos = posMap.get(nid);
+                if (npos) {
+                  const angle = Math.random() * 2 * Math.PI;
+                  const dist = 30 + Math.random() * 40;
+                  node.x = npos.x + Math.cos(angle) * dist;
+                  node.y = npos.y + Math.sin(angle) * dist;
+                  placed = true;
+                  break;
+                }
+              }
+            }
+            if (!placed) {
+              const angle = Math.random() * 2 * Math.PI;
+              const dist = 50 + Math.random() * 100;
+              node.x = Math.cos(angle) * dist;
+              node.y = Math.sin(angle) * dist;
+            }
+
+            currentData.nodes.push(node);
+            posMap.set(node.id, { x: node.x || 0, y: node.y || 0 });
+            added = true;
+          }
+
+          // Add new links
+          while (ps.factIdx < timeline.sortedFacts.length) {
+            const f = timeline.sortedFacts[ps.factIdx];
+            if (f._ts > next) break;
+            ps.factIdx++;
+            const srcId = typeof f.source === "object" ? (f.source as any).id : f.source;
+            const tgtId = typeof f.target === "object" ? (f.target as any).id : f.target;
+            if (!ps.visibleIds.has(srcId) || !ps.visibleIds.has(tgtId)) continue;
+            currentData.links.push({ ...f });
+            added = true;
+          }
+
+          if (added) {
+            fg.graphData(currentData);
+          }
+        }
+
         return next;
       });
     }, intervalMs);
 
     return () => { if (playRef.current) { clearInterval(playRef.current); playRef.current = null; } };
-  }, [isPlaying, playSpeed, allDates.min, allDates.max]);
+  }, [isPlaying, playSpeed, allDates.min, allDates.max, timeline]);
 
   // Persisted graph settings
   const [spacing, setSpacing] = useState(() => {
@@ -797,6 +1022,11 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
   const prevFilterRef = useRef(filterRecent);
 
   const forceData = useMemo(() => {
+    // During playback, skip — graph is updated imperatively
+    if (isPlaying && prevForceDataRef.current) {
+      return prevForceDataRef.current;
+    }
+
     // Capture ALL live positions before rebuilding (not just dragged ones)
     const fg = graphRef.current;
     if (fg) {
@@ -828,64 +1058,80 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     for (const node of data.nodes) {
       const saved = positionsRef.current.get(node.id);
       if (saved) {
-        // Existing node: keep its position stable
         node.x = saved.x;
         node.y = saved.y;
+        // Keep z from previous if available, otherwise spread in 3D
+        if (node.z == null) node.z = (Math.random() - 0.5) * 80;
       } else {
-        // NEW node: place near a connected node that already has a position
         const neighbors = connectedTo.get(node.id) || [];
         let placed = false;
         for (const nid of neighbors) {
           const npos = positionsRef.current.get(nid);
           if (npos) {
-            const angle = Math.random() * 2 * Math.PI;
+            const theta = Math.random() * 2 * Math.PI;
+            const phi = Math.acos(2 * Math.random() - 1);
             const dist = 30 + Math.random() * 40;
-            node.x = npos.x + Math.cos(angle) * dist;
-            node.y = npos.y + Math.sin(angle) * dist;
+            node.x = npos.x + Math.sin(phi) * Math.cos(theta) * dist;
+            node.y = npos.y + Math.sin(phi) * Math.sin(theta) * dist;
+            node.z = (Math.random() - 0.5) * dist;
             placed = true;
             break;
           }
         }
         if (!placed) {
-          // No connected node with position — scatter around center
-          const angle = Math.random() * 2 * Math.PI;
+          const theta = Math.random() * 2 * Math.PI;
+          const phi = Math.acos(2 * Math.random() - 1);
           const dist = 50 + Math.random() * 100;
-          node.x = Math.cos(angle) * dist;
-          node.y = Math.sin(angle) * dist;
+          node.x = Math.sin(phi) * Math.cos(theta) * dist;
+          node.y = Math.sin(phi) * Math.sin(theta) * dist;
+          node.z = Math.cos(phi) * dist;
         }
       }
     }
+    prevForceDataRef.current = data;
     return data;
-  }, [graphData, search, filterRecent, temporalCutoff]);
+  }, [graphData, search, filterRecent, temporalCutoff, isPlaying]);
 
   // Apply forces + reheat with appropriate intensity
+  // Use a small delay to ensure the force engine is initialized before tweaking
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg) return;
-    fg.d3Force("charge")?.strength(spacing);
-    fg.d3Force("link")?.distance(linkDist);
 
-    const cutoffChanged = prevCutoffRef.current !== temporalCutoff;
-    const searchChanged = prevSearchRef.current !== search;
-    const filterChanged = prevFilterRef.current !== filterRecent;
-    prevCutoffRef.current = temporalCutoff;
-    prevSearchRef.current = search;
-    prevFilterRef.current = filterRecent;
+    const timer = setTimeout(() => {
+      try {
+        fg.d3Force("charge")?.strength(spacing);
+        fg.d3Force("link")?.distance(linkDist);
+        if (viewMode === "2d") {
+          fg.d3Force("center", forceCenter(0, 0).strength(0.08));
+          fg.d3Force("radial", forceRadial(120, 0, 0).strength(0.02));
+        } else {
+          const existingCenter = fg.d3Force("center");
+          if (existingCenter?.strength) existingCenter.strength(0.05);
+          fg.d3Force("charge")?.theta(0.9);
+        }
+      } catch { /* force engine not ready yet */ }
 
-    if (cutoffChanged && !searchChanged && !filterChanged) {
-      // Temporal change only — NO reheat. Positions are preserved,
-      // new nodes are placed near neighbors. react-force-graph handles
-      // the graphData diff internally.
-      return;
-    }
+      const cutoffChanged = prevCutoffRef.current !== temporalCutoff;
+      const searchChanged = prevSearchRef.current !== search;
+      const filterChanged = prevFilterRef.current !== filterRecent;
+      prevCutoffRef.current = temporalCutoff;
+      prevSearchRef.current = search;
+      prevFilterRef.current = filterRecent;
 
-    // Structural change (search, filter, spacing, linkDist) — full reheat
-    fg.d3ReheatSimulation();
-  }, [forceData, spacing, linkDist, temporalCutoff, search, filterRecent]);
+      if (cutoffChanged && !searchChanged && !filterChanged) return;
+
+      try { fg.d3ReheatSimulation(); } catch { /* not ready */ }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [forceData, spacing, linkDist, temporalCutoff, search, filterRecent, viewMode]);
 
   // Focus set: when a node is selected, compute its neighborhood (via ref to avoid re-renders)
   const focusNodesRef = useRef<Set<string>>(new Set());
   const focusLinksRef = useRef<Set<string>>(new Set());
+  // Smooth dimming: track per-node opacity that interpolates toward target
+  const nodeOpacityRef = useRef<Map<string, number>>(new Map());
 
   useMemo(() => {
     const nodeIds = new Set<string>();
@@ -901,13 +1147,23 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     focusLinksRef.current = linkIds;
   }, [selectedNode, graphData.facts]);
 
-  // Trigger a soft repaint when focus changes (without full re-render)
+  // Repaint loop for focus transitions (smooth lerp in 2D, re-render in 3D)
   useEffect(() => {
-    const fg = graphRef.current;
-    if (fg) requestAnimationFrame(() => fg.refresh());
-  }, [selectedNode]);
+    if (viewMode === "2d") {
+      let animId: number;
+      let frames = 0;
+      const tick = () => {
+        const fg = graphRef.current;
+        if (fg?.refresh) fg.refresh();
+        if (++frames < 45) animId = requestAnimationFrame(tick);
+      };
+      animId = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(animId);
+    }
+  }, [selectedNode, viewMode]);
 
-  // Node canvas renderer — fond du label adapte au canvas sombre
+  // ─── 2D-only renderers ──────────────────────────────────────────────────
+
   const nodeCanvasObject = useCallback(
     (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const n = node as ForceNode;
@@ -920,9 +1176,14 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
       const deg = n.connections || 0;
       const radius = Math.max(6, Math.min(24, deg * 3 + 6));
 
-      // Dim non-focused nodes when a node is selected
+      // Smooth dimming — interpolate opacity toward target
+      const targetAlpha = isFocused ? 1 : 0.18;
+      const currentAlpha = nodeOpacityRef.current.get(n.id) ?? 1;
+      const newAlpha = currentAlpha + (targetAlpha - currentAlpha) * 0.12;
+      nodeOpacityRef.current.set(n.id, newAlpha);
+
       const prevAlpha = ctx.globalAlpha;
-      if (!isFocused) ctx.globalAlpha = 0.25;
+      ctx.globalAlpha = newAlpha;
 
       let breathScale = 1;
       if (isRecent(n.last_seen, 48)) {
@@ -980,6 +1241,49 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     [],
   );
 
+  // ─── 3D-only renderers ──────────────────────────────────────────────────
+
+  // Node color — use built-in sphere rendering (much faster than custom Three objects)
+  const nodeColor = useCallback(
+    (node: any) => {
+      const n = node as ForceNode;
+      const color = TYPE_COLORS[n.type] || C.canvasMuted;
+      const fn = focusNodesRef.current;
+      const isFocused = fn.size === 0 || fn.has(n.id);
+      if (!isFocused) return hexToRgba(color, 0.2);
+      return highlightNodes.has(n.id) ? color : hexToRgba(color, 0.8);
+    },
+    [highlightNodes],
+  );
+
+  // Label: only show on hover via nodeLabel (native tooltip)
+  const nodeLabel = useCallback(
+    (node: any) => {
+      const n = node as ForceNode;
+      return `<div style="font-family:system-ui;font-size:12px;padding:4px 8px;background:rgba(0,0,0,0.8);color:#fff;border-radius:6px">${n.name}<br/><span style="color:${TYPE_COLORS[n.type] || '#999'};font-size:10px">${n.type}</span></div>`;
+    },
+    [],
+  );
+
+  // SpriteText labels for high-degree nodes only (performance optimization)
+  const nodeThreeObjectExtend = true;
+  const nodeThreeObject = useCallback(
+    (node: any) => {
+      const n = node as ForceNode;
+      const deg = n.connections || 0;
+      // Only label nodes with 3+ connections to limit sprite count
+      if (deg < 3) return false as any;
+      const sprite = new SpriteText(truncate(n.name, 16));
+      sprite.color = C.canvasMuted;
+      sprite.textHeight = 4;
+      sprite.backgroundColor = "rgba(255,255,255,0)";
+      const radius = Math.max(5, Math.min(12, deg * 1.5 + 5));
+      sprite.position.set(0, -(radius + 4), 0);
+      return sprite;
+    },
+    [],
+  );
+
   const handleNodeHover = useCallback(
     (node: any) => {
       if (!node) {
@@ -1015,8 +1319,18 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
       if (last.id === n.id && now - last.time < 400) {
         const fg = graphRef.current;
         if (fg && n.x != null && n.y != null) {
-          fg.centerAt(n.x, n.y, 600);
-          fg.zoom(3, 600);
+          if (viewMode === "3d") {
+            const distance = 200;
+            const distRatio = 1 + distance / Math.hypot(n.x, n.y, n.z || 0);
+            fg.cameraPosition(
+              { x: n.x * distRatio, y: n.y * distRatio, z: (n.z || 0) * distRatio },
+              { x: n.x, y: n.y, z: n.z || 0 },
+              600,
+            );
+          } else {
+            fg.centerAt(n.x, n.y, 600);
+            fg.zoom(3, 600);
+          }
         }
         lastClickRef.current = { id: "", time: 0 };
         return;
@@ -1034,7 +1348,8 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
     const n = node as ForceNode;
     n.fx = n.x;
     n.fy = n.y;
-  }, []);
+    if (viewMode === "3d") n.fz = n.z;
+  }, [viewMode]);
 
   const handleNodeDragEnd = useCallback((node: any) => {
     const n = node as ForceNode;
@@ -1042,8 +1357,9 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
       positionsRef.current.set(n.id, { x: n.x, y: n.y });
       n.fx = n.x;
       n.fy = n.y;
+      if (viewMode === "3d") n.fz = n.z;
     }
-  }, []);
+  }, [viewMode]);
 
   const handleLinkClick = useCallback((link: any) => {
     const l = link as ForceLink;
@@ -1215,6 +1531,29 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
             >
               Recentrer
             </button>
+            <div style={{ display: "flex", gap: "2px" }}>
+              {(["2d", "3d"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setViewMode(m)}
+                  style={{
+                    padding: "5px 10px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: viewMode === m ? C.text : C.textMuted,
+                    background: viewMode === m ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
+                    border: `1px solid ${viewMode === m ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.06)"}`,
+                    borderRadius: m === "2d" ? "6px 0 0 6px" : "0 6px 6px 0",
+                    cursor: "pointer",
+                    fontFamily: C.mono,
+                    letterSpacing: "0.02em",
+                    boxShadow: viewMode === m ? "0 2px 8px rgba(0,0,0,0.04)" : "none",
+                  }}
+                >
+                  {m.toUpperCase()}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -1404,7 +1743,7 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
         </div>
 
         {/* Minimap — top right */}
-        <Minimap graphRef={graphRef} containerRef={graphContainerRef} nodes={forceData.nodes} />
+        <Minimap graphRef={graphRef} containerRef={graphContainerRef} nodes={forceData.nodes} viewMode={viewMode} />
 
         {/* Spacing controls — right side to avoid legend overlap */}
         <div
@@ -1456,45 +1795,93 @@ export function NeuralPage({ graphData }: NeuralPageProps) {
           </div>
         </div>
 
-        {/* Force graph — canvas reste sombre pour lisibilite des noeuds */}
-        <ForceGraph2D
-          ref={graphRef}
-          graphData={forceData}
-          backgroundColor={C.canvasBg}
-          nodeCanvasObject={nodeCanvasObject}
-          nodePointerAreaPaint={nodePointerAreaPaint}
-          nodeVal="val"
-          nodeLabel=""
-          onNodeHover={handleNodeHover}
-          onNodeClick={handleNodeClick}
-          onBackgroundClick={() => { setSelectedNode(null); setSelectedLink(null); }}
-          onNodeDrag={handleNodeDrag}
-          onNodeDragEnd={handleNodeDragEnd}
-          linkWidth={linkWidth}
-          linkColor={linkColor}
-          linkLabel={linkLabel}
-          onLinkClick={handleLinkClick}
-          linkDirectionalParticles={(link: any) => {
-            const fl = focusLinksRef.current;
-            const l = link as ForceLink;
-            if (fl.size > 0 && !fl.has(l.id)) return 0;
-            return 2;
-          }}
-          linkDirectionalParticleSpeed={0.003}
-          linkDirectionalParticleWidth={3}
-          linkDirectionalParticleColor={() => C.gold}
-          linkCurvature={0.1}
-          d3AlphaDecay={0.03}
-          d3VelocityDecay={0.25}
-          warmupTicks={80}
-          cooldownTicks={150}
-          enableZoomInteraction={true}
-          enablePanInteraction={true}
-          enableNodeDrag={true}
-          onEngineStop={() => {
-            // intentionally empty — no auto zoom-to-fit
-          }}
-        />
+        {/* Force graph — conditional 2D / 3D */}
+        {forceData.nodes.length > 0 && viewMode === "3d" && (
+          <ForceGraph3D
+            ref={graphRef}
+            width={containerSize.width}
+            height={containerSize.height}
+            graphData={forceData}
+            backgroundColor={C.canvasBg}
+            nodeColor={nodeColor}
+            nodeVal="val"
+            nodeLabel={nodeLabel}
+            nodeThreeObject={nodeThreeObject}
+            nodeThreeObjectExtend={nodeThreeObjectExtend}
+            onNodeHover={handleNodeHover}
+            onNodeClick={handleNodeClick}
+            onBackgroundClick={() => { setSelectedNode(null); setSelectedLink(null); }}
+            onNodeDrag={handleNodeDrag}
+            onNodeDragEnd={handleNodeDragEnd}
+            linkWidth={linkWidth}
+            linkColor={linkColor}
+            linkLabel={linkLabel}
+            onLinkClick={handleLinkClick}
+            linkDirectionalParticles={(link: any) => {
+              const fl = focusLinksRef.current;
+              const l = link as ForceLink;
+              if (fl.size > 0 && !fl.has(l.id)) return 0;
+              if (highlightLinks.has(l.id)) return 4;
+              return 2;
+            }}
+            linkDirectionalParticleSpeed={(link: any) => {
+              const l = link as ForceLink;
+              return 0.002 + l.confidence * 0.003;
+            }}
+            linkDirectionalParticleWidth={(link: any) => {
+              const l = link as ForceLink;
+              return highlightLinks.has(l.id) ? 3.5 : 2;
+            }}
+            linkDirectionalParticleColor={() => C.gold}
+            linkOpacity={0.3}
+            linkCurvature={0.15}
+            d3AlphaDecay={0.06}
+            d3VelocityDecay={0.35}
+            warmupTicks={120}
+            cooldownTicks={150}
+            enableNodeDrag={true}
+            enableNavigationControls={true}
+            onEngineStop={() => {}}
+          />
+        )}
+        {forceData.nodes.length > 0 && viewMode === "2d" && (
+          <ForceGraph2D
+            ref={graphRef}
+            graphData={forceData}
+            backgroundColor={C.canvasBg}
+            nodeCanvasObject={nodeCanvasObject}
+            nodePointerAreaPaint={nodePointerAreaPaint}
+            nodeVal="val"
+            nodeLabel=""
+            onNodeHover={handleNodeHover}
+            onNodeClick={handleNodeClick}
+            onBackgroundClick={() => { setSelectedNode(null); setSelectedLink(null); }}
+            onNodeDrag={handleNodeDrag}
+            onNodeDragEnd={handleNodeDragEnd}
+            linkWidth={linkWidth}
+            linkColor={linkColor}
+            linkLabel={linkLabel}
+            onLinkClick={handleLinkClick}
+            linkDirectionalParticles={(link: any) => {
+              const fl = focusLinksRef.current;
+              const l = link as ForceLink;
+              if (fl.size > 0 && !fl.has(l.id)) return 0;
+              return 2;
+            }}
+            linkDirectionalParticleSpeed={0.003}
+            linkDirectionalParticleWidth={3}
+            linkDirectionalParticleColor={() => C.gold}
+            linkCurvature={0.1}
+            d3AlphaDecay={0.03}
+            d3VelocityDecay={0.25}
+            warmupTicks={80}
+            cooldownTicks={150}
+            enableZoomInteraction={true}
+            enablePanInteraction={true}
+            enableNodeDrag={true}
+            onEngineStop={() => {}}
+          />
+        )}
       </div>
 
       {/* Detail panel — node or link */}
