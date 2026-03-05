@@ -982,18 +982,34 @@ async function main() {
           parts.push(`[HORA PROJECT KNOWLEDGE]\n${truncate(knowledge, 3000)}`);
         }
       } else {
-        // Nouveau projet → proposer un audit complet
+        // Nouveau projet → detecter le type de bootstrap necessaire
         const projectName = path.basename(process.cwd());
+        const hasDocsDir = fs.existsSync(path.join(process.cwd(), "docs"));
         const hasCode = (() => {
           try {
-            // Verifier qu'il y a du code (pas un dossier vide)
             const files = fs.readdirSync(process.cwd()).filter(
               (f) => !f.startsWith(".") && f !== "node_modules"
             );
             return files.length > 0;
           } catch { return false; }
         })();
-        if (hasCode) {
+
+        if (!hasDocsDir) {
+          // Pas de docs/ → proposer le bootstrap structuré hora-init
+          parts.push(
+            `[HORA INIT] Nouveau projet "${projectName}" detecte sans structure docs/.\n` +
+            `INSTRUCTION OBLIGATOIRE : Propose IMMEDIATEMENT a l'utilisateur le bootstrap HORA :\n` +
+            `"Nouveau projet detecte. Veux-tu lancer le bootstrap HORA ? Il va :\n` +
+            `1. Definir les phases du projet (docs/v0.1, v0.2, ...)\n` +
+            `2. Creer l'arborescence docs/ complete avec INDEX.md\n` +
+            `3. Lancer context7 pour recuperer la doc a jour de chaque lib\n` +
+            `4. Stocker les resultats dans docs/research/ comme reference locale\n\n` +
+            `Oui / Non ?"\n` +
+            `Si l'utilisateur accepte, execute le skill /hora-init.\n` +
+            `Si l'utilisateur refuse, continue normalement.`
+          );
+        } else if (hasCode) {
+          // docs/ existe mais pas de project-knowledge → audit classique
           parts.push(
             `[HORA AUDIT] Nouveau projet "${projectName}" sans audit.\n` +
             `INSTRUCTION : Propose a l'utilisateur un audit complet du projet AVANT de travailler.\n` +

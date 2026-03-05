@@ -209,6 +209,20 @@ if [[ "$NEED_COMMIT" == true ]] && git rev-parse --git-dir &>/dev/null; then
   git commit -q -m "init: hora project" --allow-empty 2>/dev/null || true
 fi
 
+# ─── New project bootstrap detection ─────────────────────────────
+
+# If new project (no docs/ AND no .hora/project-knowledge.md), inject /hora-init prompt
+# This makes Claude start directly with the bootstrap question — zero user input needed
+HORA_INIT_PROMPT=""
+if [[ ! -d "docs" ]] && [[ ! -f ".hora/project-knowledge.md" ]]; then
+  # New project detected — ask user before launching bootstrap
+  HORA_INIT_PROMPT="Nouveau projet detecte sans structure docs/. Veux-tu lancer le bootstrap HORA ? (creation des phases, arborescence docs/, recherche context7 stockee en dur) — Oui / Non"
+fi
+
 # ─── Launch Claude Code ──────────────────────────────────────────
 
-exec claude ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}
+if [[ -n "$HORA_INIT_PROMPT" ]]; then
+  exec claude --prompt "$HORA_INIT_PROMPT" ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}
+else
+  exec claude ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}
+fi
