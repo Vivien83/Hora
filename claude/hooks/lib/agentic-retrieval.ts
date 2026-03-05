@@ -29,6 +29,7 @@ export type TaskType =
   | "question"
   | "design"
   | "debug"
+  | "temporal"
   | "unknown";
 
 type QueryCategory = "stack" | "context" | "decisions" | "errors" | "patterns";
@@ -62,6 +63,8 @@ export interface AgenticRetrievalOptions {
   graphDir: string;
   projectName: string;
   maxBudget?: number;
+  /** Pre-detected temporal range (optional — auto-detected from message if not provided) */
+  temporalRange?: TemporalRange | null;
 }
 
 interface MergedResults {
@@ -105,6 +108,11 @@ const TASK_KEYWORDS: Record<Exclude<TaskType, "unknown">, string[]> = {
   debug: [
     "debug", "log", "trace", "investigate", "inspecte", "diagnostique", "profile",
   ],
+  temporal: [
+    "état", "etat", "avancement", "progression", "status", "état d'avancement",
+    "à cette date", "à ce moment", "at that time", "at that date", "as of",
+    "historique", "history", "timeline", "évolution", "evolution",
+  ],
 };
 
 const STOP_WORDS = new Set([
@@ -113,12 +121,182 @@ const STOP_WORDS = new Set([
   "have", "are", "was", "been", "tout", "tous", "aussi", "plus", "comme",
 ]);
 
+// ─── Temporal Query Detection ────────────────────────────────────────────────
+
+export interface TemporalRange {
+  from: string; // ISO date string
+  to: string;   // ISO date string
+  label: string; // human-readable label, e.g. "le 25/02/2026"
+}
+
+const MONTH_NAMES_FR: Record<string, number> = {
+  janvier: 1, février: 2, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6,
+  juillet: 7, août: 8, aout: 8, septembre: 9, octobre: 10, novembre: 11, décembre: 12, decembre: 12,
+};
+
+const MONTH_NAMES_EN: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+};
+
+/**
+ * Resolve a 2-digit year to 4-digit.
+ * 00-49 → 2000-2049, 50-99 → 1950-1999
+ */
+function resolveYear(y: number): number {
+  if (y >= 100) return y;
+  return y < 50 ? 2000 + y : 1900 + y;
+}
+
+/**
+ * Build ISO date range for a single day.
+ */
+function dayRange(year: number, month: number, day: number): TemporalRange | null {
+  const y = resolveYear(year);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const from = new Date(Date.UTC(y, month - 1, day, 0, 0, 0));
+  const to = new Date(Date.UTC(y, month - 1, day, 23, 59, 59, 999));
+  if (isNaN(from.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const label = `${pad(day)}/${pad(month)}/${y}`;
+  return { from: from.toISOString(), to: to.toISOString(), label };
+}
+
+/**
+ * Build ISO date range for a full month.
+ */
+function monthRange(year: number, month: number): TemporalRange | null {
+  const y = resolveYear(year);
+  if (month < 1 || month > 12) return null;
+  const from = new Date(Date.UTC(y, month - 1, 1, 0, 0, 0));
+  const to = new Date(Date.UTC(y, month, 0, 23, 59, 59, 999)); // last day of month
+  if (isNaN(from.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const monthNames = ["janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+  const label = `${monthNames[month - 1]} ${y}`;
+  return { from: from.toISOString(), to: to.toISOString(), label };
+}
+
+/**
+ * Detect temporal references in a user message.
+ * Supports:
+ *   - DD/MM/YY, DD/MM/YYYY, DD-MM-YYYY
+ *   - "le 25 février 2026", "25 february 2026"
+ *   - "février 2026", "march 2026"
+ *   - "en février", "in march" (defaults to current year)
+ *   - "hier", "yesterday", "avant-hier"
+ *   - "la semaine dernière", "last week"
+ *   - "il y a N jours", "N days ago"
+ *   - "entre le DD/MM et le DD/MM" (range)
+ *
+ * Returns null if no temporal reference detected.
+ */
+export function detectTemporalQuery(message: string): TemporalRange | null {
+  const lower = message.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const original = message.toLowerCase();
+  const now = new Date();
+  const currentYear = now.getFullYear();
+
+  // 1. Explicit date DD/MM/YY or DD/MM/YYYY or DD-MM-YYYY
+  const dateSlashMatch = original.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (dateSlashMatch) {
+    const day = parseInt(dateSlashMatch[1], 10);
+    const month = parseInt(dateSlashMatch[2], 10);
+    const year = parseInt(dateSlashMatch[3], 10);
+    return dayRange(year, month, day);
+  }
+
+  // 2. "le DD mois YYYY" / "DD mois YYYY" / "DD mois YY"
+  const allMonths = { ...MONTH_NAMES_FR, ...MONTH_NAMES_EN };
+  const monthPattern = Object.keys(allMonths).join("|");
+  const dayMonthYearRe = new RegExp(`(?:le\\s+)?(\\d{1,2})\\s+(${monthPattern})\\s+(\\d{2,4})`, "i");
+  const dayMonthYearMatch = lower.match(dayMonthYearRe);
+  if (dayMonthYearMatch) {
+    const day = parseInt(dayMonthYearMatch[1], 10);
+    const monthName = dayMonthYearMatch[2].toLowerCase();
+    const month = allMonths[monthName];
+    const year = parseInt(dayMonthYearMatch[3], 10);
+    if (month) return dayRange(year, month, day);
+  }
+
+  // 3. "mois YYYY" / "en mois YYYY" / "mois YY"
+  const monthYearRe = new RegExp(`(?:en\\s+|in\\s+)?(${monthPattern})\\s+(\\d{2,4})`, "i");
+  const monthYearMatch = lower.match(monthYearRe);
+  if (monthYearMatch) {
+    const monthName = monthYearMatch[1].toLowerCase();
+    const month = allMonths[monthName];
+    const year = parseInt(monthYearMatch[2], 10);
+    if (month) return monthRange(year, month);
+  }
+
+  // 4. "en mois" / "in month" (no year → current year)
+  const monthOnlyRe = new RegExp(`(?:en|in|fin|debut|mi[- ])\\s+(${monthPattern})\\b`, "i");
+  const monthOnlyMatch = lower.match(monthOnlyRe);
+  if (monthOnlyMatch) {
+    const monthName = monthOnlyMatch[1].toLowerCase();
+    const month = allMonths[monthName];
+    if (month) return monthRange(currentYear, month);
+  }
+
+  // 5. Relative: "hier" / "yesterday"
+  if (/\bhier\b|yesterday\b/.test(lower)) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 1);
+    return dayRange(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
+
+  // 6. "avant-hier" / "day before yesterday"
+  if (/avant[- ]hier|day before yesterday/.test(lower)) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 2);
+    return dayRange(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
+
+  // 7. "il y a N jours" / "N days ago"
+  const daysAgoMatch = lower.match(/il y a (\d+) jours?|(\d+) days? ago/);
+  if (daysAgoMatch) {
+    const n = parseInt(daysAgoMatch[1] || daysAgoMatch[2], 10);
+    const d = new Date(now);
+    d.setDate(d.getDate() - n);
+    return dayRange(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
+
+  // 8. "la semaine dernière" / "last week"
+  if (/semaine derniere|last week/.test(lower)) {
+    const from = new Date(now);
+    from.setDate(from.getDate() - from.getDay() - 7 + 1); // Monday of last week
+    const to = new Date(from);
+    to.setDate(to.getDate() + 6); // Sunday of last week
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return {
+      from: new Date(Date.UTC(from.getFullYear(), from.getMonth(), from.getDate())).toISOString(),
+      to: new Date(Date.UTC(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999)).toISOString(),
+      label: `semaine du ${pad(from.getDate())}/${pad(from.getMonth() + 1)}`,
+    };
+  }
+
+  // 9. "le mois dernier" / "last month"
+  if (/mois dernier|last month/.test(lower)) {
+    const m = now.getMonth(); // 0-based, so this is already "last month" if we subtract
+    const y = m === 0 ? currentYear - 1 : currentYear;
+    const month = m === 0 ? 12 : m;
+    return monthRange(y, month);
+  }
+
+  return null;
+}
+
 /**
  * Classify a user message into a task type.
  * Deterministic keyword matching — no LLM.
+ * Temporal queries are detected first (date presence overrides keyword scoring).
  */
 export function classifyTask(message: string): ClassificationResult {
   const lower = message.toLowerCase();
+
+  // Temporal detection takes priority when a date is found
+  const temporalRange = detectTemporalQuery(message);
 
   // Score each task type
   const scores = new Map<TaskType, number>();
@@ -128,6 +306,11 @@ export function classifyTask(message: string): ClassificationResult {
       if (lower.includes(kw)) score++;
     }
     if (score > 0) scores.set(type as TaskType, score);
+  }
+
+  // If a temporal range is detected, boost "temporal" heavily
+  if (temporalRange) {
+    scores.set("temporal", (scores.get("temporal") || 0) + 5);
   }
 
   // Find best match
@@ -239,6 +422,15 @@ function generateQueries(
         { text: `stack ${projectName}`, category: "stack", weight: 0.8 },
       ];
 
+    case "temporal":
+      return [
+        { text: rawMessage, category: "context", weight: 2.0 },
+        { text: `${h} ${kw} ${projectName}`, category: "context", weight: 1.5 },
+        { text: `decided_for decided_against ${kw}`, category: "decisions", weight: 1.0 },
+        { text: `stack ${projectName}`, category: "stack", weight: 0.8 },
+        { text: `erreur ${kw}`, category: "errors", weight: 0.5 },
+      ];
+
     default: // unknown
       return [
         { text: rawMessage, category: "context", weight: 1.0 },
@@ -270,6 +462,7 @@ function mapRelCategoryToQueryCategory(
 /**
  * Execute multi-search: embed all queries, semantic search, structural queries, merge.
  * Uses ACT-R activation log for scoring and records accesses for retrieved facts.
+ * When temporalRange is provided, filters results to facts active within that range.
  */
 async function multiSearch(
   queries: AgenticQuery[],
@@ -277,6 +470,7 @@ async function multiSearch(
   graphDir: string,
   projectName: string,
   taskType: TaskType,
+  temporalRange?: TemporalRange | null,
 ): Promise<MergedResults> {
   const merged: MergedResults = {
     facts: new Map(),
@@ -336,7 +530,7 @@ async function multiSearch(
 
   // 2b. BM25 hybrid search — catches exact term matches semantic search misses
   try {
-    const activeFacts = graph.getActiveFacts();
+    const activeFacts = temporalRange ? graph.getActiveFactsAt(temporalRange.to) : graph.getActiveFacts();
     if (activeFacts.length > 0) {
       // Build entity name map for BM25 indexing
       const entityNames = new Map<string, string>();
@@ -430,6 +624,41 @@ async function multiSearch(
     }
   }
 
+  // 4. Temporal filtering: if a date range is specified, keep only facts active within that range
+  if (temporalRange) {
+    const fromDate = new Date(temporalRange.from);
+    const toDate = new Date(temporalRange.to);
+
+    for (const [factId, sf] of merged.facts) {
+      const validAt = new Date(sf.fact.valid_at);
+      const createdAt = new Date(sf.fact.created_at);
+
+      // Fact must have been created/valid before or during the range end
+      if (createdAt > toDate && validAt > toDate) {
+        merged.facts.delete(factId);
+        continue;
+      }
+
+      // If fact was invalidated before the range start, exclude it
+      if (sf.fact.invalid_at) {
+        const invalidAt = new Date(sf.fact.invalid_at);
+        if (invalidAt < fromDate) {
+          merged.facts.delete(factId);
+          continue;
+        }
+      }
+
+      // If fact was expired (superseded) before the range start, exclude it
+      if (sf.fact.expired_at) {
+        const expiredAt = new Date(sf.fact.expired_at);
+        if (expiredAt < fromDate) {
+          merged.facts.delete(factId);
+          continue;
+        }
+      }
+    }
+  }
+
   return merged;
 }
 
@@ -509,11 +738,13 @@ function chunkBySemanticProximity(allFacts: ScoredFact[]): FactChunk[] {
 /**
  * Format merged results as Baddeley-style semantic chunks.
  * Procedural facts get special "Quand X → Y" formatting.
+ * When temporalRange is set, header indicates the temporal scope.
  */
 function formatByCategory(
   merged: MergedResults,
   projectName: string,
   budget: number,
+  temporalRange?: TemporalRange | null,
 ): string {
   const parts: string[] = [];
   let remaining = budget;
@@ -527,7 +758,8 @@ function formatByCategory(
     .filter((e) => ["tool", "library"].includes(e.entity.type))
     .map((e) => e.entity.name);
 
-  const header = `Projet: ${projectName}${stackEntities.length > 0 ? ` — stack: ${stackEntities.join(", ")}` : ""}`;
+  const temporalSuffix = temporalRange ? ` — etat au ${temporalRange.label}` : "";
+  const header = `Projet: ${projectName}${stackEntities.length > 0 ? ` — stack: ${stackEntities.join(", ")}` : ""}${temporalSuffix}`;
   parts.push(header);
   remaining -= header.length + 1;
 
@@ -677,6 +909,11 @@ export async function agenticRetrieve(
     }
   }
 
+  // 0. Detect temporal range (from options or auto-detect from message)
+  const temporalRange = options.temporalRange !== undefined
+    ? options.temporalRange
+    : detectTemporalQuery(message);
+
   // 1. Classify task
   const classification = classifyTask(message);
 
@@ -689,14 +926,14 @@ export async function agenticRetrieve(
     classification.componentHints,
   );
 
-  // 3. Multi-search (with ACT-R activation scoring + retrieval boost)
-  const merged = await multiSearch(queries, graph, graphDir, projectName, classification.type);
+  // 3. Multi-search (with ACT-R activation scoring + retrieval boost + temporal filtering)
+  const merged = await multiSearch(queries, graph, graphDir, projectName, classification.type, temporalRange);
 
   // 4. Check if we have any results
   if (merged.facts.size === 0 && merged.entities.size === 0) return null;
 
-  // 5. Format by category
-  const formatted = formatByCategory(merged, projectName, maxBudget);
+  // 5. Format by category (with temporal label in header)
+  const formatted = formatByCategory(merged, projectName, maxBudget, temporalRange);
 
   return formatted.trim() || null;
 }

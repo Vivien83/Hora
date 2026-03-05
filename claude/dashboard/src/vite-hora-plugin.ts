@@ -228,11 +228,20 @@ async function getGraph() {
   return graphInstance as InstanceType<typeof HoraGraph>;
 }
 
-function extractEntitiesAndFacts(graph: ReturnType<Awaited<ReturnType<typeof getGraph>> extends infer G ? () => G : never> extends () => infer R ? R : unknown, keywords: string[]) {
+function extractEntitiesAndFacts(graph: ReturnType<Awaited<ReturnType<typeof getGraph>> extends infer G ? () => G : never> extends () => infer R ? R : unknown, keywords: string[], temporalRange?: { from: string; to: string; label: string } | null) {
   // Use any to simplify — the graph API is untyped from the plugin's perspective
-  const g = graph as { getAllEntities: () => Array<Record<string, unknown>>; getAllFacts: () => Array<Record<string, unknown>>; getStats: () => Record<string, number> };
+  const g = graph as {
+    getAllEntities: () => Array<Record<string, unknown>>;
+    getAllFacts: () => Array<Record<string, unknown>>;
+    getActiveFactsAt?: (date: string) => Array<Record<string, unknown>>;
+    getStats: () => Record<string, number>;
+  };
   const allEntities = g.getAllEntities();
-  const allFacts = g.getAllFacts();
+
+  // Use temporal filtering if a date range is detected
+  const allFacts = temporalRange && g.getActiveFactsAt
+    ? g.getActiveFactsAt(temporalRange.to)
+    : g.getAllFacts();
 
   const matchedEntities = allEntities
     .filter((e) => {
@@ -251,7 +260,8 @@ function extractEntitiesAndFacts(graph: ReturnType<Awaited<ReturnType<typeof get
   const entityIds = new Set(matchedEntities.map((e) => e.id));
   const matchedFacts = allFacts
     .filter((f) => {
-      if (f.expired_at !== null) return false;
+      // When using temporal filtering, getActiveFactsAt already filters expired facts
+      if (!temporalRange && f.expired_at !== null) return false;
       const descL = String(f.description ?? "").toLowerCase();
       const relatedToEntity = entityIds.has(String(f.source)) || entityIds.has(String(f.target));
       const descMatch = keywords.some((kw) => descL.includes(kw));
@@ -267,6 +277,7 @@ function extractEntitiesAndFacts(graph: ReturnType<Awaited<ReturnType<typeof get
         confidence: Number(f.confidence ?? 0),
         source: String(srcEntity?.name ?? f.source),
         target: String(tgtEntity?.name ?? f.target),
+        valid_at: String(f.valid_at ?? ""),
       };
     });
 
@@ -380,9 +391,12 @@ export function horaPlugin(projectDir: string): Plugin {
             return;
           }
 
-          // 1. Retrieve memory context
-          const { agenticRetrieve } = await import("../../hooks/lib/agentic-retrieval");
+          // 1. Retrieve memory context (with temporal detection)
+          const { agenticRetrieve, detectTemporalQuery } = await import("../../hooks/lib/agentic-retrieval");
           const graph = await getGraph();
+
+          // Detect temporal range for both retrieval and entity extraction
+          const temporalRange = detectTemporalQuery(message);
 
           const retrievePromise = agenticRetrieve({
             message,
@@ -390,15 +404,16 @@ export function horaPlugin(projectDir: string): Plugin {
             graphDir: GRAPH_DIR,
             projectName: "hora",
             maxBudget: 8000,
+            temporalRange,
           });
           const memoryContext = await Promise.race([
             retrievePromise,
             new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
           ]);
 
-          // 2. Extract structured entities/facts
+          // 2. Extract structured entities/facts (with temporal filtering)
           const keywords = message.toLowerCase().split(/\s+/).filter((w: string) => w.length >= 2);
-          const { matchedEntities, matchedFacts, stats } = extractEntitiesAndFacts(graph, keywords);
+          const { matchedEntities, matchedFacts, stats } = extractEntitiesAndFacts(graph, keywords, temporalRange);
 
           // 3. Try LLM synthesis
           const { loadConfig } = await import("./chat-config");
@@ -411,10 +426,14 @@ export function horaPlugin(projectDir: string): Plugin {
           let llmUsed = false;
 
           if (config?.apiKey) {
+            const temporalNote = temporalRange
+              ? `\n\nATTENTION: L'utilisateur pose une question TEMPORELLE. Les donnees ci-dessous sont filtrees pour refleter l'etat au ${temporalRange.label}. Ne mentionne QUE ce qui existait a cette date. Si un fait a ete cree apres cette date, il ne doit pas apparaitre dans ta reponse.`
+              : "";
+
             const systemPrompt = `Tu es HORA, un assistant memoire. Tu reponds aux questions en te basant EXCLUSIVEMENT sur le contexte memoire fourni ci-dessous.
 Si l'information n'est pas dans le contexte, dis-le clairement.
 Reponds en francais, de maniere structuree et concise.
-Si l'utilisateur demande du contexte a injecter, formate-le proprement pour un copier-coller.
+Si l'utilisateur demande du contexte a injecter, formate-le proprement pour un copier-coller.${temporalNote}
 
 === MEMOIRE HORA ===
 ${memoryContext ?? "Aucun contexte pertinent trouve."}
@@ -423,7 +442,7 @@ ${memoryContext ?? "Aucun contexte pertinent trouve."}
 ${matchedEntities.map((e) => `- ${e.name} [${e.type}] (${e.connections} connexions)`).join("\n") || "Aucune"}
 
 === FACTS PERTINENTS (${matchedFacts.length}) ===
-${matchedFacts.map((f) => `- ${f.source} —[${f.relation}]→ ${f.target}: ${f.description} (${Math.round(f.confidence * 100)}%)`).join("\n") || "Aucun"}`;
+${matchedFacts.map((f) => `- ${f.source} —[${f.relation}]→ ${f.target}: ${f.description} (${Math.round(f.confidence * 100)}%)${f.valid_at ? ` [depuis ${f.valid_at.slice(0, 10)}]` : ""}`).join("\n") || "Aucun"}`;
 
             // Build conversation history for multi-turn
             const messages = history.slice(-6).map((h: { role: string; content: string }) => ({
