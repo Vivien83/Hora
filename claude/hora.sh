@@ -211,18 +211,14 @@ fi
 
 # ─── New project bootstrap detection ─────────────────────────────
 
-# If new project (no docs/ AND no .hora/project-knowledge.md), inject /hora-init prompt
-# This makes Claude start directly with the bootstrap question — zero user input needed
-HORA_INIT_PROMPT=""
+# If new project (no docs/ AND no .hora/project-knowledge.md), signal to prompt-submit hook
+# via env var. The hook will inject the bootstrap question into the first message context.
+# NOTE: Never use --prompt or positional prompt — it disables TUI mode on Windows.
 if [[ ! -d "docs" ]] && [[ ! -f ".hora/project-knowledge.md" ]]; then
-  # New project detected — ask user before launching bootstrap
-  HORA_INIT_PROMPT="Nouveau projet detecte sans structure docs/. Veux-tu lancer le bootstrap HORA ? (creation des phases, arborescence docs/, recherche context7 stockee en dur) — Oui / Non"
+  export HORA_NEW_PROJECT=1
+  printf '\033[90m◈ Nouveau projet detecte — HORA proposera le bootstrap au demarrage\033[0m\n'
 fi
 
 # ─── Launch Claude Code ──────────────────────────────────────────
 
-if [[ -n "$HORA_INIT_PROMPT" ]]; then
-  exec claude --prompt "$HORA_INIT_PROMPT" ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}
-else
-  exec claude ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}
-fi
+exec claude ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}
