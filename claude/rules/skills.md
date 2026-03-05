@@ -9,6 +9,7 @@ Quand un skill est invoque, lire son fichier pour le protocol complet.
 | `/hora-refactor` | Refactoring Fowler + Feathers + Jidoka |
 | `/hora-security` | Audit OWASP 2025 + CWE |
 | `/hora-perf` | Core Web Vitals + Lighthouse + bundle |
+| `/hora-init` | Bootstrap projet — docs/, phases, context7, research |
 | `/hora-plan` | Planification + ISC |
 | `/hora-autopilot` | Execution autonome |
 | `/hora-parallel-code` | Multi-agents codebase |
