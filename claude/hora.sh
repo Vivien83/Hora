@@ -23,10 +23,12 @@ NO_UPDATE=false
 
 # Parse hora flags (remove from args before passing to claude)
 CLAUDE_ARGS=()
+SETUP_ONLY=false
 for arg in "$@"; do
   case "$arg" in
     --no-dash|--no-dashboard) NO_DASH=true ;;
     --no-update) NO_UPDATE=true ;;
+    --setup-only) SETUP_ONLY=true ;;
     --yolo) YOLO=true ;;
     *) CLAUDE_ARGS+=("$arg") ;;
   esac
@@ -46,7 +48,10 @@ cleanup() {
     wait "$DASHBOARD_PID" 2>/dev/null
   fi
 }
-trap cleanup EXIT INT TERM
+# In setup-only mode, don't trap — dashboard PID is saved for hora.cmd to manage
+if [[ "$SETUP_ONLY" != true ]]; then
+  trap cleanup EXIT INT TERM
+fi
 
 # ─── Banner ──────────────────────────────────────────────────────
 
@@ -155,6 +160,10 @@ if [[ "$NO_DASH" == false ]] && [[ -d "$DASHBOARD_DIR" ]]; then
 
     if kill -0 "$DASHBOARD_PID" 2>/dev/null; then
       printf '\033[90m◈ HORA Dashboard → http://localhost:3847\033[0m\n'
+      # Save PID for hora.cmd cleanup on Windows
+      if [[ "$SETUP_ONLY" == true ]]; then
+        echo "$DASHBOARD_PID" > "${HOME}/.claude/.hora-dashboard-pid" 2>/dev/null
+      fi
     fi
   fi
 fi
@@ -220,5 +229,12 @@ if [[ ! -d "docs" ]] && [[ ! -f ".hora/project-knowledge.md" ]]; then
 fi
 
 # ─── Launch Claude Code ──────────────────────────────────────────
+
+if [[ "$SETUP_ONLY" == true ]]; then
+  # Windows mode: write claude args to temp file for hora.cmd to read
+  _args_file="${HOME}/.claude/.hora-claude-args"
+  printf '%s\n' ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"} > "$_args_file" 2>/dev/null
+  exit 0
+fi
 
 exec claude ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}

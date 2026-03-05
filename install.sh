@@ -995,14 +995,40 @@ if [[ "$OSTYPE" == msys* ]] || [[ "$OSTYPE" == cygwin* ]] || [[ "$OSTYPE" == win
   CLAUDE_BIN=$(command -v claude 2>/dev/null || echo "")
   if [ -n "$CLAUDE_BIN" ]; then
     HORA_CMD_DIR=$(dirname "$CLAUDE_BIN")
-    # Create hora.cmd that calls bash with hora.sh
+    # Create hora.cmd that runs setup in bash then launches claude natively
+    # This avoids Git Bash's terminal context breaking Claude Code's TUI
     cat > "$HORA_CMD_DIR/hora.cmd" << 'WINEOF'
 @echo off
+setlocal enabledelayedexpansion
 set "HORA_SCRIPT=%USERPROFILE%\.claude\hora.sh"
+set "ARGS_FILE=%USERPROFILE%\.claude\.hora-claude-args"
+
+rem Run setup in bash (banner, dashboard, git init) without launching claude
+rem hora.sh --setup-only parses all flags and writes claude-only args to ARGS_FILE
 if defined CLAUDE_CODE_GIT_BASH_PATH (
-  "%CLAUDE_CODE_GIT_BASH_PATH%" "%HORA_SCRIPT%" %*
+  "%CLAUDE_CODE_GIT_BASH_PATH%" "%HORA_SCRIPT%" --setup-only %*
 ) else (
-  bash "%HORA_SCRIPT%" %*
+  bash "%HORA_SCRIPT%" --setup-only %*
+)
+
+rem Read claude args written by hora.sh (hora flags already stripped)
+set "CLAUDE_ARGS="
+if exist "%ARGS_FILE%" (
+  for /f "usebackq delims=" %%a in ("%ARGS_FILE%") do (
+    set "CLAUDE_ARGS=!CLAUDE_ARGS! %%a"
+  )
+  del "%ARGS_FILE%" >nul 2>&1
+)
+
+rem Launch claude directly from CMD (preserves Windows terminal for TUI)
+claude !CLAUDE_ARGS!
+
+rem Cleanup dashboard on exit
+set "DASH_PID_FILE=%USERPROFILE%\.claude\.hora-dashboard-pid"
+if exist "%DASH_PID_FILE%" (
+  set /p DASH_PID=<"%DASH_PID_FILE%"
+  taskkill /PID !DASH_PID! /T /F >nul 2>&1
+  del "%DASH_PID_FILE%" >nul 2>&1
 )
 WINEOF
     HORA_INSTALLED=true
