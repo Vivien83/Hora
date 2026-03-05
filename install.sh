@@ -995,13 +995,15 @@ if [[ "$OSTYPE" == msys* ]] || [[ "$OSTYPE" == cygwin* ]] || [[ "$OSTYPE" == win
   CLAUDE_BIN=$(command -v claude 2>/dev/null || echo "")
   if [ -n "$CLAUDE_BIN" ]; then
     HORA_CMD_DIR=$(dirname "$CLAUDE_BIN")
-    # Copy PowerShell launcher (Windows-native, no bash = no console corruption)
-    _cp "$HORA_DIR/hora.ps1" "$CLAUDE_DIR/hora.ps1"
-
-    # Create hora.cmd that calls PowerShell launcher
+    # Create hora.cmd that calls bash with hora.sh
     cat > "$HORA_CMD_DIR/hora.cmd" << 'WINEOF'
 @echo off
-powershell -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.claude\hora.ps1" %*
+set "HORA_SCRIPT=%USERPROFILE%\.claude\hora.sh"
+if defined CLAUDE_CODE_GIT_BASH_PATH (
+  "%CLAUDE_CODE_GIT_BASH_PATH%" "%HORA_SCRIPT%" %*
+) else (
+  bash "%HORA_SCRIPT%" %*
+)
 WINEOF
     HORA_INSTALLED=true
     ui_ok "hora.cmd installe dans $HORA_CMD_DIR"

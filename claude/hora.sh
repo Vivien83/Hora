@@ -20,7 +20,6 @@ DASHBOARD_PID=""
 NO_DASH=false
 YOLO=false
 NO_UPDATE=false
-SETUP_ONLY=false
 
 # Parse hora flags (remove from args before passing to claude)
 CLAUDE_ARGS=()
@@ -28,7 +27,6 @@ for arg in "$@"; do
   case "$arg" in
     --no-dash|--no-dashboard) NO_DASH=true ;;
     --no-update) NO_UPDATE=true ;;
-    --setup-only) SETUP_ONLY=true ;;
     --yolo) YOLO=true ;;
     *) CLAUDE_ARGS+=("$arg") ;;
   esac
@@ -48,10 +46,7 @@ cleanup() {
     wait "$DASHBOARD_PID" 2>/dev/null
   fi
 }
-# In setup-only mode (Windows), skip trap — hora.cmd handles dashboard cleanup
-if [[ "$SETUP_ONLY" != true ]]; then
-  trap cleanup EXIT INT TERM
-fi
+trap cleanup EXIT INT TERM
 
 # ─── Banner ──────────────────────────────────────────────────────
 
@@ -160,8 +155,6 @@ if [[ "$NO_DASH" == false ]] && [[ -d "$DASHBOARD_DIR" ]]; then
 
     if kill -0 "$DASHBOARD_PID" 2>/dev/null; then
       printf '\033[90m◈ HORA Dashboard → http://localhost:3847\033[0m\n'
-      # Save PID for hora.cmd cleanup on Windows
-      [[ "$SETUP_ONLY" == true ]] && echo "$DASHBOARD_PID" > "${HOME}/.claude/.hora-dashboard-pid" 2>/dev/null
     fi
   fi
 fi
@@ -217,11 +210,5 @@ if [[ "$NEED_COMMIT" == true ]] && git rev-parse --git-dir &>/dev/null; then
 fi
 
 # ─── Launch Claude Code ──────────────────────────────────────────
-
-# Windows setup-only mode: write args for hora.cmd, don't launch claude
-if [[ "$SETUP_ONLY" == true ]]; then
-  printf '%s\n' ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"} > "${HOME}/.claude/.hora-claude-args" 2>/dev/null
-  exit 0
-fi
 
 exec claude ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"}
