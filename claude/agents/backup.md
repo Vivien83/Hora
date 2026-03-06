@@ -63,7 +63,7 @@ Fichiers: $(git diff --cached --name-only | wc -l | tr -d ' ') fichiers modifié
 
 $(git diff --cached --name-only | head -10 | sed 's/^/  - /')"
 
-git push origin "$MIRROR_BRANCH" --force-with-lease
+# Backup stays local — no push to remote
 
 # Retour sur la branche de travail
 git checkout "$CURRENT_BRANCH"

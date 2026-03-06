@@ -220,10 +220,7 @@ ${filesList ? "Inclus: " + filesList : ""}" --allow-empty`,
         { stdio: "pipe" }
       );
 
-      // Push
-      execSync(`git push origin "${mirrorBranch}" --force-with-lease`, {
-        stdio: "pipe",
-      });
+      // Backup stays local — no push to remote
 
       // Retour sur la branche originale et restauration du stash
       execSync(`git checkout "${currentBranch}"`, { stdio: "pipe" });
@@ -231,7 +228,7 @@ ${filesList ? "Inclus: " + filesList : ""}" --allow-empty`,
 
       return {
         success: true,
-        message: `Pushé sur ${mirrorBranch}`,
+        message: `Backup local sur ${mirrorBranch}`,
         details: `${filesChanged} fichiers`,
       };
     } else {
