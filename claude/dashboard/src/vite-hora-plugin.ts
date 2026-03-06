@@ -228,20 +228,11 @@ async function getGraph() {
   return graphInstance as InstanceType<typeof HoraGraph>;
 }
 
-function extractEntitiesAndFacts(graph: ReturnType<Awaited<ReturnType<typeof getGraph>> extends infer G ? () => G : never> extends () => infer R ? R : unknown, keywords: string[], temporalRange?: { from: string; to: string; label: string } | null) {
+function extractEntitiesAndFacts(graph: ReturnType<Awaited<ReturnType<typeof getGraph>> extends infer G ? () => G : never> extends () => infer R ? R : unknown, keywords: string[]) {
   // Use any to simplify — the graph API is untyped from the plugin's perspective
-  const g = graph as {
-    getAllEntities: () => Array<Record<string, unknown>>;
-    getAllFacts: () => Array<Record<string, unknown>>;
-    getActiveFactsAt?: (date: string) => Array<Record<string, unknown>>;
-    getStats: () => Record<string, number>;
-  };
+  const g = graph as { getAllEntities: () => Array<Record<string, unknown>>; getAllFacts: () => Array<Record<string, unknown>>; getStats: () => Record<string, number> };
   const allEntities = g.getAllEntities();
-
-  // Use temporal filtering if a date range is detected
-  const allFacts = temporalRange && g.getActiveFactsAt
-    ? g.getActiveFactsAt(temporalRange.to)
-    : g.getAllFacts();
+  const allFacts = g.getAllFacts();
 
   const matchedEntities = allEntities
     .filter((e) => {
@@ -260,8 +251,7 @@ function extractEntitiesAndFacts(graph: ReturnType<Awaited<ReturnType<typeof get
   const entityIds = new Set(matchedEntities.map((e) => e.id));
   const matchedFacts = allFacts
     .filter((f) => {
-      // When using temporal filtering, getActiveFactsAt already filters expired facts
-      if (!temporalRange && f.expired_at !== null) return false;
+      if (f.expired_at !== null) return false;
       const descL = String(f.description ?? "").toLowerCase();
       const relatedToEntity = entityIds.has(String(f.source)) || entityIds.has(String(f.target));
       const descMatch = keywords.some((kw) => descL.includes(kw));
@@ -277,7 +267,6 @@ function extractEntitiesAndFacts(graph: ReturnType<Awaited<ReturnType<typeof get
         confidence: Number(f.confidence ?? 0),
         source: String(srcEntity?.name ?? f.source),
         target: String(tgtEntity?.name ?? f.target),
-        valid_at: String(f.valid_at ?? ""),
       };
     });
 
@@ -391,12 +380,9 @@ export function horaPlugin(projectDir: string): Plugin {
             return;
           }
 
-          // 1. Retrieve memory context (with temporal detection)
-          const { agenticRetrieve, detectTemporalQuery } = await import("../../hooks/lib/agentic-retrieval");
+          // 1. Retrieve memory context
+          const { agenticRetrieve } = await import("../../hooks/lib/agentic-retrieval");
           const graph = await getGraph();
-
-          // Detect temporal range for both retrieval and entity extraction
-          const temporalRange = detectTemporalQuery(message);
 
           const retrievePromise = agenticRetrieve({
             message,
@@ -404,16 +390,15 @@ export function horaPlugin(projectDir: string): Plugin {
             graphDir: GRAPH_DIR,
             projectName: "hora",
             maxBudget: 8000,
-            temporalRange,
           });
           const memoryContext = await Promise.race([
             retrievePromise,
             new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
           ]);
 
-          // 2. Extract structured entities/facts (with temporal filtering)
+          // 2. Extract structured entities/facts
           const keywords = message.toLowerCase().split(/\s+/).filter((w: string) => w.length >= 2);
-          const { matchedEntities, matchedFacts, stats } = extractEntitiesAndFacts(graph, keywords, temporalRange);
+          const { matchedEntities, matchedFacts, stats } = extractEntitiesAndFacts(graph, keywords);
 
           // 3. Try LLM synthesis
           const { loadConfig } = await import("./chat-config");
@@ -426,14 +411,10 @@ export function horaPlugin(projectDir: string): Plugin {
           let llmUsed = false;
 
           if (config?.apiKey) {
-            const temporalNote = temporalRange
-              ? `\n\nATTENTION: L'utilisateur pose une question TEMPORELLE. Les donnees ci-dessous sont filtrees pour refleter l'etat au ${temporalRange.label}. Ne mentionne QUE ce qui existait a cette date. Si un fait a ete cree apres cette date, il ne doit pas apparaitre dans ta reponse.`
-              : "";
-
             const systemPrompt = `Tu es HORA, un assistant memoire. Tu reponds aux questions en te basant EXCLUSIVEMENT sur le contexte memoire fourni ci-dessous.
 Si l'information n'est pas dans le contexte, dis-le clairement.
 Reponds en francais, de maniere structuree et concise.
-Si l'utilisateur demande du contexte a injecter, formate-le proprement pour un copier-coller.${temporalNote}
+Si l'utilisateur demande du contexte a injecter, formate-le proprement pour un copier-coller.
 
 === MEMOIRE HORA ===
 ${memoryContext ?? "Aucun contexte pertinent trouve."}
@@ -442,7 +423,7 @@ ${memoryContext ?? "Aucun contexte pertinent trouve."}
 ${matchedEntities.map((e) => `- ${e.name} [${e.type}] (${e.connections} connexions)`).join("\n") || "Aucune"}
 
 === FACTS PERTINENTS (${matchedFacts.length}) ===
-${matchedFacts.map((f) => `- ${f.source} —[${f.relation}]→ ${f.target}: ${f.description} (${Math.round(f.confidence * 100)}%)${f.valid_at ? ` [depuis ${f.valid_at.slice(0, 10)}]` : ""}`).join("\n") || "Aucun"}`;
+${matchedFacts.map((f) => `- ${f.source} —[${f.relation}]→ ${f.target}: ${f.description} (${Math.round(f.confidence * 100)}%)`).join("\n") || "Aucun"}`;
 
             // Build conversation history for multi-turn
             const messages = history.slice(-6).map((h: { role: string; content: string }) => ({
@@ -638,47 +619,45 @@ ${matchedFacts.map((f) => `- ${f.source} —[${f.relation}]→ ${f.target}: ${f.
           // Parse last 7 days from .tool-usage.jsonl
           const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-          interface ToolEntry { ts: string; session: string; tool: string }
-          const entries: ToolEntry[] = [];
+          // Supports both formats:
+          // Legacy: {ts, session, tool} — one line per call
+          // Aggregated: {date, tool, count, sessions} — one line per tool per day
+          const toolCounts: Record<string, number> = {};
+          const hourBuckets = new Array(24).fill(0) as number[];
+          const dailyMap: Record<string, number> = {};
+          const sessions = new Set<string>();
+          let totalCalls = 0;
 
           if (existsSync(toolUsagePath)) {
             const lines = readFileSync(toolUsagePath, "utf-8").split("\n").filter(Boolean);
             for (const line of lines) {
               try {
-                const entry = JSON.parse(line) as ToolEntry;
-                if (new Date(entry.ts) >= sevenDaysAgo) {
-                  entries.push(entry);
+                const entry = JSON.parse(line);
+                if (entry.date && entry.count) {
+                  // Aggregated format
+                  if (new Date(entry.date) >= sevenDaysAgo) {
+                    toolCounts[entry.tool] = (toolCounts[entry.tool] ?? 0) + entry.count;
+                    dailyMap[entry.date] = (dailyMap[entry.date] ?? 0) + entry.count;
+                    totalCalls += entry.count;
+                    if (entry.sessions) for (const s of entry.sessions) sessions.add(s);
+                  }
+                } else if (entry.ts) {
+                  // Legacy format
+                  if (new Date(entry.ts) >= sevenDaysAgo) {
+                    toolCounts[entry.tool] = (toolCounts[entry.tool] ?? 0) + 1;
+                    const d = new Date(entry.ts);
+                    hourBuckets[d.getHours()] += 1;
+                    const dayKey = entry.ts.slice(0, 10);
+                    dailyMap[dayKey] = (dailyMap[dayKey] ?? 0) + 1;
+                    totalCalls += 1;
+                    if (entry.session) sessions.add(entry.session);
+                  }
                 }
-              } catch {
-                // Skip malformed lines
-              }
+              } catch {}
             }
           }
 
-          // Aggregate tool counts
-          const toolCounts: Record<string, number> = {};
-          const hourBuckets = new Array(24).fill(0) as number[];
-          const dailyMap: Record<string, number> = {};
-          const sessions = new Set<string>();
-
-          for (const e of entries) {
-            // Tool counts
-            toolCounts[e.tool] = (toolCounts[e.tool] ?? 0) + 1;
-
-            // Hourly activity
-            const d = new Date(e.ts);
-            hourBuckets[d.getHours()] += 1;
-
-            // Daily activity
-            const dayKey = e.ts.slice(0, 10); // YYYY-MM-DD
-            dailyMap[dayKey] = (dailyMap[dayKey] ?? 0) + 1;
-
-            // Unique sessions
-            if (e.session) sessions.add(e.session);
-          }
-
-          // Top tools sorted
-          const totalCalls = entries.length || 1;
+          if (totalCalls === 0) totalCalls = 1;
           const topTools = Object.entries(toolCounts)
             .sort(([, a], [, b]) => b - a)
             .map(([tool, count]) => ({

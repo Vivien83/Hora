@@ -81,20 +81,43 @@ async function main() {
   const sessionId = hookData.session_id || "unknown";
   const toolInput = hookData.tool_input || {};
 
-  // Logger l'utilisation (sans les données sensibles)
-  const logEntry = {
-    ts: new Date().toISOString(),
-    session: sessionId.slice(0, 8),
-    tool: toolName,
-  };
+  // Logger l'utilisation — format agrégé par jour/outil (pas 1 ligne par appel)
+  const today = new Date().toISOString().slice(0, 10);
+  const sid8 = sessionId.slice(0, 8);
+  const counterFile = path.join(MEMORY_DIR, ".tool-usage-counters.json");
 
   try {
     fs.mkdirSync(path.dirname(TOOL_LOG), { recursive: true });
-    fs.appendFileSync(TOOL_LOG, JSON.stringify(logEntry) + "\n");
+    let counters: Record<string, { count: number; sessions: string[] }> = {};
+    try {
+      counters = JSON.parse(fs.readFileSync(counterFile, "utf-8"));
+    } catch {}
+
+    const key = `${today}|${toolName}`;
+    if (!counters[key]) counters[key] = { count: 0, sessions: [] };
+    counters[key].count += 1;
+    if (!counters[key].sessions.includes(sid8)) counters[key].sessions.push(sid8);
+
+    // Flush to JSONL when a new day starts (stale dates detected)
+    const existingDates = new Set(Object.keys(counters).map((k) => k.split("|")[0]));
+    for (const d of existingDates) {
+      if (d === today) continue;
+      const lines: string[] = [];
+      for (const [k, v] of Object.entries(counters)) {
+        if (k.startsWith(d + "|")) {
+          lines.push(JSON.stringify({ date: d, tool: k.split("|")[1], count: v.count, sessions: v.sessions }));
+          delete counters[k];
+        }
+      }
+      if (lines.length) fs.appendFileSync(TOOL_LOG, lines.join("\n") + "\n");
+    }
+
+    const tmp = counterFile + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(counters));
+    fs.renameSync(tmp, counterFile);
   } catch {}
 
-  // Session-scoped paths (8 premiers chars du session_id)
-  const sid8 = sessionId.slice(0, 8);
+  // Session-scoped paths
   const AGENTS_STATE = agentsStatePath(sid8);
   const TASK_STATE = taskStatePath(sid8);
 
