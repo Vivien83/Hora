@@ -6,6 +6,10 @@
   <img src="https://img.shields.io/badge/Storage-100%25_Local-purple?style=for-the-badge" alt="100% Local">
 </p>
 
+<p align="center">
+  <img src="docs/memory/m01_banner.png" alt="HORA Memory System" width="860">
+</p>
+
 <h1 align="center">HORA Memory System</h1>
 <h3 align="center">Deep Technical Documentation</h3>
 
@@ -45,6 +49,10 @@ HORA's memory system is modeled after the human brain. Every component maps to a
 | **Reconsolidation** (Nader et al. 2000) | Recalled memories become labile, updated with new evidence | `knowledge-graph.ts` reconsolidation |
 | **Spaced Repetition** (Ebbinghaus → Leitner → Pimsleur) | Frequent retrieval strengthens activation | `activation-model.ts` recordAccess |
 | **Community Structure** (modularity in neural networks) | Entity clustering via label propagation | `graph-communities.ts` |
+
+<p align="center">
+  <img src="docs/memory/m02_neuroscience_map.png" alt="Neuroscience Foundations Map" width="860">
+</p>
 
 ### The Memory Flow (Brain Analogy)
 
@@ -211,6 +219,10 @@ Query "What does HORA use now?" → Returns the new fact (invalid_at = null)
 
 This enables **time-travel queries** — see what was true at any point in history.
 
+<p align="center">
+  <img src="docs/memory/m03_bi_temporality.png" alt="Bi-Temporality — 4 Timestamps Per Fact" width="860">
+</p>
+
 ### Memory Types (Tulving Taxonomy)
 
 Every fact is classified into one of three memory types:
@@ -232,6 +244,10 @@ Semantic:             everything else (default)
 ```
 
 **Type-aware retrieval:** Procedural facts are formatted as "Quand X → Y" patterns. Semantic facts are grouped thematically. Episodic facts are sorted chronologically.
+
+<p align="center">
+  <img src="docs/memory/m04_tulving_taxonomy.png" alt="Tulving Memory Taxonomy" width="860">
+</p>
 
 ### Reconsolidation
 
@@ -373,6 +389,10 @@ runMemoryLifecycle()
   │
   └── 6. Release GC lock
 ```
+
+<p align="center">
+  <img src="docs/memory/m05_gc_lifecycle.png" alt="Memory GC Lifecycle" width="860">
+</p>
 
 ### T2 Expiry Details
 
@@ -708,6 +728,10 @@ After retrieval:  accessTimes = ["2026-02-20T...", "2026-02-27T..."]
 
 This creates a natural **spaced repetition** effect: facts that keep being useful are strengthened, while unused facts decay naturally.
 
+<p align="center">
+  <img src="docs/memory/m06_actr_activation.png" alt="ACT-R Activation Model" width="860">
+</p>
+
 ### Sigmoid Normalization (for Search Scoring)
 
 ```
@@ -786,6 +810,10 @@ Dream cycle detects:
   → Type: semantic, confidence: 0.7
   → Mark episodes 1-3 as consolidated
 ```
+
+<p align="center">
+  <img src="docs/memory/m07_dream_cycle.png" alt="Dream Cycle Pipeline" width="860">
+</p>
 
 ---
 
@@ -913,6 +941,10 @@ Session 7: "Je préfère les named exports"
 → Written to INSIGHTS/crystallized-patterns.md
 → Appended to PROFILE/preferences.md
 ```
+
+<p align="center">
+  <img src="docs/memory/m08_signal_tracker.png" alt="Signal Tracker — Extraction and Crystallization" width="860">
+</p>
 
 ---
 
@@ -1098,6 +1130,10 @@ Adapts injection sizes based on how much context is already consumed:
 | 80-90% | **minimal** | **No** | 500 chars | 150 chars | Graph skipped, thread minimal |
 | > 90% | **emergency** | **No** | **None** | 80 chars | ISC + steering only |
 
+<p align="center">
+  <img src="docs/memory/m10_context_injection.png" alt="Context Injection Pipeline" width="860">
+</p>
+
 ### Skill Auto-Suggest
 
 **Module:** `claude/hooks/lib/skill-suggest.ts` (~168 lines)
@@ -1240,6 +1276,10 @@ buildGraphFromSession(graph, sessionData)
 
 When `session-end.ts` calls `claude -p` for graph extraction, it sets the environment variable `HORA_SKIP_HOOKS=1`. Every HORA hook checks for this variable at startup and exits immediately if present — preventing infinite recursion (extraction → hooks → extraction → ...).
 
+<p align="center">
+  <img src="docs/memory/m11_extraction_pipeline.png" alt="Self-Learning Extraction Pipeline" width="860">
+</p>
+
 ---
 
 ## Storage Format
@@ -1294,6 +1334,10 @@ When `session-end.ts` calls `claude -p` for graph extraction, it sets the enviro
 │
 └── .tool-usage.jsonl                 #   Tool call log (append-only)
 ```
+
+<p align="center">
+  <img src="docs/memory/m09_storage_structure.png" alt="Storage Directory Structure" width="860">
+</p>
 
 ### JSONL Formats
 
