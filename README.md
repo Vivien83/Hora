@@ -7,6 +7,10 @@
   <img src="https://img.shields.io/badge/Config-Zero-brightgreen?style=for-the-badge" alt="Zero Config">
 </p>
 
+<p align="center">
+  <img src="docs/01_banner.png" alt="HORA Banner" width="860">
+</p>
+
 <h1 align="center">HORA</h1>
 <h3 align="center">Hybrid Orchestrated Reasoning Architecture</h3>
 
@@ -154,6 +158,10 @@ Session ends --> claude -p extracts entities + facts + contradictions
 
 > **Full details:** [MEMORY.md — Knowledge Graph](MEMORY.md#knowledge-graph)
 
+<p align="center">
+  <img src="docs/03_knowledge_graph.png" alt="Knowledge Graph" width="860">
+</p>
+
 ---
 
 ### 2. Agentic Retrieval (Hybrid Search)
@@ -169,6 +177,10 @@ BM25 (fuzzy=0.2, prefix=true, boost: desc=2, ent=1.5)  ─┘
 **Latency:** ~350ms first message (model load), ~50ms after. **Fallback chain:** semantic+BM25 → BM25-only → classic injection → no injection.
 
 > **Full details:** [MEMORY.md — Agentic Retrieval](MEMORY.md#agentic-retrieval)
+
+<p align="center">
+  <img src="docs/06_hybrid_search.png" alt="Hybrid Search Pipeline" width="860">
+</p>
 
 ---
 
@@ -186,6 +198,10 @@ BM25 (fuzzy=0.2, prefix=true, boost: desc=2, ent=1.5)  ─┘
 
 > **Full details:** [MEMORY.md — Memory Tiers](MEMORY.md#memory-tiers) | [MEMORY.md — Activation Model](MEMORY.md#activation-model) | [MEMORY.md — Dream Cycle](MEMORY.md#dream-cycle)
 
+<p align="center">
+  <img src="docs/02_memory_tiers.png" alt="Memory Tiers T1/T2/T3" width="860">
+</p>
+
 ---
 
 ### 4. Periodic Re-extraction
@@ -201,6 +217,10 @@ Session end    --> Final extraction
 ```
 
 The extraction flag uses a **timestamp** (not boolean) — so HORA knows exactly when the last extraction happened and only triggers when the interval has elapsed.
+
+<p align="center">
+  <img src="docs/08_session_lifecycle.png" alt="Session Lifecycle" width="860">
+</p>
 
 ---
 
@@ -234,6 +254,10 @@ Layer 3:  Full audit trail in MEMORY/SECURITY/ (accountability)
 All patterns are customizable in `~/.claude/.hora/patterns.yaml`.
 
 > **17 blocked patterns, 18 confirm patterns, 6 alert patterns** out of the box. Add your own in YAML.
+
+<p align="center">
+  <img src="docs/05_security_layers.png" alt="Layered Security" width="860">
+</p>
 
 ---
 
@@ -440,6 +464,10 @@ Two visualization modes:
 **Real-time architecture:** Vite plugin with chokidar watches `~/.claude/MEMORY/` and `<project>/.hora/`, debounces 500ms, pushes updates via HMR WebSocket. Auto-embeds new graph entries on load.
 
 > **Full memory architecture:** [MEMORY.md — Neural Dashboard](MEMORY.md#neural-dashboard)
+
+<p align="center">
+  <img src="docs/07_dashboard_preview.png" alt="HORA Dashboard v3" width="860">
+</p>
 
 ---
 
@@ -691,6 +719,10 @@ HORA follows a structured reasoning process for **every task** — it's not opti
     - Sentiment alert  - Compact detection
                        - Library-first check
 ```
+
+<p align="center">
+  <img src="docs/04_hooks_pipeline.png" alt="Hooks Pipeline" width="860">
+</p>
 
 ### Data flow
 
